@@ -48,11 +48,16 @@ The proof path is fully automated:
   It also runs the generic GraphQL parser/validator/planner over those carriers for a point root,
   relation, computed scalar, forward/backward cursors, exact count, aliases, fail-closed
   visibility, and a direct collection relation with a two-step root-plus-batch plan.
+- `commerceIntegrationTest` runs a separate generate, transpile, package, install-verification,
+  binding, deployment, and serving chain for the unrelated customers/orders model. Its package
+  inventory is generated-only, and its live PostgreSQL/MySQL checks cover batching, counts,
+  cursors, context filtering, mutations, and restart visibility.
 - `titan.graphql.execution.mode=sql` turns the proof into a live runtime: the Quarkus
   `/graphql` endpoint answers from the deployed stored functions (section 4;
   automated by `GraphqlSqlModeHttpIT` under `integrationTest`).
 
-> **Current verified status:** all four legs are green on BOTH dialects. Core
+> **Current verified status:** the demo equivalence, generated-carrier, HTTP-serving, and isolated
+> commerce compiled-schema legs are green on BOTH dialects. Core
 > closed `TG-BLK-011` (identifier overflow) and `TG-BLK-012` (MySQL
 > boolean→JSON rendering, titan f9e3b43), so `titanVerifyInstall` passes both dialects
 > and the equivalence legs are **97/97 strictly equivalent each** — PostgreSQL
@@ -244,6 +249,15 @@ Plain `./gradlew test` stays Docker-free: the equivalence IT is tagged
 `@Tag("docker")` and runs only under `integrationTest` (the same convention core's
 modules use). The Docker-free guard `GraphqlSqlModeConformanceCoverageTest` keeps the
 conformance matrix and the corpus in lockstep on every plain `test` run.
+
+To run both independently packaged schema proofs together, use:
+
+```bash
+./gradlew compiledSchemaIntegrationTest
+```
+
+This aggregate keeps the commerce source, SQL, package metadata, model binding, and test task
+separate from the demo outputs, making accidental reuse of the demo package a test failure.
 
 ### The MySQL leg (W5.2)
 

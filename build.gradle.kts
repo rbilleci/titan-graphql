@@ -1,5 +1,7 @@
 import io.titan.gradle.TitanExtension
+import io.titan.gradle.TitanPackageTask
 import io.titan.gradle.TitanTranspileTask
+import io.titan.gradle.TitanVerifyInstallTask
 
 plugins {
     java
@@ -109,6 +111,7 @@ tasks.register<Test>("integrationTest") {
     classpath = sourceSets["test"].runtimeClasspath
     useJUnitPlatform {
         includeTags("docker")
+        excludeTags("commerce-compiled")
     }
     // The SQL-mode tests consume only a package that is install-verified and exactly bound to
     // the reviewed model. titanGraphqlBindPackage owns that complete dependency chain.
@@ -207,4 +210,114 @@ tasks.register<JavaExec>("titanGraphqlBindPackage") {
         titanGraphqlPackageDirectory.map { it.file("titan-install-verification.json") }
     )
     outputs.file(titanGraphqlPackageDirectory.map { it.file("titan-graphql-package.json") })
+}
+
+// Isolated second-schema proof. Its generated source, SQL, package metadata, binding, and tests
+// have separate output roots, so the commerce result cannot accidentally consume the demo package.
+val commerceModelFile = layout.projectDirectory.file(
+    "src/test/resources/graphql/commerce.titan.graphql.yaml"
+)
+val commerceGeneratedRoutineSource = layout.buildDirectory.file(
+    "generated/proofs/commerce/sources/io/titan/graphql/generated/GeneratedTitanGraphqlReads.java"
+)
+val commerceSqlDirectory = layout.buildDirectory.dir("generated/proofs/commerce/sql")
+val commercePackageDirectory = layout.buildDirectory.dir("generated/proofs/commerce/package")
+
+tasks.register<JavaExec>("titanGraphqlGenerateCommerceRoutines") {
+    description = "Generates Titan read carriers for the unrelated commerce proof model."
+    group = "titan"
+    dependsOn("classes")
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("io.titan.graphql.codegen.TitanGraphqlRoutineSourceGeneratorCli")
+    args(commerceModelFile.asFile.absolutePath, commerceGeneratedRoutineSource.get().asFile.absolutePath)
+    inputs.file(commerceModelFile)
+    outputs.file(commerceGeneratedRoutineSource)
+}
+
+tasks.register<TitanTranspileTask>("titanGraphqlTranspileCommerce") {
+    description = "Transpiles only the generated commerce carriers for PostgreSQL and MySQL."
+    group = "titan"
+    dependsOn("classes", "titanGraphqlGenerateCommerceRoutines")
+    sourceFiles.setFrom(commerceGeneratedRoutineSource)
+    classpathFiles.from(sourceSets["main"].runtimeClasspath)
+    targets.set(listOf("postgresql", "mysql"))
+    schemas.set(listOf("public"))
+    strictWraparound.set(false)
+    sqlSafety.set("strict")
+    observability.set(true)
+    debugMode.set(false)
+    sensitiveColumns.set(listOf("email"))
+    outputDir.set(commerceSqlDirectory)
+}
+
+tasks.register<TitanPackageTask>("titanGraphqlPackageCommerce") {
+    description = "Packages the isolated commerce carrier SQL."
+    group = "titan"
+    dependsOn("titanGraphqlTranspileCommerce")
+    sqlInputDir.set(commerceSqlDirectory)
+    mode.set("migration")
+    titanVersion.set(providers.provider { project.version.toString() })
+    outputDir.set(commercePackageDirectory)
+}
+
+tasks.register<TitanVerifyInstallTask>("titanGraphqlVerifyCommerceInstall") {
+    description = "Installs and verifies the isolated commerce package on both dialects."
+    group = "verification"
+    dependsOn("titanGraphqlPackageCommerce")
+    sqlInputDir.set(commerceSqlDirectory)
+    artifactDir.set(commercePackageDirectory)
+    mode.set("migration")
+    titanVersion.set(providers.provider { project.version.toString() })
+    jdbcUrl.set("")
+    username.set("")
+    password.set("")
+    dialect.set("postgresql")
+    failOnVerificationError.set(true)
+    jdbcDriverClasspath.from(configurations["titanJdbc"])
+    outputs.upToDateWhen { false }
+}
+
+tasks.register<JavaExec>("titanGraphqlBindCommercePackage") {
+    description = "Binds the verified commerce package to its exact reviewed model."
+    group = "titan"
+    dependsOn("classes", "titanGraphqlVerifyCommerceInstall")
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("io.titan.graphql.artifact.TitanGraphqlPackageBindingCli")
+    args(commerceModelFile.asFile.absolutePath, commercePackageDirectory.get().asFile.absolutePath)
+    inputs.file(commerceModelFile)
+    inputs.files(
+        commercePackageDirectory.map { it.file("titan-artifact.json") },
+        commercePackageDirectory.map { it.file("titan-object-inventory.json") },
+        commercePackageDirectory.map { it.file("titan-install-plan.json") },
+        commercePackageDirectory.map { it.file("titan-install-verification.json") }
+    )
+    outputs.file(commercePackageDirectory.map { it.file("titan-graphql-package.json") })
+}
+
+tasks.register<Test>("commerceIntegrationTest") {
+    description = "Runs the isolated compiled commerce proof on PostgreSQL and MySQL."
+    group = "verification"
+    dependsOn("titanGraphqlBindCommercePackage")
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { includeTags("commerce-compiled") }
+    systemProperty(
+        "titan.graphql.migrations.dir.commerce",
+        commercePackageDirectory.map { it.dir("postgresql") }.get().asFile.absolutePath
+    )
+    systemProperty(
+        "titan.graphql.migrations.dir.commerce.mysql",
+        commercePackageDirectory.map { it.dir("mysql") }.get().asFile.absolutePath
+    )
+    systemProperty(
+        "titan.graphql.artifacts.dir",
+        commercePackageDirectory.get().asFile.absolutePath
+    )
+    shouldRunAfter(tasks.named("integrationTest"))
+}
+
+tasks.register("compiledSchemaIntegrationTest") {
+    description = "Runs both independently packaged compiled-schema proofs."
+    group = "verification"
+    dependsOn("integrationTest", "commerceIntegrationTest")
 }

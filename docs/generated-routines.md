@@ -49,7 +49,11 @@ of unsafe identifiers, protected-field omission, and reuse for unrelated blog an
 `GeneratedTitanGraphqlReadsIT` installs the package and proves both dialect shapes against live
 databases, including model attestation, point/page/relation reads, a computed field, policy
 omission, observing a row update, and direct collection-relation grouping in a root-plus-batch
-two-step plan.
+two-step plan. `commerceIntegrationTest` repeats the complete generate-to-serve chain in an
+isolated output tree for an unrelated customers/orders model. It asserts that every packaged
+entry point belongs to the generated carrier class and that no demo-blog or article routine is
+present, then proves nested reads, batching, counts, cursor continuation, fail-closed context
+filtering, live mutations, and restart visibility on PostgreSQL and MySQL.
 
 ## Deliberate Remaining Boundary
 

@@ -11,8 +11,9 @@ read [SECURITY.md](SECURITY.md) before exposing either HTTP endpoint.
 The product goal is to put GraphQL over supported schemas without handwritten read resolvers or
 queries. Custom mutations remain explicit application code. Model-driven database read carriers
 now compile and install beside the fixed demo kernel; routing validated GraphQL plans through those
-carriers is available as the opt-in `compiled` runtime; expanding its supported plan shapes and
-promoting it over the legacy `sql` mode is the remaining migration.
+carriers is available as the opt-in `compiled` runtime. Two independently generated packages now
+prove that route against unrelated blog and commerce models. Expanding its supported plan shapes
+and promoting it over the legacy `sql` mode is the remaining migration.
 
 New developers should start with [docs/getting-started.md](docs/getting-started.md).
 
@@ -45,6 +46,11 @@ The full pipeline is automated and green on both supported dialects:
   data model. The dual-dialect live proof covers aliases, a point root, a direct relation, computed
   output, forward/backward cursors, page info, exact count, fail-closed row visibility, and a
   direct relation beneath a collection in one bounded batch rather than N+1 reads.
+- **Prove schema independence with an isolated package:** `commerceIntegrationTest` generates,
+  transpiles, packages, install-verifies, binds, deploys, and serves a customers/orders model from
+  a separate build tree. Its package inventory contains only generated carriers—no demo-blog class
+  or article routine—and the same runtime observes live mutations and a fresh-engine restart on
+  PostgreSQL and MySQL.
 - **Transpile (both dialects):** `titanTranspile` lowers the generated carriers and the transitional
   demo-blog whole-request kernel (`DemoBlogTitanGraphqlFunctions`) into PostgreSQL **and MySQL**
   routines with zero validator diagnostics. Its inputs are an explicit allowlist; unrelated
@@ -98,6 +104,8 @@ The full pipeline is automated and green on both supported dialects:
 ./gradlew titanVerifyInstall # install + verify against scratch PG + MySQL containers (Docker)
 ./gradlew titanGraphqlBindPackage # verify and bind package to the reviewed model (Docker)
 ./gradlew integrationTest    # Java-vs-SQL equivalence on both dialects + live SQL-mode HTTP serving (Docker)
+./gradlew commerceIntegrationTest # isolated generated-only commerce package on both dialects (Docker)
+./gradlew compiledSchemaIntegrationTest # both independently packaged schema proofs (Docker)
 ```
 
 Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run under
@@ -118,9 +126,10 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   arbitrary generated filters/order,
   counts for relation connections, protected-field policy branches, relation connections, or
   nested multi-level batching. Direct relations immediately beneath collection roots use fixed
-  generated batch arities and do not issue one query per parent.
-  The next increments expand compiled-plan coverage, prove a separately packaged unrelated model,
-  then retire the demo whole-request kernel from production dispatch.
+  generated batch arities and do not issue one query per parent. A separately packaged unrelated
+  commerce model now proves the generic runtime and generated-only inventory independently of the
+  demo package. The next increments expand compiled-plan coverage, then retire the demo
+  whole-request kernel from production dispatch.
 - **Management storage: durable JDBC store available (opt-in `jdbc` mode); file-backed by
   default.** Core dogfooded the management store — it transpiles the management mutation
   routines in-tree and ships a durable JDBC-backed transactional store over them

@@ -187,9 +187,10 @@ through them. The older `sql` runtime still dispatches a whole request to the fi
 `titanGraphqlBindPackage` links the canonical model semantic hash to Titan's artifact, manifest,
 source-input hashes, and routine inventory. SQL startup verifies that sidecar, resolves routine
 identities from the inventory, and calls the database-resident model attestation routine. This
-prevents serving a stale, unrelated, or wrongly deployed package. The remaining architectural step
-is to complete carrier/plan coverage, prove separate unrelated-model packages, promote compiled
-mode, then delete the demo kernel from production dispatch.
+prevents serving a stale, unrelated, or wrongly deployed package. The isolated commerce proof now
+builds and serves a second generated-only package without the demo kernel. The remaining
+architectural step is to complete carrier/plan coverage, promote compiled mode, then delete the
+demo kernel from production dispatch.
 
 The engine must stay model-agnostic: parsing, validation, policy application, and selection-tree construction cannot know about `Article`, `User`, or any future application type. Concrete data models provide descriptors and execution adapters. The current `DemoBlogGraphqlSchema` and demo executor are only the first adapter.
 

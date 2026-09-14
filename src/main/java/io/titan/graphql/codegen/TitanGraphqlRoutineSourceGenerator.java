@@ -189,12 +189,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
         StringBuilder sql = new StringBuilder(selectList(context, target))
                 .append(" WHERE ").append(identifier(relation.targetColumn(), "relation target column"))
                 .append(" = ?");
-        if (!relation.sortPaths().isEmpty()) {
-            TitanGraphqlRelationDocument.RelationDocumentSortPath sort = relation.sortPaths().getFirst();
-            if (sort.hops() == 0) {
-                sql.append(orderBy(sort.column(), sort.direction().name(), sort.tieBreaker()));
-            }
-        }
+        appendRelationOrder(sql, target, relation);
         emitCarrier(source, "readRelation" + javaTypeName(owner.name()) + javaTypeName(relation.name()),
                 List.of(localKey), sql.toString());
         for (int batchSize : RELATION_BATCH_SIZES) {
@@ -207,14 +202,33 @@ public final class TitanGraphqlRoutineSourceGenerator {
                             + " AS __titan_parent_key"))
                     + " WHERE " + identifier(relation.targetColumn(), "relation target column")
                     + " IN (" + String.join(", ", java.util.Collections.nCopies(batchSize, "?")) + ")";
-            if (!relation.sortPaths().isEmpty()) {
-                TitanGraphqlRelationDocument.RelationDocumentSortPath sort = relation.sortPaths().getFirst();
-                if (sort.hops() == 0) {
-                    batchSql += orderBy(sort.column(), sort.direction().name(), sort.tieBreaker());
-                }
-            }
+            StringBuilder orderedBatchSql = new StringBuilder(batchSql);
+            appendRelationOrder(orderedBatchSql, target, relation);
             emitCarrier(source, "readRelation" + javaTypeName(owner.name())
-                    + javaTypeName(relation.name()) + "Batch" + batchSize, batchParameters, batchSql);
+                    + javaTypeName(relation.name()) + "Batch" + batchSize,
+                    batchParameters, orderedBatchSql.toString());
+        }
+    }
+
+    private static void appendRelationOrder(
+            StringBuilder sql,
+            TitanGraphqlTypeDocument target,
+            TitanGraphqlRelationDocument relation
+    ) {
+        if (!relation.sortPaths().isEmpty()) {
+            TitanGraphqlRelationDocument.RelationDocumentSortPath sort = relation.sortPaths().getFirst();
+            if (sort.hops() != 0) {
+                throw unsupported("relation '" + relation.name() + "' uses relation-hop ordering");
+            }
+            sql.append(orderBy(sort.column(), sort.direction().name(), sort.tieBreaker()));
+            return;
+        }
+        if (relation.cardinality() == TitanGraphqlRelationDocument.RelationDocumentCardinality.MANY) {
+            if (target.primaryKey().isBlank()) {
+                throw unsupported("to-many relation '" + relation.name()
+                        + "' has no sort path or target primary key");
+            }
+            sql.append(orderBy(target.primaryKey(), "ASC", target.primaryKey()));
         }
     }
 
