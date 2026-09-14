@@ -198,6 +198,10 @@ and validation report text and JSON renderings in
 [docs/validation-diagnostics.md](docs/validation-diagnostics.md).
 Deployment trust, package binding, request-context, and current policy boundaries are documented
 in [SECURITY.md](SECURITY.md).
+Production configuration, state ownership, rollout, rollback, and incident boundaries are in
+[docs/operations.md](docs/operations.md); coordinated model/package upgrades are in
+[docs/migration.md](docs/migration.md); and the local release task matrix is in
+[docs/verification.md](docs/verification.md).
 The minimal mutation runtime lowering boundary is documented in
 [docs/mutation-runtime-lowering-boundary.md](docs/mutation-runtime-lowering-boundary.md).
 

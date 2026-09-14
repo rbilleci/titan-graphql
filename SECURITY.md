@@ -12,7 +12,8 @@ for a private reporting channel.
 
 ## Deployment boundary
 
-This repository is a proof project, not a turnkey public service. Its secure defaults are:
+This repository is a pre-1.0 library and reference service, not a turnkey public endpoint. Its
+secure defaults are:
 
 - `/graphql` ignores caller-supplied `X-Titan-*` context headers.
 - `/admin/graphql` returns `404` unless the server configures
@@ -36,11 +37,16 @@ model document or bypass `titanGraphqlBindPackage`.
 
 Generated SQL uses model-approved identifiers and prepared values. Generated filters perform the
 same field authorization checks as selected output fields, including every segment of a relation
-path. Protected fields are omitted from unguarded read and filter carriers. Unsupported filter
-composition, policy expressions, relation policies, or missing fail-closed context values reject
-the request before database I/O; compiled mode does not fall back to a less restrictive runtime.
+path. Root policies reject before I/O and are repeated as carrier predicates; type-level row gates
+apply to roots, counts, and relation targets; protected scalar and relation-key projections use SQL
+guards; and protected relation routines include an allow predicate. Unsupported policy expressions
+or missing fail-closed context values reject without falling back to another runtime.
 
-The only currently executable named field policy is `adminOnly`. It relies on the authenticated
-`actorRole` supplied by the application boundary. Do not treat user-provided role or policy headers
-as trusted identity. Root, row, field, and relation policy compilation is not complete, so models
-requiring broader authorization semantics must not be promoted to compiled production serving yet.
+The reviewed named policy language is deliberately small: `adminOnly`, `authenticated`,
+`allowAll`, `denyAll`, `roleEquals:<role>`, and `roleIn:<role,...>`. Multiple attached rules are
+ANDed. These decisions rely on the authenticated `actorRole` supplied by the application boundary.
+Do not treat user-provided role or policy headers as trusted identity. Generated routines accept
+already-compiled boolean decisions, so grant routine execution only to the application database
+identity; they are not a standalone authentication boundary for arbitrary SQL clients. Models that
+need row-value expressions beyond the reviewed context-filter contract require an application-side
+authorization design and must not invent expressions in model files.

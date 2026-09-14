@@ -16,8 +16,11 @@ cd titan-graphql
 Run the Docker-backed proof before proposing runtime, SQL, or dependency changes:
 
 ```bash
-./gradlew integrationTest
+./gradlew compiledSchemaIntegrationTest
 ```
+
+Before a release-oriented change, run `scripts/release-check.sh`; maintainers run
+`scripts/release-check.sh --full` for the complete local gate.
 
 ## Change expectations
 
