@@ -42,6 +42,11 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("title LIKE ? ESCAPE '!'"), source);
         assertTrue(source.contains("readRootArticlesFilterIdIn16Forward"), source);
         assertTrue(source.contains("countRootArticlesFilterTitleEq"), source);
+        assertTrue(source.contains("readRootArticlesFilterPlanForward"), source);
+        assertTrue(source.contains("readRootArticlesOrderTitleDescFilterPlanForward"), source);
+        assertTrue(source.contains("LEFT JOIN public.users tgql_filter_author")
+                || source.contains("JOIN public.users tgql_filter_author"), source);
+        assertTrue(source.contains("CASE tgql_f11.selector"), source);
         assertTrue(source.contains("CASE WHEN ? = TRUE THEN title IS NULL ELSE title = ? END"), source);
         assertFalse(source.contains("FilterEmail"), source);
         assertTrue(source.contains("author_id AS __titan_relation_author"), source);
@@ -75,6 +80,7 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("FROM commerce.orders WHERE customer_id = ?"), source);
         assertTrue(source.contains("public static List<Map<String,Object>> countRootCustomers("), source);
         assertTrue(source.contains("readRootCustomersOrderNameDescForward("), source);
+        assertTrue(source.contains("readRootCustomersOrderNameDescFilterPlanForward("), source);
         assertTrue(source.contains("name < ? OR (name = ? AND id < ?)"), source);
         assertTrue(source.contains("ORDER BY name DESC, id DESC LIMIT ?"), source);
         assertTrue(source.contains("readRootOrdersOrderCustomerNameAscForward"), source);

@@ -32,6 +32,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     private final GraphqlSchema schema;
+    private final TitanGraphqlModelDocument document;
     private final DataSource dataSource;
     private final TitanGraphqlRoutineInvoker invoker;
     private final String semanticHash;
@@ -45,6 +46,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             TitanGraphqlGap005ArtifactMetadata packageMetadata
     ) {
         Objects.requireNonNull(document, "document");
+        this.document = document;
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
         TitanGraphqlValidationReport report = TitanGraphqlModelDocumentValidator.validate(document);
         if (report.blocksDeployment()) {
@@ -124,15 +126,22 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                     == GraphqlReadPlan.RootCursorWindowDirection.BACKWARD;
             GraphqlSelection.RootOrder order = selection.rootOrderBy().isEmpty()
                     ? null : selection.rootOrderBy().getFirst();
-            GraphqlSelection.GeneratedRootFilter filter = singleScalarRootFilter(selection.generatedRootFilters());
+            GraphqlSelection.GeneratedRootFilter filter = simpleScalarRootFilter(
+                    selection.generatedRootFilters());
+            boolean hasFilterPlan = !selection.generatedRootFilters().isEmpty()
+                    && (filter == null || filter.filterHopCount() != 0 || order != null);
+            if (hasFilterPlan) filter = null;
             String orderSuffix = order == null ? "" : "Order"
                     + TitanGraphqlRoutineSourceGenerator.javaTypeName(order.name())
                     + (order.direction() == GraphqlRootField.RootCursorDirection.ASC ? "Asc" : "Desc");
-            String filterSuffix = filter == null ? "" : TitanGraphqlRoutineSourceGenerator.filterMethodSuffix(
-                    filter.fieldName(), filter.operator().name(), filterInArity(filter));
+            String filterSuffix = hasFilterPlan ? "FilterPlan" : filter == null ? ""
+                    : TitanGraphqlRoutineSourceGenerator.filterMethodSuffix(
+                            filter.fieldName(), filter.operator().name(), filterInArity(filter));
             method = "readRoot" + suffix + orderSuffix + filterSuffix
                     + (backward ? "Backward" : "Forward");
-            parameters = rootParameters(root, read, context, true, order, filter);
+            parameters = hasFilterPlan
+                    ? filterPlanRootParameters(root, selection.generatedRootFilters(), read, context, true, order)
+                    : rootParameters(root, read, context, true, order, filter);
         }
         observable.addReadStep(read.stepName(), "TITAN PACKAGE " + method + "(?)");
         return rows(invoker.read(connection, method, parameters));
@@ -189,13 +198,21 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             value.put("edges", edges);
         }
         if (connectionSelection.totalCount()) {
-            GraphqlSelection.GeneratedRootFilter filter = singleScalarRootFilter(selection.generatedRootFilters());
+            GraphqlSelection.GeneratedRootFilter filter = simpleScalarRootFilter(
+                    selection.generatedRootFilters());
+            boolean hasFilterPlan = !selection.generatedRootFilters().isEmpty()
+                    && (filter == null || filter.filterHopCount() != 0);
+            if (hasFilterPlan) filter = null;
             String method = "countRoot" + TitanGraphqlRoutineSourceGenerator.javaTypeName(
-                    selection.rootFieldName()) + (filter == null ? ""
+                    selection.rootFieldName()) + (hasFilterPlan ? "FilterPlan" : filter == null ? ""
                     : TitanGraphqlRoutineSourceGenerator.filterMethodSuffix(
                             filter.fieldName(), filter.operator().name(), filterInArity(filter)));
             List<Row> countRows = rows(invoker.read(connection, method,
-                    rootParameters(requireRoot(selection.rootFieldName()), read, context, false, null, filter)));
+                    hasFilterPlan
+                            ? filterPlanRootParameters(requireRoot(selection.rootFieldName()),
+                                    selection.generatedRootFilters(), read, context, false, null)
+                            : rootParameters(requireRoot(selection.rootFieldName()), read, context,
+                                    false, null, filter)));
             if (countRows.size() != 1 || !(countRows.getFirst().value("total_count") instanceof Number count)) {
                 throw new SQLException("generated count carrier '" + method + "' returned an invalid row");
             }
@@ -271,6 +288,62 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         }
         if (cursors) parameters.add(read.cursorWindow().fetchRowCount());
         return List.copyOf(parameters);
+    }
+
+    private List<Object> filterPlanRootParameters(
+            TitanGraphqlRootDocument root,
+            List<GraphqlSelection.GeneratedRootFilter> filters,
+            GraphqlReadPlan.RootRead read,
+            GraphqlRequestContext context,
+            boolean cursors,
+            GraphqlSelection.RootOrder order
+    ) {
+        TitanGraphqlTypeDocument type = requireType(root.type());
+        List<TitanGraphqlFilterLayout.Binding> bindings =
+                TitanGraphqlFilterLayout.bindings(document, type, root);
+        TitanGraphqlFilterPlan.Plan plan = TitanGraphqlFilterPlan.compile(filters, bindings);
+        List<String> valueTypes = TitanGraphqlFilterLayout.valueTypes(bindings);
+        List<Object> parameters = new ArrayList<>();
+        for (int groupIndex = 0; groupIndex < TitanGraphqlFilterPlan.MAX_GROUPS; groupIndex++) {
+            TitanGraphqlFilterPlan.Group group = groupIndex < plan.groups().size()
+                    ? plan.groups().get(groupIndex) : null;
+            parameters.add(group != null);
+            for (int termIndex = 0; termIndex < TitanGraphqlFilterPlan.MAX_TERMS_PER_GROUP; termIndex++) {
+                TitanGraphqlFilterPlan.Term term = group != null && termIndex < group.terms().size()
+                        ? group.terms().get(termIndex) : null;
+                parameters.add(term == null ? 0 : term.binding().selector());
+                parameters.add(term != null && term.negated());
+                parameters.add(term != null && term.value().nullValue());
+                for (String valueType : valueTypes) {
+                    parameters.add(filterSlotValue(term, valueType));
+                }
+            }
+        }
+        parameters.addAll(rootParameters(root, read, context, cursors, order, null));
+        return List.copyOf(parameters);
+    }
+
+    private static Object filterSlotValue(TitanGraphqlFilterPlan.Term term, String valueType) {
+        if (term == null) return defaultValue(valueType);
+        String valueKind = TitanGraphqlFilterLayout.valueKind(valueType);
+        if (term.binding().operator().equals("isnull")) {
+            return valueKind.equals("boolean")
+                    ? term.value().booleanValue() : defaultValue(valueType);
+        }
+        if (!valueKind.equals(TitanGraphqlFilterLayout.valueKind(term.binding().graphqlType()))) {
+            return defaultValue(valueType);
+        }
+        if (term.value().nullValue()) return defaultValue(valueType);
+        if (List.of("contains", "startswith", "endswith").contains(term.binding().operator())) {
+            String escaped = escapeLike(term.value().stringValue());
+            return switch (term.binding().operator()) {
+                case "contains" -> "%" + escaped + "%";
+                case "startswith" -> escaped + "%";
+                case "endswith" -> "%" + escaped;
+                default -> throw new IllegalStateException("unreachable filter operator");
+            };
+        }
+        return generatedFilterValue(term.value());
     }
 
     private static void addGeneratedFilterParameters(
@@ -741,18 +814,16 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
 
     private void validateSupported(GraphqlSelection selection) {
         TitanGraphqlRootDocument root = requireRoot(selection.rootFieldName());
-        GraphqlSelection.GeneratedRootFilter filter = singleScalarRootFilter(selection.generatedRootFilters());
-        if (filter != null) {
-            validateGeneratedFilterPolicies(root.type(), filter);
-        }
-        if (filter != null && filter.filterHopCount() != 0) {
-            throw unsupported("relation-hop generated root filter '" + filter.fieldName() + "'");
+        selection.generatedRootFilters().forEach(filter -> validateGeneratedFilterTree(root.type(), filter));
+        GraphqlSelection.GeneratedRootFilter simple = simpleScalarRootFilter(
+                selection.generatedRootFilters());
+        if (!selection.generatedRootFilters().isEmpty()
+                && (simple == null || simple.filterHopCount() != 0 || !selection.rootOrderBy().isEmpty())) {
+            TitanGraphqlFilterPlan.compile(selection.generatedRootFilters(),
+                    TitanGraphqlFilterLayout.bindings(document, requireType(root.type()), root));
         }
         if (selection.rootOrderBy().size() > 1) {
             throw unsupported("multiple custom root order paths");
-        }
-        if (filter != null && !selection.rootOrderBy().isEmpty()) {
-            throw unsupported("combining generated root filters with custom ordering");
         }
         if (!selection.rootOrderBy().isEmpty()
                 && selection.rootOrderBy().getFirst().sortHopCount() > 1) {
@@ -761,6 +832,17 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         }
         boolean collection = selection.rootCardinality() == GraphqlRootField.ResultCardinality.MANY;
         validateFields(selection.rootTypeName(), selection.fields(), collection, collection);
+    }
+
+    private void validateGeneratedFilterTree(
+            String ownerTypeName,
+            GraphqlSelection.GeneratedRootFilter filter
+    ) {
+        if (filter.kind() == GraphqlSelection.GeneratedRootFilterKind.SCALAR) {
+            validateGeneratedFilterPolicies(ownerTypeName, filter);
+        } else {
+            filter.children().forEach(child -> validateGeneratedFilterTree(ownerTypeName, child));
+        }
     }
 
     private void validateGeneratedFilterPolicies(
@@ -793,31 +875,30 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         }
     }
 
-    private static GraphqlSelection.GeneratedRootFilter singleScalarRootFilter(
+    private static GraphqlSelection.GeneratedRootFilter simpleScalarRootFilter(
             List<GraphqlSelection.GeneratedRootFilter> roots
     ) {
         if (roots.isEmpty()) return null;
         List<GraphqlSelection.GeneratedRootFilter> scalars = new ArrayList<>();
         for (GraphqlSelection.GeneratedRootFilter root : roots) {
-            collectConjunctiveScalarFilters(root, scalars);
+            if (!collectSimpleConjunction(root, scalars)) return null;
         }
-        if (scalars.isEmpty()) return null;
-        if (scalars.size() != 1) {
-            throw unsupported("generated root filter composition until composed carriers are emitted");
-        }
-        return scalars.getFirst();
+        return scalars.size() == 1 ? scalars.getFirst() : null;
     }
 
-    private static void collectConjunctiveScalarFilters(
+    private static boolean collectSimpleConjunction(
             GraphqlSelection.GeneratedRootFilter filter,
             List<GraphqlSelection.GeneratedRootFilter> scalars
     ) {
-        switch (filter.kind()) {
-            case SCALAR -> scalars.add(filter);
-            case AND -> filter.children().forEach(child -> collectConjunctiveScalarFilters(child, scalars));
-            case OR, NOT -> throw unsupported("generated root filter '"
-                    + filter.kind().name().toLowerCase() + "' composition until composed carriers are emitted");
+        if (filter.kind() == GraphqlSelection.GeneratedRootFilterKind.SCALAR) {
+            scalars.add(filter);
+            return true;
         }
+        if (filter.kind() != GraphqlSelection.GeneratedRootFilterKind.AND) return false;
+        for (GraphqlSelection.GeneratedRootFilter child : filter.children()) {
+            if (!collectSimpleConjunction(child, scalars)) return false;
+        }
+        return true;
     }
 
     private void validateFields(

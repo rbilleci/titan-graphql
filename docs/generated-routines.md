@@ -64,7 +64,10 @@ windows; fail-closed context filtering; generated local scalar filtering with ex
 mutations; and restart visibility on PostgreSQL and MySQL. Both schemas also prove stable one-hop
 root ordering through reviewed non-null to-one relations. Both schemas prove relation connections
 below collection roots with one generated
-batch read rather than one child read per parent.
+batch read rather than one child read per parent. The demo proof additionally covers bounded
+Boolean filter composition, filters combined with custom ordering, and a reviewed one-hop to-one
+relation filter on both dialects. The unrelated commerce proof covers composed string filters
+combined with ordering.
 
 ## Deliberate Remaining Boundary
 
@@ -74,11 +77,11 @@ corpus remains useful while carrier coverage grows. Compiled mode has no fallbac
 
 Before the carrier route can replace it, generation and generic runtime invocation must cover:
 
-- composed and relation-hop generated filters, multiple simultaneous custom order keys, and
-  relation ordering beyond a non-null to-one hop;
+- filter expressions beyond the static 3 OR-group by 3 AND-term DNF budget, multiple simultaneous
+  custom order keys, and relation ordering beyond a non-null to-one hop;
 - exact visible counts for policy-specific branches;
 - protected-field and protected-relation policy-specific branches;
-- relation-hop filter arguments and SQL-side per-parent connection limiting;
+- to-many or multi-hop filter paths and SQL-side per-parent connection limiting;
 - nested multi-level relation batching;
 - portable null ordering and scalar/null value preservation;
 - generic mutation routing at the application boundary.

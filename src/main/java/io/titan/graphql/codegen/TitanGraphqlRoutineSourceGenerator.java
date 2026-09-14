@@ -1,5 +1,7 @@
 package io.titan.graphql.codegen;
 
+import io.titan.graphql.TitanGraphqlFilterLayout;
+import io.titan.graphql.TitanGraphqlFilterPlan;
 import io.titan.graphql.model.TitanGraphqlContextFilterDocument;
 import io.titan.graphql.model.TitanGraphqlFieldDocument;
 import io.titan.graphql.model.TitanGraphqlModelDocument;
@@ -138,6 +140,240 @@ public final class TitanGraphqlRoutineSourceGenerator {
         }
         for (ScalarFilterContract filter : localScalarFilters(context, type, root)) {
             emitScalarFilterCarriers(source, context, type, root, cursor, cursorTieBreaker, filter);
+        }
+        List<TitanGraphqlFilterLayout.Binding> filterBindings =
+                TitanGraphqlFilterLayout.bindings(context.document, type, root);
+        if (!filterBindings.isEmpty()) {
+            emitFilterPlanCarriers(source, context, type, root, null, cursor.direction(), filterBindings);
+            for (TitanGraphqlRootDocument.RootDocumentSortPath sort : root.sortPaths()) {
+                emitFilterPlanCarriers(source, context, type, root, sort,
+                        TitanGraphqlRootDocument.RootDocumentSortDirection.ASC, filterBindings);
+                emitFilterPlanCarriers(source, context, type, root, sort,
+                        TitanGraphqlRootDocument.RootDocumentSortDirection.DESC, filterBindings);
+            }
+        }
+    }
+
+    private static void emitFilterPlanCarriers(
+            StringBuilder source,
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            TitanGraphqlRootDocument root,
+            TitanGraphqlRootDocument.RootDocumentSortPath modelSort,
+            TitanGraphqlRootDocument.RootDocumentSortDirection direction,
+            List<TitanGraphqlFilterLayout.Binding> bindings
+    ) {
+        String rootAlias = "tgql_root";
+        FilterCarrierContract filter = filterCarrier(context, type, root, bindings, rootAlias);
+        String from = identifier(context.schema(type), "schema") + "."
+                + identifier(context.table(type), "table") + " " + rootAlias + filter.joins();
+        List<String> extra = new ArrayList<>();
+        SortContract sort;
+        String suffix = "FilterPlan";
+        if (modelSort == null) {
+            TitanGraphqlRootDocument.Cursor cursor = root.pagination().cursor();
+            String tie = cursor.tieBreaker().isBlank() ? cursor.column() : cursor.tieBreaker();
+            sort = sortContract(context, type, cursor.column(), tie, cursor.direction(), rootAlias);
+        } else {
+            suffix = "Order" + javaTypeName(modelSort.name())
+                    + (direction == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC ? "Asc" : "Desc")
+                    + suffix;
+            String tie = modelSort.tieBreaker().isBlank() ? context.primaryKey(type) : modelSort.tieBreaker();
+            if (modelSort.hops() == 0) {
+                sort = sortContract(context, type, modelSort.column(), tie, direction, rootAlias);
+            } else {
+                RelationPath resolved = relationPath(context, type, root.name(), modelSort.name(),
+                        modelSort.path(), modelSort.column(), modelSort.hops(), "sort");
+                String alias = "tgql_order";
+                from += join(context, rootAlias, resolved, alias);
+                String expression = resolved.field().computed() == null
+                        ? columnExpression(alias, resolved.field().column())
+                        : computedExpression(resolved.target(), resolved.field(), alias);
+                sort = new SortContract(modelSort.name(), expression, resolved.field().type(), tie,
+                        context.sortExpression(type, tie, rootAlias), context.graphqlType(type, tie), direction);
+                extra.add(expression + " AS " + sqlAlias(modelSort.name()));
+            }
+        }
+        from += filter.slotJoins();
+        String select = selectList(context, type, extra, rootAlias, from);
+        PredicateContract base = rootPredicate(context, type, root, sort, rootAlias, null);
+        String where = base.sql() + (base.sql().isEmpty() ? " WHERE " : " AND ") + filter.predicate();
+        List<Parameter> parameters = new ArrayList<>(filter.parameters());
+        parameters.addAll(base.parameters());
+        parameters.add(new Parameter("pageSize", "int", "setInt"));
+        requireRoutineParameterBudget(root.name(), parameters);
+        String reverse = direction == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC ? "DESC" : "ASC";
+        String method = "readRoot" + javaTypeName(root.name()) + suffix;
+        emitCarrier(source, method + "Forward", parameters,
+                select + where + orderBy(sort.expression(), direction.name(), sort.tieBreakerExpression())
+                        + " LIMIT ?");
+        emitCarrier(source, method + "Backward", parameters,
+                select + where + orderBy(sort.expression(), reverse, sort.tieBreakerExpression()) + " LIMIT ?");
+        if (root.pagination().totalCount() == TitanGraphqlRootDocument.TotalCountMode.EXACT
+                && modelSort == null) {
+            PredicateContract countBase = rootPredicate(context, type, root, null, rootAlias, null);
+            List<Parameter> countParameters = new ArrayList<>(filter.parameters());
+            countParameters.addAll(countBase.parameters());
+            requireRoutineParameterBudget(root.name(), countParameters);
+            String countWhere = countBase.sql() + (countBase.sql().isEmpty() ? " WHERE " : " AND ")
+                    + filter.predicate();
+            emitCarrier(source, "countRoot" + javaTypeName(root.name()) + "FilterPlan", countParameters,
+                    "SELECT COUNT(*) AS total_count FROM " + from + countWhere);
+        }
+    }
+
+    private static FilterCarrierContract filterCarrier(
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            TitanGraphqlRootDocument root,
+            List<TitanGraphqlFilterLayout.Binding> bindings,
+            String rootAlias
+    ) {
+        List<String> valueTypes = TitanGraphqlFilterLayout.valueTypes(bindings);
+        List<Parameter> parameters = new ArrayList<>();
+        StringBuilder slots = new StringBuilder();
+        List<String> groups = new ArrayList<>();
+        for (int group = 1; group <= TitanGraphqlFilterPlan.MAX_GROUPS; group++) {
+            String groupAlias = "tgql_fg" + group;
+            parameters.add(new Parameter("filterGroup" + group + "Active", "boolean", "setBoolean"));
+            slots.append(" CROSS JOIN (SELECT ? AS active) ").append(groupAlias);
+            List<String> terms = new ArrayList<>();
+            for (int term = 1; term <= TitanGraphqlFilterPlan.MAX_TERMS_PER_GROUP; term++) {
+                String prefix = "filter" + group + term;
+                String alias = "tgql_f" + group + term;
+                parameters.add(new Parameter(prefix + "Selector", "int", "setInt"));
+                parameters.add(new Parameter(prefix + "Negated", "boolean", "setBoolean"));
+                parameters.add(new Parameter(prefix + "Null", "boolean", "setBoolean"));
+                StringBuilder derived = new StringBuilder(" CROSS JOIN (SELECT ? AS selector, ? AS negated, ? AS null_value");
+                for (String valueType : valueTypes) {
+                    Parameter value = context.parameter(prefix + javaTypeName(valueType), valueType,
+                            bindings.getFirst().binding(), type);
+                    parameters.add(value);
+                    derived.append(", ? AS ").append(valueAlias(valueType));
+                }
+                slots.append(derived).append(") ").append(alias);
+                String selected = selectorPredicate(context, type, root, bindings, rootAlias, alias);
+                terms.add("(CASE WHEN " + alias + ".negated = TRUE THEN NOT (" + selected
+                        + ") ELSE (" + selected + ") END)");
+            }
+            groups.add("(" + groupAlias + ".active = TRUE AND " + String.join(" AND ", terms) + ")");
+        }
+        return new FilterCarrierContract(List.copyOf(parameters), relationFilterJoins(context, type, root,
+                bindings, rootAlias), slots.toString(), "(" + String.join(" OR ", groups) + ")", valueTypes);
+    }
+
+    private static String selectorPredicate(
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            TitanGraphqlRootDocument root,
+            List<TitanGraphqlFilterLayout.Binding> bindings,
+            String rootAlias,
+            String slotAlias
+    ) {
+        StringBuilder sql = new StringBuilder("CASE ").append(slotAlias).append(".selector ");
+        for (TitanGraphqlFilterLayout.Binding binding : bindings) {
+            String expression = filterExpression(context, type, root, binding, rootAlias);
+            String value = slotAlias + "." + valueAlias(binding.graphqlType());
+            String predicate = switch (binding.operator()) {
+                case "eq" -> "CASE WHEN " + slotAlias + ".null_value = TRUE THEN " + expression
+                        + " IS NULL ELSE " + expression + " = " + value + " END";
+                case "neq" -> "CASE WHEN " + slotAlias + ".null_value = TRUE THEN " + expression
+                        + " IS NOT NULL ELSE " + expression + " <> " + value + " END";
+                case "isnull" -> "CASE WHEN " + slotAlias + ".boolean_value = TRUE THEN " + expression
+                        + " IS NULL ELSE " + expression + " IS NOT NULL END";
+                case "lt" -> expression + " < " + value;
+                case "lte" -> expression + " <= " + value;
+                case "gt" -> expression + " > " + value;
+                case "gte" -> expression + " >= " + value;
+                case "contains", "startswith", "endswith" -> expression + " LIKE "
+                        + slotAlias + ".string_value ESCAPE '!'";
+                case "in" -> expression + " = " + value;
+                default -> throw unsupported("unknown filter operator '" + binding.operator() + "'");
+            };
+            sql.append("WHEN ").append(binding.selector()).append(" THEN ").append(predicate).append(' ');
+        }
+        return sql.append("ELSE TRUE END").toString();
+    }
+
+    private static String filterExpression(GenerationContext context, TitanGraphqlTypeDocument type,
+            TitanGraphqlRootDocument root, TitanGraphqlFilterLayout.Binding binding, String rootAlias) {
+        if (binding.hops() == 0) {
+            return binding.computed() ? context.sortExpression(type, binding.binding(), rootAlias)
+                    : columnExpression(rootAlias, binding.binding());
+        }
+        RelationPath path = relationPath(context, type, root.name(), binding.fieldName(), binding.path(),
+                "", binding.hops(), "filter");
+        String alias = "tgql_filter_" + sqlAlias(path.relation().name());
+        return binding.computed() ? computedExpression(path.target(), path.field(), alias)
+                : columnExpression(alias, binding.binding());
+    }
+
+    private static String relationFilterJoins(GenerationContext context, TitanGraphqlTypeDocument type,
+            TitanGraphqlRootDocument root, List<TitanGraphqlFilterLayout.Binding> bindings, String rootAlias) {
+        StringBuilder joins = new StringBuilder();
+        List<String> emitted = new ArrayList<>();
+        for (TitanGraphqlFilterLayout.Binding binding : bindings) {
+            if (binding.hops() == 0) continue;
+            RelationPath path = relationPath(context, type, root.name(), binding.fieldName(), binding.path(),
+                    "", binding.hops(), "filter");
+            if (!emitted.contains(path.relation().name())) {
+                emitted.add(path.relation().name());
+                joins.append(join(context, rootAlias, path,
+                        "tgql_filter_" + sqlAlias(path.relation().name())));
+            }
+        }
+        return joins.toString();
+    }
+
+    private static String join(GenerationContext context, String rootAlias, RelationPath path, String alias) {
+        String kind = path.relation().nullable() ? " LEFT JOIN " : " JOIN ";
+        return kind + identifier(context.schema(path.target()), "relation schema") + "."
+                + identifier(context.table(path.target()), "relation table") + " " + alias + " ON "
+                + columnExpression(rootAlias, path.relation().localColumn()) + " = "
+                + columnExpression(alias, path.relation().targetColumn());
+    }
+
+    private static RelationPath relationPath(GenerationContext context, TitanGraphqlTypeDocument type,
+            String rootName, String name, String pathValue, String localColumn, int hops, String purpose) {
+        if (hops != 1) throw unsupported("root " + purpose + " path '" + rootName + "." + name
+                + "' exceeds the generated relation-hop limit of 1");
+        String[] path = pathValue.split("\\.", -1);
+        if (path.length != 2) throw unsupported("one-hop root " + purpose + " path '" + rootName + "."
+                + name + "' must use relation.field syntax");
+        TitanGraphqlRelationDocument relation = type.relations().stream()
+                .filter(candidate -> candidate.name().equals(path[0])).findFirst()
+                .orElseThrow(() -> unsupported("unknown relation '" + path[0] + "'"));
+        if (relation.cardinality() != TitanGraphqlRelationDocument.RelationDocumentCardinality.ONE) {
+            throw unsupported("root " + purpose + " path '" + rootName + "." + name
+                    + "' requires a to-one relation");
+        }
+        if (!localColumn.isBlank() && !localColumn.equals(relation.localColumn())) {
+            throw unsupported("root " + purpose + " path '" + rootName + "." + name
+                    + "' must bind local column '" + relation.localColumn() + "'");
+        }
+        TitanGraphqlTypeDocument target = context.type(relation.targetType());
+        TitanGraphqlFieldDocument field = target.fields().stream()
+                .filter(candidate -> candidate.name().equals(path[1])).findFirst()
+                .orElseThrow(() -> unsupported("unknown relation scalar '" + pathValue + "'"));
+        return new RelationPath(relation, target, field);
+    }
+
+    private static String normalizeGraphqlType(String type) {
+        return TitanGraphqlFilterLayout.normalizeGraphqlType(type);
+    }
+
+    private static String valueAlias(String graphqlType) {
+        try {
+            return TitanGraphqlFilterLayout.valueKind(graphqlType) + "_value";
+        } catch (IllegalArgumentException failure) {
+            throw unsupported(failure.getMessage());
+        }
+    }
+
+    private static void requireRoutineParameterBudget(String rootName, List<Parameter> parameters) {
+        if (parameters.size() > 96) {
+            throw unsupported("root '" + rootName + "' needs " + parameters.size()
+                    + " static filter carrier parameters; maximum is 96");
         }
     }
 
@@ -445,70 +681,20 @@ public final class TitanGraphqlRoutineSourceGenerator {
             TitanGraphqlTypeDocument type,
             TitanGraphqlRootDocument root
     ) {
-        Map<String, ScalarFilterContract> filters = new LinkedHashMap<>();
-        for (TitanGraphqlFieldDocument field : type.fields()) {
-            if (!field.policies().isEmpty()) {
-                continue;
-            }
-            for (String operator : field.filterOperators()) {
-                addScalarFilter(filters, new ScalarFilterContract(
-                        field.name(), field.computed() == null ? field.column() : field.name(),
-                        field.type(), normalizeFilterOperator(operator), field.computed() != null, -1));
-            }
-        }
-        for (TitanGraphqlRootDocument.RootDocumentArgument argument : root.arguments()) {
-            if (argument.hops() != 0
-                    || argument.kind() != TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS) {
-                continue;
-            }
-            for (String operator : List.of("eq", "neq", "in", "isNull", "lt", "lte", "gt", "gte")) {
-                addScalarFilter(filters, new ScalarFilterContract(
-                        argument.name(), argument.column(), argument.type(),
-                        normalizeFilterOperator(operator), false, -1));
-            }
-        }
-        for (TitanGraphqlRootDocument.RootDocumentFilterPath path : root.filterPaths()) {
-            if (path.hops() != 0) {
-                continue;
-            }
-            TitanGraphqlFieldDocument field = type.fields().stream()
-                    .filter(candidate -> candidate.name().equals(path.path())
-                            || candidate.name().equals(path.name())
-                            || candidate.column().equals(path.column()))
-                    .findFirst()
-                    .orElseThrow(() -> unsupported("local root filter path '" + root.name() + "."
-                            + path.name() + "' has no scalar field binding"));
-            for (String operator : path.operators()) {
-                addScalarFilter(filters, new ScalarFilterContract(
-                        path.name(), field.computed() == null ? path.column() : field.name(), path.type(),
-                        normalizeFilterOperator(operator), field.computed() != null, -1));
-            }
-        }
-        return filters.values().stream()
-                .sorted(Comparator.comparing(ScalarFilterContract::name)
-                        .thenComparing(ScalarFilterContract::operator))
+        return TitanGraphqlFilterLayout.bindings(context.document, type, root).stream()
+                .filter(binding -> binding.hops() == 0)
+                .map(binding -> new ScalarFilterContract(
+                        binding.fieldName(), binding.binding(), binding.graphqlType(),
+                        binding.operator(), binding.computed(), -1))
                 .toList();
     }
 
-    private static void addScalarFilter(
-            Map<String, ScalarFilterContract> filters,
-            ScalarFilterContract filter
-    ) {
-        String key = filter.name() + "\u0000" + filter.operator();
-        ScalarFilterContract existing = filters.putIfAbsent(key, filter);
-        if (existing != null && !existing.equals(filter)) {
-            throw unsupported("conflicting local root filter binding for '" + filter.name()
-                    + "' operator '" + filter.operator() + "'");
-        }
-    }
-
     private static String normalizeFilterOperator(String operator) {
-        String normalized = operator == null ? "" : operator.replace("_", "").toLowerCase();
-        if (!List.of("eq", "neq", "in", "isnull", "lt", "lte", "gt", "gte",
-                "contains", "startswith", "endswith").contains(normalized)) {
-            throw unsupported("unknown generated scalar filter operator '" + operator + "'");
+        try {
+            return TitanGraphqlFilterLayout.normalizeOperator(operator);
+        } catch (IllegalArgumentException failure) {
+            throw unsupported(failure.getMessage());
         }
-        return normalized;
     }
 
     /** Inventory method suffix shared by generated carriers and the generic compiled runtime. */
@@ -525,14 +711,25 @@ public final class TitanGraphqlRoutineSourceGenerator {
             String tieBreakerBinding,
             TitanGraphqlRootDocument.RootDocumentSortDirection direction
     ) {
+        return sortContract(context, type, binding, tieBreakerBinding, direction, "");
+    }
+
+    private static SortContract sortContract(
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            String binding,
+            String tieBreakerBinding,
+            TitanGraphqlRootDocument.RootDocumentSortDirection direction,
+            String qualifier
+    ) {
         String normalizedTie = tieBreakerBinding == null || tieBreakerBinding.isBlank()
                 ? binding : tieBreakerBinding;
         return new SortContract(
                 binding,
-                context.sortExpression(type, binding),
+                context.sortExpression(type, binding, qualifier),
                 context.graphqlType(type, binding),
                 normalizedTie,
-                context.sortExpression(type, normalizedTie),
+                context.sortExpression(type, normalizedTie, qualifier),
                 context.graphqlType(type, normalizedTie),
                 direction
         );
@@ -846,6 +1043,22 @@ public final class TitanGraphqlRoutineSourceGenerator {
     }
 
     private record PredicateContract(List<Parameter> parameters, String sql) {
+    }
+
+    private record FilterCarrierContract(
+            List<Parameter> parameters,
+            String joins,
+            String slotJoins,
+            String predicate,
+            List<String> valueTypes
+    ) {
+    }
+
+    private record RelationPath(
+            TitanGraphqlRelationDocument relation,
+            TitanGraphqlTypeDocument target,
+            TitanGraphqlFieldDocument field
+    ) {
     }
 
     private record ScalarFilterContract(

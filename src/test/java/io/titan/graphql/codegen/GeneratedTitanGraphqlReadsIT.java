@@ -184,11 +184,24 @@ class GeneratedTitanGraphqlReadsIT {
                     GraphqlRequestContext.legacy(10L, "reader"));
             assertEquals(0, escapedWildcard.at("/data/articles/totalCount").asInt(), target.name());
 
-            JsonNode unsupportedComposition = graphql(dataModel,
+            JsonNode composed = graphql(dataModel,
                     "{ articles(first: 10, filter: { id: { gt: 0, lt: 3 } }) { totalCount } }",
                     GraphqlRequestContext.legacy(10L, "reader"));
-            assertTrue(unsupportedComposition.at("/errors/0/message").asText()
-                    .contains("filter composition"), target.name());
+            assertEquals(2, composed.at("/data/articles/totalCount").asInt(), target.name());
+
+            JsonNode relationFiltered = graphql(dataModel,
+                    "{ articles(first: 10, filter: { authorName: { startsWith: \"Ada\" } }) { "
+                            + "edges { node { id } } totalCount } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(1, relationFiltered.at("/data/articles/totalCount").asInt(), target.name());
+            assertEquals(1, relationFiltered.at("/data/articles/edges/0/node/id").asInt(), target.name());
+
+            JsonNode filteredOrder = graphql(dataModel,
+                    "{ articles(first: 1, filter: { id: { gt: 0 } }, "
+                            + "orderBy: [{ title: DESC }]) { edges { node { id } } totalCount } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(2, filteredOrder.at("/data/articles/totalCount").asInt(), target.name());
+            assertEquals(1, filteredOrder.at("/data/articles/edges").size(), target.name());
 
             JsonNode continuation = graphql(dataModel,
                     "{ articles(first: 1, after: \"" + cursor

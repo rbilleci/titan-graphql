@@ -124,9 +124,11 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   `compiled` mode executes supported GraphQL plans through those inventory-resolved routines. The
   older `sql` route still calls the bounded `DemoBlogTitanGraphqlFunctions` whole-request entry
   point and remains only an equivalence/compiler proof. Generated carriers do not yet cover
-  composed or relation-hop generated filters, multiple simultaneous custom order keys, or
-  relation ordering beyond a reviewed non-null to-one hop,
-  protected-field policy branches, relation-hop filters, or nested multi-level batching.
+  multiple simultaneous custom order keys, relation ordering beyond a reviewed non-null to-one
+  hop, protected-field policy branches, or nested multi-level batching. Generated filters run in
+  static Titan carriers: one local predicate retains `in` arities through 16, while composed
+  `and`/`or`/`not`, filter-plus-order, and reviewed to-one relation paths use a bounded 3-by-3 DNF
+  plan. Expressions beyond that declared carrier budget fail closed.
   Relay relation connections support forward/backward windows, cursors, and exact counts under
   both point and collection roots. Direct relation and relation-connection reads immediately
   beneath collection roots use fixed generated batch arities and do not issue one query per

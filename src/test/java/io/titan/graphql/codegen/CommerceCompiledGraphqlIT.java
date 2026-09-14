@@ -119,6 +119,14 @@ class CommerceCompiledGraphqlIT {
             assertEquals("Northwind", generatedFilter.at(
                     "/data/customers/edges/0/node/name").asText(), target.name());
 
+            JsonNode composedFilterAndOrder = JSON.readTree(execute(runtime,
+                    "{ customers(first: 10, filter: { name: { startsWith: \"North\", "
+                            + "endsWith: \"wind\" } }, orderBy: [{ name: DESC }]) { "
+                            + "edges { node { id name } } totalCount } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals(2, composedFilterAndOrder.at("/data/customers/edges").size(), target.name());
+            assertEquals(2, composedFilterAndOrder.at("/data/customers/totalCount").asInt(), target.name());
+
             JsonNode relatedOrder = JSON.readTree(execute(runtime,
                     "{ orders(first: 1, orderBy: [{ customerName: ASC }]) { "
                             + "edges { cursor node { id reference } } pageInfo { hasNextPage } } }",

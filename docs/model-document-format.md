@@ -252,12 +252,14 @@ Filter path fields:
 | `hops` | no | Relation hop count. Defaults to `0`. |
 | `operators` | yes | Allowed generated filter operators. |
 
-Compiled carriers currently accept one local scalar predicate per request. They support `eq`,
-`neq`, `isNull`, `lt`, `lte`, `gt`, `gte`, `contains`, `startsWith`, `endsWith`, and `in`; `in`
-uses static arities through 16 values. Wildcards in string values are escaped and treated
-literally. Boolean composition, combinations with custom ordering, and relation-hop filters fail
-closed until composed carriers are generated. Filter authorization is checked for every field and
-every segment of a relation path before execution.
+Compiled carriers support `eq`, `neq`, `isNull`, `lt`, `lte`, `gt`, `gte`, `contains`,
+`startsWith`, `endsWith`, and `in`. A single local `in` predicate uses static arities through 16
+values. Boolean `and`/`or`/`not` composition, combinations with one custom order, and reviewed
+one-hop to-one relation paths compile to a static 3 OR-group by 3 AND-term DNF carrier. Larger
+expressions and to-many or deeper paths fail closed with a carrier-budget error. Wildcards in
+string values are escaped and treated literally. Filter authorization is checked for every field
+and every segment of a relation path before execution; protected paths have no selector branch in
+the generated carrier.
 
 Sort path fields:
 
