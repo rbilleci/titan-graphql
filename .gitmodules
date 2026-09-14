@@ -1,0 +1,6 @@
+[submodule "vendor/titan"]
+	path = vendor/titan
+	url = https://github.com/rbilleci/titan.git
+[submodule "vendor/titan-dsl"]
+	path = vendor/titan-dsl
+	url = https://github.com/rbilleci/titan-dsl.git

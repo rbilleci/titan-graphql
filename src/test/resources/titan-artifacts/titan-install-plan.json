@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "titan.install-plan.v1",
+  "artifactId": "titan.generated-sql.fixture",
+  "manifestContentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "inventoryContentSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "dialectPlans": [
+    {
+      "dialect": "postgresql",
+      "transactionMode": "singleTransaction",
+      "transactionNote": "review as one transaction",
+      "packageSqlLocation": "postgresql/",
+      "steps": [
+        {
+          "id": "create.postgresql.public.execute_graphql_request_with_compact_context.function",
+          "kind": "createOrReplace",
+          "check": "objectExists",
+          "schema": "public",
+          "objectId": "postgresql.public.execute_graphql_request_with_compact_context.function",
+          "onFailure": "fail",
+          "rollbackHint": "drop generated object"
+        }
+      ]
+    }
+  ],
+  "hashes": {
+    "planContentSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }
+}

@@ -1,0 +1,17 @@
+package io.titan.graphql.validation;
+
+public enum TitanGraphqlValidationIssueCode {
+    INVALID_YAML,
+    UNSUPPORTED_FIELD,
+    UNKNOWN_ENUM_VALUE,
+    MISSING_REQUIRED_FIELD,
+    DUPLICATE_NAME,
+    UNKNOWN_REFERENCE,
+    UNSUPPORTED_CAPABILITY,
+    INVALID_BINDING,
+    DRIFT_DETECTED,
+    POLICY_ERROR,
+    ARTIFACT_ERROR,
+    DEPLOYMENT_ERROR,
+    INTERNAL_ERROR
+}

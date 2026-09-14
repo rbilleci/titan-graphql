@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "titan.object-inventory.v1",
+  "artifactId": "titan.generated-sql.fixture",
+  "objects": [
+    {
+      "id": "postgresql.public.execute_graphql_request_with_compact_context.function",
+      "dialect": "postgresql",
+      "kind": "function",
+      "schema": "public",
+      "name": "execute_graphql_request_with_compact_context",
+      "signature": "(p_query TEXT)",
+      "sourceInputPath": "postgresql/demo.sql",
+      "sourceEntryPoint": "io.titan.graphql.demo.blog.DemoBlogTitanGraphqlFunctions.executeGraphqlRequestWithCompactContext(java.lang.String)",
+      "securityMode": "definer",
+      "createOrder": 1,
+      "dependsOn": [],
+      "sqlHash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+  ],
+  "hashes": {
+    "inventoryContentSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  }
+}

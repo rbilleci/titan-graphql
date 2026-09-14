@@ -1,0 +1,925 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://titan.dev/schemas/titan.graphql.schema.json",
+  "title": "Titan GraphQL Model Document",
+  "description": "Editor schema for titan.graphql.yaml v1alpha1 model documents. Semantic validation still belongs to Titan's model validation pipeline.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "roots",
+    "types"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "titan.graphql/v1alpha1"
+    },
+    "kind": {
+      "const": "ProjectionModel"
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "database": {
+      "$ref": "#/$defs/database"
+    },
+    "modules": {
+      "$ref": "#/$defs/modules"
+    },
+    "roots": {
+      "$ref": "#/$defs/roots"
+    },
+    "types": {
+      "$ref": "#/$defs/types"
+    },
+    "policies": {
+      "$ref": "#/$defs/policies"
+    },
+    "contextFilters": {
+      "$ref": "#/$defs/contextFilters"
+    },
+    "artifacts": {
+      "$ref": "#/$defs/artifacts"
+    },
+    "deployment": {
+      "$ref": "#/$defs/deployment"
+    }
+  },
+  "$defs": {
+    "stringList": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "namedMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_.-]*$": {
+          "type": "object"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "version": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "tags": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "catalog": {
+          "type": "string"
+        },
+        "defaultSchema": {
+          "type": "string"
+        },
+        "tables": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_-]*$": {
+              "$ref": "#/$defs/tableBinding"
+            }
+          }
+        }
+      }
+    },
+    "tableBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "physicalName"
+      ],
+      "properties": {
+        "physicalName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "schema": {
+          "type": "string"
+        },
+        "primaryKey": {
+          "type": "string"
+        }
+      }
+    },
+    "modules": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_-]*$": {
+          "$ref": "#/$defs/module"
+        }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "owner": {
+          "type": "string"
+        },
+        "roots": {
+          "$ref": "#/$defs/stringList"
+        },
+        "types": {
+          "$ref": "#/$defs/stringList"
+        },
+        "fields": {
+          "$ref": "#/$defs/stringList"
+        },
+        "relations": {
+          "$ref": "#/$defs/stringList"
+        },
+        "policies": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "roots": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_]*$": {
+          "$ref": "#/$defs/root"
+        }
+      }
+    },
+    "root": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "operation"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "operation": {
+          "enum": [
+            "point",
+            "connection"
+          ]
+        },
+        "argument": {
+          "$ref": "#/$defs/rootArgument"
+        },
+        "pagination": {
+          "$ref": "#/$defs/rootPagination"
+        },
+        "arguments": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/rootArgument"
+            }
+          }
+        },
+        "filterPaths": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/filterPath"
+            }
+          }
+        },
+        "sortPaths": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/sortPath"
+            }
+          }
+        },
+        "contextFilters": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "rootArgument": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "equals",
+            "relayFirst",
+            "relayAfter",
+            "relayLast",
+            "relayBefore"
+          ]
+        },
+        "column": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "hops": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "rootPagination": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "const": "relay"
+        },
+        "defaultPageSize": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxPageSize": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "totalCount": {
+          "enum": [
+            "exact",
+            "estimated",
+            "none"
+          ]
+        },
+        "cursor": {
+          "$ref": "#/$defs/cursor"
+        }
+      }
+    },
+    "cursor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "column"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "column": {
+          "type": "string",
+          "minLength": 1
+        },
+        "direction": {
+          "$ref": "#/$defs/sortDirection"
+        },
+        "tieBreaker": {
+          "type": "string"
+        }
+      }
+    },
+    "filterPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "column"
+      ],
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "column": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "hops": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "operators": {
+          "$ref": "#/$defs/filterOperators"
+        }
+      }
+    },
+    "sortPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "column"
+      ],
+      "properties": {
+        "column": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "hops": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "direction": {
+          "$ref": "#/$defs/sortDirection"
+        },
+        "nulls": {
+          "$ref": "#/$defs/nullOrdering"
+        },
+        "tieBreaker": {
+          "type": "string"
+        }
+      }
+    },
+    "types": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "patternProperties": {
+        "^[A-Z][A-Za-z0-9_]*$": {
+          "$ref": "#/$defs/type"
+        }
+      }
+    },
+    "type": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fields"
+      ],
+      "properties": {
+        "table": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "string"
+        },
+        "physicalTable": {
+          "type": "string"
+        },
+        "primaryKey": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/field"
+            }
+          }
+        },
+        "relations": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/relation"
+            }
+          }
+        }
+      }
+    },
+    "field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "column": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "nullable": {
+          "type": "boolean"
+        },
+        "policy": {
+          "type": "string"
+        },
+        "policies": {
+          "$ref": "#/$defs/stringList"
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "selectable": {
+          "type": "boolean"
+        },
+        "filter": {
+          "$ref": "#/$defs/filter"
+        },
+        "sort": {
+          "$ref": "#/$defs/fieldSort"
+        },
+        "computed": {
+          "$ref": "#/$defs/computed"
+        }
+      }
+    },
+    "filter": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operators": {
+          "$ref": "#/$defs/filterOperators"
+        }
+      }
+    },
+    "filterOperators": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "eq",
+          "neq",
+          "in",
+          "isNull",
+          "lt",
+          "lte",
+          "gt",
+          "gte",
+          "contains",
+          "startsWith",
+          "endsWith"
+        ]
+      }
+    },
+    "fieldSort": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "default": {
+          "$ref": "#/$defs/sortDirection"
+        },
+        "nulls": {
+          "$ref": "#/$defs/nullOrdering"
+        },
+        "tieBreaker": {
+          "type": "string"
+        }
+      }
+    },
+    "computed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "sqlTemplate",
+            "generatedSqlHelper",
+            "materializedColumn",
+            "javaOnlyExperimental"
+          ]
+        },
+        "template": {
+          "type": "string"
+        },
+        "requiredColumns": {
+          "$ref": "#/$defs/stringList"
+        },
+        "deterministic": {
+          "type": "boolean"
+        },
+        "nullable": {
+          "type": "boolean"
+        },
+        "sensitive": {
+          "type": "boolean"
+        },
+        "costClass": {
+          "enum": [
+            "constant",
+            "rowLocal",
+            "relationDependent"
+          ]
+        }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "target",
+        "cardinality",
+        "localColumn",
+        "targetColumn"
+      ],
+      "properties": {
+        "target": {
+          "type": "string"
+        },
+        "targetType": {
+          "type": "string"
+        },
+        "cardinality": {
+          "enum": [
+            "one",
+            "many"
+          ]
+        },
+        "nullable": {
+          "type": "boolean"
+        },
+        "localColumn": {
+          "type": "string"
+        },
+        "targetColumn": {
+          "type": "string"
+        },
+        "capabilities": {
+          "$ref": "#/$defs/relationCapabilities"
+        },
+        "arguments": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/relationArgument"
+            }
+          }
+        },
+        "filterPaths": {
+          "type": "object"
+        },
+        "sortPaths": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_]*$": {
+              "$ref": "#/$defs/relationSortPath"
+            }
+          }
+        },
+        "policy": {
+          "type": "string"
+        },
+        "policies": {
+          "$ref": "#/$defs/stringList"
+        }
+      }
+    },
+    "relationCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "selectable": {
+          "type": "boolean"
+        },
+        "batchable": {
+          "type": "boolean"
+        },
+        "pagination": {
+          "enum": [
+            "none",
+            "relay"
+          ]
+        },
+        "totalCount": {
+          "enum": [
+            "exact",
+            "estimated",
+            "none"
+          ]
+        },
+        "selectionHopBudget": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "filterHopBudget": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sortHopBudget": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "defaultPageSize": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxPageSize": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "relationArgument": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "equals",
+            "relayFirst",
+            "relayAfter",
+            "relayLast",
+            "relayBefore"
+          ]
+        },
+        "column": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "hops": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "relationSortPath": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "column"
+      ],
+      "properties": {
+        "column": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "direction": {
+          "$ref": "#/$defs/sortDirection"
+        },
+        "tieBreaker": {
+          "type": "string"
+        },
+        "hops": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "policies": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_]*$": {
+          "$ref": "#/$defs/policy"
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "appliesTo": {
+          "$ref": "#/$defs/stringList"
+        },
+        "input": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "mode": {
+          "enum": [
+            "allow",
+            "reject",
+            "mask",
+            "filter"
+          ]
+        },
+        "expression": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/policyExpression"
+            }
+          ]
+        }
+      }
+    },
+    "policyExpression": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "kind": {
+          "enum": [
+            "named"
+          ]
+        },
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "contextFilters": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Za-z_][A-Za-z0-9_]*$": {
+          "$ref": "#/$defs/contextFilter"
+        }
+      }
+    },
+    "contextFilter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "column",
+        "contextKey"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "type": {
+          "$ref": "#/$defs/contextFilterType"
+        },
+        "operator": {
+          "$ref": "#/$defs/contextFilterType"
+        },
+        "column": {
+          "type": "string"
+        },
+        "contextKey": {
+          "type": "string"
+        },
+        "valueType": {
+          "enum": [
+            "Boolean",
+            "ID",
+            "String"
+          ]
+        },
+        "failClosed": {
+          "type": "boolean"
+        },
+        "phase": {
+          "enum": [
+            "beforeClientFilters"
+          ]
+        }
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "generatedSchema": {
+          "$ref": "#/$defs/artifact"
+        },
+        "introspection": {
+          "$ref": "#/$defs/artifact"
+        },
+        "conformance": {
+          "$ref": "#/$defs/artifact"
+        },
+        "sql": {
+          "$ref": "#/$defs/sqlArtifact"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        }
+      }
+    },
+    "sqlArtifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "path": {
+          "type": "string"
+        },
+        "dialects": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "postgres",
+              "postgresql"
+            ]
+          }
+        }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "environment": {
+          "type": "string"
+        },
+        "requiredApprovals": {
+          "$ref": "#/$defs/stringList"
+        },
+        "preview": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "route": {
+              "type": "string"
+            },
+            "expiresAfter": {
+              "type": "string"
+            }
+          }
+        },
+        "runtime": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "endpoint": {
+              "type": "string"
+            },
+            "managementEndpoint": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "sortDirection": {
+      "enum": [
+        "asc",
+        "desc"
+      ]
+    },
+    "nullOrdering": {
+      "enum": [
+        "first",
+        "last"
+      ]
+    },
+    "contextFilterType": {
+      "enum": [
+        "equals",
+        "booleanEquals",
+        "in"
+      ]
+    }
+  }
+}

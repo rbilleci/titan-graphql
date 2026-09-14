@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "titan.artifact.v1",
+  "artifactId": "titan.generated-sql.fixture",
+  "titanVersion": "0.1.0",
+  "packageMode": "migration",
+  "dialects": ["postgresql"],
+  "sourceInputs": [
+    {
+      "dialect": "postgresql",
+      "path": "postgresql/demo.sql",
+      "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    }
+  ],
+  "entryPoints": [
+    {
+      "id": "io.titan.graphql.demo.blog.DemoBlogTitanGraphqlFunctions.executeGraphqlRequestWithCompactContext(java.lang.String)",
+      "java": {
+        "className": "io.titan.graphql.demo.blog.DemoBlogTitanGraphqlFunctions",
+        "methodName": "executeGraphqlRequestWithCompactContext",
+        "parameterTypes": ["java.lang.String"],
+        "annotation": "StoredFunction",
+        "sourceLocation": {
+          "path": "src/main/java/io/titan/graphql/demo/blog/DemoBlogTitanGraphqlFunctions.java",
+          "line": 42
+        }
+      },
+      "sql": [
+        {
+          "dialect": "postgresql",
+          "objectId": "postgresql.public.execute_graphql_request_with_compact_context.function",
+          "routineName": "execute_graphql_request_with_compact_context",
+          "routineKind": "function",
+          "parameters": [
+            {
+              "ordinal": 0,
+              "name": "p_query",
+              "type": "TEXT"
+            }
+          ],
+          "returnType": "TEXT",
+          "sourceInputPath": "postgresql/demo.sql"
+        }
+      ],
+      "securityMode": "definer"
+    }
+  ],
+  "generatedObjects": [
+    {
+      "id": "postgresql.public.execute_graphql_request_with_compact_context.function",
+      "status": "inventoried"
+    }
+  ],
+  "rollbackScripts": [
+    {
+      "dialect": "postgresql",
+      "path": "titan-rollback.postgresql.sql",
+      "statementCount": 3,
+      "sha256": "de0f2d2a824a0f9292b7c031d896f2361e9142f9fcfa5d1f58072e5cb5da0a18"
+    }
+  ],
+  "hashes": {
+    "sourceInputsSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "manifestContentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "validation": {
+    "status": "generated",
+    "warnings": ["install verification pending: run titanVerifyInstall"]
+  }
+}

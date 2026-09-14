@@ -1,0 +1,276 @@
+apiVersion: titan.graphql/v1alpha1
+kind: ProjectionModel
+metadata:
+  name: demo-blog
+  version: 2026.06.01
+  owner: platform
+  description: Bounded demo blog model used to prove Titan GraphQL.
+  tags: [demo, query-only, java-reference]
+
+modules:
+  content:
+    owner: content-platform
+    roots: [article, articles]
+    types: [Article, Comment]
+  identity:
+    owner: identity-platform
+    types: [User]
+    fields: [User.email]
+    policies: [canReadUserEmail]
+
+database:
+  catalog: demo_blog
+  defaultSchema: public
+  tables:
+    articles:
+      physicalName: articles
+      schema: public
+      primaryKey: id
+    users:
+      physicalName: users
+      schema: public
+      primaryKey: id
+    comments:
+      physicalName: comments
+      schema: public
+      primaryKey: id
+
+policies:
+  canReadUserEmail:
+    description: User email is visible only to admins.
+    appliesTo: [User.email]
+    mode: reject
+    expression:
+      kind: named
+      name: adminOnly
+
+contextFilters:
+  publishedVisibility:
+    description: Fail-closed request-context visibility filter for the articles root.
+    type: booleanEquals
+    column: published
+    contextKey: articleVisibility
+    valueType: Boolean
+    failClosed: true
+    phase: beforeClientFilters
+
+types:
+  Article:
+    table: articles
+    schema: public
+    physicalTable: articles
+    primaryKey: id
+    fields:
+      id:
+        column: id
+        type: Int
+        nullable: false
+        filter:
+          operators: [eq, neq, in, isNull, lt, lte, gt, gte]
+        sort:
+          default: asc
+          tieBreaker: id
+      title:
+        column: title
+        type: String
+        nullable: false
+        # String filter operators are generated for ArticleFilter.title.
+        filter:
+          operators: [eq, neq, in, isNull, contains, startsWith, endsWith]
+        sort:
+          default: asc
+          tieBreaker: id
+      titleLength:
+        type: Int
+        # Mirrors ProjectionField.ComputedExpression.filterableSortableSqlTemplate.
+        computed:
+          kind: sqlTemplate
+          template: "length({title})"
+          requiredColumns: [title]
+          deterministic: true
+          nullable: false
+          sensitive: false
+          costClass: rowLocal
+        selectable: true
+        filter:
+          operators: [eq, neq, in, isNull, lt, lte, gt, gte]
+        sort:
+          default: asc
+          tieBreaker: id
+    relations:
+      author:
+        target: User
+        cardinality: one
+        nullable: false
+        localColumn: author_id
+        targetColumn: id
+        capabilities:
+          selectable: true
+          batchable: true
+          selectionHopBudget: 2
+      comments:
+        target: Comment
+        cardinality: many
+        nullable: false
+        localColumn: id
+        targetColumn: article_id
+        capabilities:
+          selectable: true
+          batchable: true
+          pagination: relay
+          totalCount: exact
+          selectionHopBudget: 2
+          filterHopBudget: 0
+          sortHopBudget: 0
+          defaultPageSize: 10
+          maxPageSize: 100
+        arguments:
+          first:
+            kind: relayFirst
+          after:
+            kind: relayAfter
+          last:
+            kind: relayLast
+          before:
+            kind: relayBefore
+        sortPaths:
+          id:
+            column: id
+            path: id
+            direction: asc
+            tieBreaker: id
+
+  User:
+    table: users
+    schema: public
+    physicalTable: users
+    primaryKey: id
+    fields:
+      id:
+        column: id
+        type: Int
+        nullable: false
+      name:
+        column: name
+        type: String
+        nullable: false
+      email:
+        column: email
+        type: String
+        nullable: false
+        policy: canReadUserEmail
+
+  Comment:
+    table: comments
+    schema: public
+    physicalTable: comments
+    primaryKey: id
+    fields:
+      id:
+        column: id
+        type: Int
+        nullable: false
+      body:
+        column: body
+        type: String
+        nullable: false
+    relations:
+      author:
+        target: User
+        cardinality: one
+        nullable: false
+        localColumn: author_id
+        targetColumn: id
+        capabilities:
+          selectable: true
+          batchable: true
+          selectionHopBudget: 2
+
+roots:
+  article:
+    type: Article
+    operation: point
+    argument:
+      name: id
+      type: Int
+      kind: equals
+      column: id
+      path: id
+
+  articles:
+    type: Article
+    operation: connection
+    pagination:
+      mode: relay
+      defaultPageSize: 10
+      maxPageSize: 100
+      totalCount: exact
+      cursor:
+        path: id
+        column: id
+        direction: asc
+        tieBreaker: id
+    arguments:
+      authorId:
+        type: Int
+        kind: equals
+        column: author_id
+        path: author_id
+    filterPaths:
+      # Generated ArticleFilter.authorName is a one-hop relation filter through author.name.
+      authorName:
+        type: String
+        column: author_id
+        path: author.name
+        hops: 1
+        operators: [eq, neq, in, isNull, contains, startsWith, endsWith]
+    sortPaths:
+      id:
+        column: id
+        path: id
+        direction: asc
+        tieBreaker: id
+      title:
+        column: title
+        path: title
+        direction: asc
+        tieBreaker: id
+      titleLength:
+        column: titleLength
+        path: titleLength
+        direction: asc
+        tieBreaker: id
+      # Generated ArticleOrderBy.authorName uses the author_id join column and one relation hop.
+      authorName:
+        column: author_id
+        path: author.name
+        hops: 1
+        direction: asc
+        tieBreaker: id
+    contextFilters:
+      - publishedVisibility
+
+artifacts:
+  generatedSchema:
+    enabled: true
+    path: build/generated/titan-graphql/schema.graphql
+  introspection:
+    enabled: true
+    path: build/generated/titan-graphql/introspection.json
+  conformance:
+    enabled: true
+    path: build/generated/titan-graphql/conformance.md
+  sql:
+    enabled: true
+    dialects: [postgres]
+    path: build/generated/titan-graphql/sql
+
+deployment:
+  environment: staging
+  preview:
+    enabled: true
+    route: /preview/demo-blog/graphql
+    expiresAfter: P7D
+  runtime:
+    endpoint: /graphql
+    managementEndpoint: /admin/graphql

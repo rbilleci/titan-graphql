@@ -1,0 +1,28 @@
+{
+  "schemaVersion": "titan.install-verification.v1",
+  "artifactId": "titan.generated-sql.fixture",
+  "manifestContentSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "installPlanContentSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "status": "pending",
+  "database": {
+    "kind": "scratch-required",
+    "version": "not-run"
+  },
+  "dialectReports": [
+    {
+      "dialect": "postgresql",
+      "status": "pending",
+      "verifiedObjects": []
+    }
+  ],
+  "drift": [],
+  "diagnostics": [
+    {
+      "dialect": "all",
+      "stepId": "verification.pending",
+      "objectId": "",
+      "code": "TITAN-GAP005-VERIFY-PENDING",
+      "message": "Install verification has not been executed for this package; run titanVerifyInstall."
+    }
+  ]
+}

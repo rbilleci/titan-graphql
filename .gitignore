@@ -1,0 +1,11 @@
+.gradle/
+build/
+out/
+*.class
+*.log
+.env
+.env.*
+*.pem
+*.p12
+*.pfx
+*.key

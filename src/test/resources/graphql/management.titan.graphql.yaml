@@ -1,0 +1,373 @@
+apiVersion: titan.graphql/v1alpha1
+kind: ProjectionModel
+metadata:
+  name: titan-graphql-management
+  version: 2026.06.01
+  owner: platform
+  description: Titan GraphQL management API model, expressed through Titan's own model format.
+  tags: [management, dogfood, admin-api]
+
+modules:
+  management:
+    owner: platform
+    roots:
+      - workspaces
+      - workspace
+      - model
+      - modelDraft
+      - validationReport
+      - artifactSet
+      - driftReport
+      - deployment
+      - previewBuild
+      - observedOperations
+      - observedOperation
+      - operationRegistry
+      - usageReport
+    types:
+      - ManagedWorkspace
+      - ManagedGraphqlModel
+      - ModelDraft
+      - ValidationReport
+      - ArtifactSet
+      - DriftReport
+      - Deployment
+      - PreviewBuild
+      - ObservedOperation
+      - OperationRegistry
+      - UsageReport
+
+database:
+  catalog: titan_graphql_management
+  defaultSchema: titan_graphql_management
+  tables:
+    managed_workspaces:
+      physicalName: managed_workspaces
+      schema: titan_graphql_management
+      primaryKey: id
+    managed_models:
+      physicalName: managed_models
+      schema: titan_graphql_management
+      primaryKey: id
+    model_drafts:
+      physicalName: model_drafts
+      schema: titan_graphql_management
+      primaryKey: id
+    validation_reports:
+      physicalName: validation_reports
+      schema: titan_graphql_management
+      primaryKey: id
+    artifact_sets:
+      physicalName: artifact_sets
+      schema: titan_graphql_management
+      primaryKey: id
+    drift_reports:
+      physicalName: drift_reports
+      schema: titan_graphql_management
+      primaryKey: id
+    deployments:
+      physicalName: deployments
+      schema: titan_graphql_management
+      primaryKey: id
+    preview_builds:
+      physicalName: preview_builds
+      schema: titan_graphql_management
+      primaryKey: id
+    observed_operations:
+      physicalName: observed_operations
+      schema: titan_graphql_management
+      primaryKey: id
+    operation_registries:
+      physicalName: operation_registries
+      schema: titan_graphql_management
+      primaryKey: id
+    usage_reports:
+      physicalName: usage_reports
+      schema: titan_graphql_management
+      primaryKey: id
+
+types:
+  ManagedWorkspace:
+    table: managed_workspaces
+    schema: titan_graphql_management
+    physicalTable: managed_workspaces
+    primaryKey: id
+    fields:
+      id: {column: id, type: Int}
+      name: {column: name, type: String}
+      description: {column: description, type: String}
+      defaultEnvironment: {column: default_environment, type: String}
+      createdAt: {column: created_at, type: String}
+      updatedAt: {column: updated_at, type: String}
+
+  ManagedGraphqlModel:
+    table: managed_models
+    schema: titan_graphql_management
+    physicalTable: managed_models
+    primaryKey: id
+    fields:
+      id: {column: id, type: Int}
+      workspaceId: {column: workspace_id, type: Int}
+      name: {column: name, type: String}
+      displayName: {column: display_name, type: String}
+      description: {column: description, type: String}
+      currentDraftId: {column: current_draft_id, type: Int}
+      activeDeploymentId: {column: active_deployment_id, type: Int}
+      latestValidationReportId: {column: latest_validation_report_id, type: Int}
+      latestArtifactSetId: {column: latest_artifact_set_id, type: Int}
+      createdAt: {column: created_at, type: String}
+      updatedAt: {column: updated_at, type: String}
+
+  ModelDraft:
+    table: model_drafts
+    schema: titan_graphql_management
+    physicalTable: model_drafts
+    primaryKey: id
+    fields:
+      id: {column: id, type: Int}
+      modelId: {column: model_id, type: Int}
+      status: {column: status, type: String}
+      sourceFormat: {column: source_format, type: String}
+      semanticHash: {column: semantic_hash, type: String}
+      validationReportId: {column: validation_report_id, type: Int}
+      artifactSetId: {column: artifact_set_id, type: Int}
+      driftReportId: {column: drift_report_id, type: Int}
+      createdBy: {column: created_by, type: String}
+      createdAt: {column: created_at, type: String}
+      updatedAt: {column: updated_at, type: String}
+
+  ValidationReport:
+    table: validation_reports
+    schema: titan_graphql_management
+    physicalTable: validation_reports
+    primaryKey: id
+    fields:
+      id: {column: id, type: Int}
+      draftId: {column: draft_id, type: Int}
+      status: {column: status, type: String}
+      summary: {column: summary, type: String}
+      errors: {column: errors, type: String}
+      warnings: {column: warnings, type: String}
+      infos: {column: infos, type: String}
+      createdAt: {column: created_at, type: String}
+
+  ArtifactSet:
+    table: artifact_sets
+    schema: titan_graphql_management
+    physicalTable: artifact_sets
+    primaryKey: id
+    fields:
+      id: {column: id, type: Int}
+      draftId: {column: draft_id, type: Int}
+      semanticHash: {column: semantic_hash, type: String}
+      sdlHash: {column: sdl_hash, type: String}
+      introspectionHash: {column: introspection_hash, type: String}
+      conformanceHash: {column: conformance_hash, type: String}
+      generatedSqlHash: {column: generated_sql_hash, type: String}
+      generationProfile: {column: generation_profile, type: String}
+      createdAt: {column: created_at, type: String}
+
+  DriftReport:
+    table: drift_reports
+    schema: titan_graphql_management
+    physicalTable: drift_reports
+    primaryKey: id
+    fields:
+      id: {column: id, type: Int}
+      draftId: {column: draft_id, type: Int}
+      status: {column: status, type: String}
+      checkedAgainst: {column: checked_against, type: String}
+      summary: {column: summary, type: String}
+      issueCount: {column: issue_count, type: String}
+      createdAt: {column: created_at, type: String}
+
+  Deployment:
+    table: deployments
+    schema: titan_graphql_management
+    physicalTable: deployments
+    primaryKey: id
+    fields:
+      id: {column: id, type: Int}
+      modelId: {column: model_id, type: Int}
+      draftId: {column: draft_id, type: Int}
+      artifactSetId: {column: artifact_set_id, type: Int}
+      environment: {column: environment, type: String}
+      status: {column: status, type: String}
+      deployedBy: {column: deployed_by, type: String}
+      deployedAt: {column: deployed_at, type: String}
+      rollbackTargetDeploymentId: {column: rollback_target_deployment_id, type: Int}
+      runtimeHealthId: {column: runtime_health_id, type: Int}
+
+  PreviewBuild:
+    table: preview_builds
+    schema: titan_graphql_management
+    physicalTable: preview_builds
+    primaryKey: id
+    fields:
+      id: {column: id, type: Int}
+      modelId: {column: model_id, type: Int}
+      draftId: {column: draft_id, type: Int}
+      artifactSetId: {column: artifact_set_id, type: Int}
+      environment: {column: environment, type: String}
+      status: {column: status, type: String}
+      previewEndpoint: {column: preview_endpoint, type: String}
+      previewConsoleUrl: {column: preview_console_url, type: String}
+      schemaHash: {column: schema_hash, type: String}
+      artifactManifestPath: {column: artifact_manifest_path, type: String}
+      artifactManifestHash: {column: artifact_manifest_hash, type: String}
+      operationRegistryId: {column: operation_registry_id, type: Int}
+      expiresAt: {column: expires_at, type: String}
+      createdBy: {column: created_by, type: String}
+      createdAt: {column: created_at, type: String}
+
+  ObservedOperation:
+    table: observed_operations
+    schema: titan_graphql_management
+    physicalTable: observed_operations
+    primaryKey: id
+    fields:
+      id: {column: id, type: Int}
+      modelId: {column: model_id, type: Int}
+      environment: {column: environment, type: String}
+      role: {column: role, type: String}
+      client: {column: client, type: String}
+      operationHash: {column: operation_hash, type: String}
+      operationName: {column: operation_name, type: String}
+      document: {column: document, type: String}
+      status: {column: status, type: String}
+      depth: {column: depth, type: String}
+      estimatedCost: {column: estimated_cost, type: String}
+      fieldUsage: {column: field_usage, type: String}
+      firstSeenAt: {column: first_seen_at, type: String}
+      lastSeenAt: {column: last_seen_at, type: String}
+      observedCount: {column: observed_count, type: String}
+
+  OperationRegistry:
+    table: operation_registries
+    schema: titan_graphql_management
+    physicalTable: operation_registries
+    primaryKey: id
+    fields:
+      id: {column: id, type: Int}
+      modelId: {column: model_id, type: Int}
+      environment: {column: environment, type: String}
+      mode: {column: mode, type: String}
+      updatedAt: {column: updated_at, type: String}
+
+  UsageReport:
+    table: usage_reports
+    schema: titan_graphql_management
+    physicalTable: usage_reports
+    primaryKey: id
+    fields:
+      id: {column: id, type: Int}
+      modelId: {column: model_id, type: Int}
+      environment: {column: environment, type: String}
+      version: {column: version, type: String}
+      window: {column: window, type: String}
+      summary: {column: summary, type: String}
+      totalOperations: {column: total_operations, type: String}
+      totalRequests: {column: total_requests, type: String}
+      operations: {column: operations, type: String}
+      fields: {column: fields, type: String}
+      roles: {column: roles, type: String}
+      clients: {column: clients, type: String}
+      environments: {column: environments, type: String}
+      versions: {column: versions, type: String}
+      deprecatedFieldsInUse: {column: deprecated_fields_in_use, type: String}
+      unusedFields: {column: unused_fields, type: String}
+      policyRejections: {column: policy_rejections, type: String}
+      slowOperations: {column: slow_operations, type: String}
+      generatedAt: {column: generated_at, type: String}
+
+roots:
+  workspaces:
+    type: ManagedWorkspace
+    operation: connection
+    pagination:
+      mode: relay
+      defaultPageSize: 25
+      maxPageSize: 100
+      totalCount: exact
+      cursor:
+        path: id
+        column: id
+        direction: asc
+        tieBreaker: id
+  workspace:
+    type: ManagedWorkspace
+    operation: point
+    argument: {name: id, type: Int, kind: equals, column: id, path: id}
+  model:
+    type: ManagedGraphqlModel
+    operation: point
+    argument: {name: id, type: Int, kind: equals, column: id, path: id}
+  modelDraft:
+    type: ModelDraft
+    operation: point
+    argument: {name: id, type: Int, kind: equals, column: id, path: id}
+  validationReport:
+    type: ValidationReport
+    operation: point
+    argument: {name: id, type: Int, kind: equals, column: id, path: id}
+  artifactSet:
+    type: ArtifactSet
+    operation: point
+    argument: {name: id, type: Int, kind: equals, column: id, path: id}
+  driftReport:
+    type: DriftReport
+    operation: point
+    argument: {name: id, type: Int, kind: equals, column: id, path: id}
+  deployment:
+    type: Deployment
+    operation: point
+    argument: {name: id, type: Int, kind: equals, column: id, path: id}
+  previewBuild:
+    type: PreviewBuild
+    operation: point
+    argument: {name: id, type: Int, kind: equals, column: id, path: id}
+  observedOperations:
+    type: ObservedOperation
+    operation: connection
+    pagination:
+      mode: relay
+      defaultPageSize: 25
+      maxPageSize: 100
+      totalCount: exact
+      cursor:
+        path: id
+        column: id
+        direction: asc
+        tieBreaker: id
+  observedOperation:
+    type: ObservedOperation
+    operation: point
+    argument: {name: id, type: Int, kind: equals, column: id, path: id}
+  operationRegistry:
+    type: OperationRegistry
+    operation: point
+    argument: {name: id, type: Int, kind: equals, column: id, path: id}
+  usageReport:
+    type: UsageReport
+    operation: point
+    argument: {name: id, type: Int, kind: equals, column: id, path: id}
+
+artifacts:
+  generatedSchema:
+    enabled: true
+    path: build/generated/titan-graphql/management/schema.graphql
+  introspection:
+    enabled: true
+    path: build/generated/titan-graphql/management/introspection.json
+  conformance:
+    enabled: true
+    path: build/generated/titan-graphql/management/conformance.json
+  sql:
+    enabled: false
+    path: build/generated/titan-graphql/management/generated.sql
+
+deployment:
+  environment: admin
+  runtime:
+    endpoint: /admin/graphql
+    managementEndpoint: /admin/graphql
