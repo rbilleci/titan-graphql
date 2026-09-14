@@ -385,7 +385,8 @@ class GraphqlMetamodelTest {
         assertEquals(ProjectionRelation.ProjectionRelationPaginationMode.RELAY_CONNECTION, comments.capabilities().paginationMode());
         assertEquals(true, comments.capabilities().supportsTotalCount());
         assertEquals(4, comments.arguments().size());
-        assertEquals(ProjectionRelation.ProjectionRelationArgument.ProjectionRelationArgumentKind.RELAY_LAST, comments.arguments().get(2).kind());
+        assertEquals(ProjectionRelation.ProjectionRelationArgument.ProjectionRelationArgumentKind.RELAY_LAST,
+                comments.arguments().get(2).kind());
         assertEquals("id", comments.sortPaths().getFirst().sortPath());
 
         ProjectionRetrieval articles = model.retrieval("articles");

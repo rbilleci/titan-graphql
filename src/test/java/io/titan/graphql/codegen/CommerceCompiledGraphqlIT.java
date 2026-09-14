@@ -139,6 +139,42 @@ class CommerceCompiledGraphqlIT {
                     orderedBackward.at("/data/customers/edges/0/node/name").asText(), target.name());
             assertTrue(orderedBackward.at("/data/customers/pageInfo/hasPreviousPage").asBoolean(), target.name());
 
+            GraphqlExecution relationPageExecution = execute(runtime,
+                    "{ customers(first: 2) { edges { node { id orderConnection(first: 1) { "
+                            + "edges { cursor node { id reference } } totalCount "
+                            + "pageInfo { hasNextPage endCursor } } } } } }",
+                    GraphqlRequestContext.legacy(1L, "reader"));
+            JsonNode relationPage = JSON.readTree(relationPageExecution.json());
+            assertEquals(70, relationPage.at(
+                    "/data/customers/edges/0/node/orderConnection/edges/0/node/id").asInt(), target.name());
+            assertEquals(2, relationPage.at(
+                    "/data/customers/edges/0/node/orderConnection/totalCount").asInt(), target.name());
+            assertTrue(relationPage.at(
+                    "/data/customers/edges/0/node/orderConnection/pageInfo/hasNextPage").asBoolean(), target.name());
+            assertEquals(1, relationPage.at(
+                    "/data/customers/edges/1/node/orderConnection/totalCount").asInt(), target.name());
+            assertEquals(2, relationPageExecution.plan().readStepCount(), target.name());
+
+            String orderCursor = relationPage.at(
+                    "/data/customers/edges/0/node/orderConnection/pageInfo/endCursor").asText();
+            JsonNode relationContinuation = JSON.readTree(execute(runtime,
+                    "{ customer(id: 7) { orderConnection(first: 1, after: \"" + orderCursor
+                            + "\") { edges { node { id } } pageInfo { hasPreviousPage } } } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals(71, relationContinuation.at(
+                    "/data/customer/orderConnection/edges/0/node/id").asInt(), target.name());
+            assertTrue(relationContinuation.at(
+                    "/data/customer/orderConnection/pageInfo/hasPreviousPage").asBoolean(), target.name());
+
+            JsonNode filteredRelation = JSON.readTree(execute(runtime,
+                    "{ customer(id: 7) { orderConnection(orderId: 71, first: 10) { "
+                            + "edges { node { id reference } } totalCount } } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals(71, filteredRelation.at(
+                    "/data/customer/orderConnection/edges/0/node/id").asInt(), target.name());
+            assertEquals(1, filteredRelation.at(
+                    "/data/customer/orderConnection/totalCount").asInt(), target.name());
+
             GraphqlRequestContext activeOnly = new GraphqlRequestContext(
                     1L, "reader", "actor-1", "", "commerce-request", "", List.of(),
                     List.of("activeCustomers"), false, false, false, 0L,

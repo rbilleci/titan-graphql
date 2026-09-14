@@ -269,28 +269,61 @@ public final class TitanGraphqlRoutineSourceGenerator {
             graphqlType = context.graphqlType(target, relation.targetColumn());
         }
         Parameter localKey = context.parameter("localKey", graphqlType, relation.localColumn(), owner);
+        List<Parameter> relationParameters = new ArrayList<>();
+        List<String> relationClauses = new ArrayList<>();
+        for (TitanGraphqlRelationDocument.RelationDocumentArgument argument : relationFilterArguments(relation)) {
+            if (argument.hops() != 0) {
+                throw unsupported("relation '" + relation.name() + "' uses relation-hop filtering");
+            }
+            relationParameters.add(new Parameter(
+                    "has" + javaTypeName(argument.name()), "boolean", "setBoolean"));
+            relationParameters.add(context.parameter(
+                    argument.name(), argument.type(), argument.column(), target));
+            relationClauses.add("(? = FALSE OR "
+                    + identifier(argument.column(), "relation argument column") + " = ?)");
+        }
+        List<Parameter> directParameters = new ArrayList<>();
+        directParameters.add(localKey);
+        directParameters.addAll(relationParameters);
         StringBuilder sql = new StringBuilder(selectList(context, target))
                 .append(" WHERE ").append(identifier(relation.targetColumn(), "relation target column"))
                 .append(" = ?");
+        for (String clause : relationClauses) {
+            sql.append(" AND ").append(clause);
+        }
         appendRelationOrder(sql, context, target, relation);
         emitCarrier(source, "readRelation" + javaTypeName(owner.name()) + javaTypeName(relation.name()),
-                List.of(localKey), sql.toString());
+                directParameters, sql.toString());
         for (int batchSize : RELATION_BATCH_SIZES) {
             List<Parameter> batchParameters = new ArrayList<>();
             for (int index = 1; index <= batchSize; index++) {
                 batchParameters.add(new Parameter("localKey" + index, localKey.javaType(), localKey.setter()));
             }
+            batchParameters.addAll(relationParameters);
             String batchSql = selectList(context, target, List.of(
                     identifier(relation.targetColumn(), "relation target column")
                             + " AS __titan_parent_key"))
                     + " WHERE " + identifier(relation.targetColumn(), "relation target column")
                     + " IN (" + String.join(", ", java.util.Collections.nCopies(batchSize, "?")) + ")";
             StringBuilder orderedBatchSql = new StringBuilder(batchSql);
+            for (String clause : relationClauses) {
+                orderedBatchSql.append(" AND ").append(clause);
+            }
             appendRelationOrder(orderedBatchSql, context, target, relation);
             emitCarrier(source, "readRelation" + javaTypeName(owner.name())
                     + javaTypeName(relation.name()) + "Batch" + batchSize,
                     batchParameters, orderedBatchSql.toString());
         }
+    }
+
+    private static List<TitanGraphqlRelationDocument.RelationDocumentArgument> relationFilterArguments(
+            TitanGraphqlRelationDocument relation
+    ) {
+        return relation.arguments().stream()
+                .filter(argument -> argument.kind()
+                        == TitanGraphqlRelationDocument.RelationDocumentArgumentKind.EQUALS)
+                .sorted(Comparator.comparing(TitanGraphqlRelationDocument.RelationDocumentArgument::name))
+                .toList();
     }
 
     private static void appendRelationOrder(

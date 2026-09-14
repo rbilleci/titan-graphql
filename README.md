@@ -125,12 +125,16 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   older `sql` route still calls the bounded `DemoBlogTitanGraphqlFunctions` whole-request entry
   point and remains only an equivalence/compiler proof. Generated carriers do not yet cover
   arbitrary generated filters, multiple custom order paths, or relation-hop order,
-  counts for relation connections, protected-field policy branches, relation connections, or
-  nested multi-level batching. Direct relations immediately beneath collection roots use fixed
-  generated batch arities and do not issue one query per parent. A separately packaged unrelated
-  commerce model now proves the generic runtime and generated-only inventory independently of the
-  demo package. The next increments expand compiled-plan coverage, then retire the demo
-  whole-request kernel from production dispatch.
+  protected-field policy branches, relation-hop filters, or nested multi-level batching.
+  Relay relation connections support forward/backward windows, cursors, and exact counts under
+  both point and collection roots. Direct relation and relation-connection reads immediately
+  beneath collection roots use fixed generated batch arities and do not issue one query per
+  parent. The current relation connection window is assembled from the ordered compiled carrier
+  result; reviewed local integer equality arguments are applied inside the carrier before counts
+  and windows, while SQL-side per-parent limiting remains an optimization boundary. A separately packaged
+  unrelated commerce model proves the same path independently of the demo package. The next
+  increments expand compiled-plan coverage, then retire the demo whole-request kernel from
+  production dispatch.
 - **Management storage: durable JDBC store available (opt-in `jdbc` mode); file-backed by
   default.** Core dogfooded the management store — it transpiles the management mutation
   routines in-tree and ships a durable JDBC-backed transactional store over them

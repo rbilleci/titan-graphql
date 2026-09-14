@@ -415,6 +415,11 @@ relations:
       defaultPageSize: 10
       maxPageSize: 100
     arguments:
+      authorId:
+        type: Int
+        kind: equals
+        column: author_id
+        path: author_id
       first:
         kind: relayFirst
       after:
@@ -454,7 +459,7 @@ Relation argument kinds:
 | `relayAfter` | Relay `after` cursor. |
 | `relayLast` | Relay `last` page size. |
 | `relayBefore` | Relay `before` cursor. |
-| `equals` | Scalar equality predicate. |
+| `equals` | Local `Int` equality predicate. Declare `type`, `column`, and `path`; `hops` must be `0` for the compiled carrier path. |
 
 ## Policies
 

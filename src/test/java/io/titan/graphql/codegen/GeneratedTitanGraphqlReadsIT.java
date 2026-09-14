@@ -180,11 +180,58 @@ class GeneratedTitanGraphqlReadsIT {
             assertTrue(missingContext.at("/errors/0/message").asText().contains("required request context"),
                     missingContext.toString());
 
-            JsonNode unsupportedRelationPage = graphql(dataModel,
-                    "{ articles(first: 1) { edges { node { comments(first: 1) { edges { node { id } } } } } } }",
+            GraphqlExecution relationPageExecution = GraphqlEngine.execute(
+                    dataModel, new GraphqlJsonWriter(), GraphqlRequest.query("""
+                            { articles(first: 2) {
+                                edges { node { id comments(first: 1) {
+                                    edges { cursor node { id body } }
+                                    totalCount
+                                    pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
+                                } } }
+                            } }
+                            """), GraphqlRequestContext.legacy(10L, "reader"));
+            JsonNode relationPage = JSON.readTree(relationPageExecution.json());
+            assertEquals(100, relationPage.at("/data/articles/edges/0/node/comments/edges/0/node/id").asInt(),
+                    target.name());
+            assertEquals(2, relationPage.at("/data/articles/edges/0/node/comments/totalCount").asInt(),
+                    target.name());
+            assertTrue(relationPage.at(
+                    "/data/articles/edges/0/node/comments/pageInfo/hasNextPage").asBoolean(), target.name());
+            assertEquals(1, relationPage.at("/data/articles/edges/1/node/comments/totalCount").asInt(),
+                    target.name());
+            assertEquals(2, relationPageExecution.plan().readStepCount(),
+                    "relation connections must retain one root plus one batched child read on " + target);
+
+            String firstCommentCursor = relationPage.at(
+                    "/data/articles/edges/0/node/comments/pageInfo/endCursor").asText();
+            JsonNode relationContinuation = graphql(dataModel,
+                    "{ article(id: 1) { comments(first: 1, after: \"" + firstCommentCursor
+                            + "\") { edges { cursor node { id } } pageInfo { hasPreviousPage } } } }",
                     GraphqlRequestContext.legacy(10L, "reader"));
-            assertTrue(unsupportedRelationPage.at("/errors/0/message").asText().contains("relation connection"),
-                    unsupportedRelationPage.toString());
+            assertEquals(101, relationContinuation.at(
+                    "/data/article/comments/edges/0/node/id").asInt(), target.name());
+            assertTrue(relationContinuation.at(
+                    "/data/article/comments/pageInfo/hasPreviousPage").asBoolean(), target.name());
+
+            String secondCommentCursor = relationContinuation.at(
+                    "/data/article/comments/edges/0/cursor").asText();
+            JsonNode relationBackward = graphql(dataModel,
+                    "{ article(id: 1) { comments(last: 1, before: \"" + secondCommentCursor
+                            + "\") { edges { node { id } } pageInfo { hasNextPage } } } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(100, relationBackward.at(
+                    "/data/article/comments/edges/0/node/id").asInt(), target.name());
+            assertTrue(relationBackward.at(
+                    "/data/article/comments/pageInfo/hasNextPage").asBoolean(), target.name());
+
+            JsonNode aliasedRelationWindows = graphql(dataModel,
+                    "{ article(id: 1) { first: comments(first: 1) { edges { node { id } } } "
+                            + "last: comments(last: 1) { edges { node { id } } } } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(100, aliasedRelationWindows.at(
+                    "/data/article/first/edges/0/node/id").asInt(), target.name());
+            assertEquals(101, aliasedRelationWindows.at(
+                    "/data/article/last/edges/0/node/id").asInt(), target.name());
         }
     }
 

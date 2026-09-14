@@ -26,7 +26,8 @@ For each supported reviewed model the generator emits:
 - `countRoot<Name>(...)` for roots declaring exact visible counts;
 - `readRelation<Owner><Name>(...)` for unprotected direct relations.
 - `readRelation<Owner><Name>Batch<N>(...)` at fixed arities 2, 4, 8, 16, 32, and 64,
-  allowing a 100-parent page to batch in at most two static calls.
+  allowing a 100-parent page to batch in at most two static calls. Both forms include optional
+  parameters for reviewed local integer equality arguments.
 
 Every query uses prepared-statement parameters. Physical identifiers must satisfy the portable
 unquoted identifier subset and unsafe computed templates are rejected during generation. Scalar
@@ -55,8 +56,10 @@ two-step plan. `commerceIntegrationTest` repeats the complete generate-to-serve 
 isolated output tree for an unrelated customers/orders model. It asserts that every packaged
 entry point belongs to the generated carrier class and that no demo-blog or article routine is
 present, then proves integer, string, native UUID, and composite point keys; nested reads;
-batching; counts; cursor continuation; fail-closed context filtering; live mutations; and restart
-visibility on PostgreSQL and MySQL.
+batching; root and relation counts; root and relation cursor continuation; relation backward
+windows; fail-closed context filtering; live mutations; and restart visibility on PostgreSQL and
+MySQL. Both schemas prove relation connections below collection roots with one generated batch
+read rather than one child read per parent.
 
 ## Deliberate Remaining Boundary
 
@@ -67,10 +70,10 @@ corpus remains useful while carrier coverage grows. Compiled mode has no fallbac
 Before the carrier route can replace it, generation and generic runtime invocation must cover:
 
 - all generated scalar filters, multi-column custom ordering, and relation-hop order paths;
-- exact visible counts;
+- exact visible counts for generated filters and policy-specific branches;
 - protected-field and protected-relation policy-specific branches;
-- relation arguments, relation connections, cursors, and counts;
-- nested multi-level relation batching and relation-connection batching without N+1;
+- relation-hop filter arguments and SQL-side per-parent connection limiting;
+- nested multi-level relation batching;
 - portable null ordering and scalar/null value preservation;
 - generic mutation routing at the application boundary.
 

@@ -14,6 +14,7 @@ import io.titan.graphql.model.TitanGraphqlModelDocumentJson;
 import io.titan.graphql.sqlmode.TitanGraphqlRoutineInvoker;
 import io.titan.graphql.validation.TitanGraphqlModelDocumentValidator;
 import io.titan.graphql.validation.TitanGraphqlValidationReport;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
@@ -308,17 +309,45 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             TitanGraphqlRelationDocument relation = relation(type, selection.name());
             Object localKey = row.value(TitanGraphqlRoutineSourceGenerator.hiddenRelationAlias(relation.name()));
             if (localKey == null) {
-                result.put(selection.responseKey(), relation.cardinality()
-                        == TitanGraphqlRelationDocument.RelationDocumentCardinality.ONE ? null : List.of());
+                result.put(selection.responseKey(), selection.relationConnectionSelection().selected()
+                        ? renderRelationConnection(
+                                connection,
+                                relation.targetType(),
+                                path + "." + selection.responseKey(),
+                                selection,
+                                relation,
+                                List.of(),
+                                observable,
+                                relationCache
+                        )
+                        : relation.cardinality()
+                                == TitanGraphqlRelationDocument.RelationDocumentCardinality.ONE ? null : List.of());
                 continue;
             }
             String method = "readRelation" + TitanGraphqlRoutineSourceGenerator.javaTypeName(type.name())
                     + TitanGraphqlRoutineSourceGenerator.javaTypeName(relation.name());
-            String relationPath = path + "." + relation.name();
+            String relationPath = path + "." + selection.responseKey();
             List<Row> children = relationCache.get(new RelationCacheKey(relationPath, cacheKey(localKey)));
             if (children == null) {
                 observable.addReadStep(relationPath, "TITAN PACKAGE " + method + "(?)");
-                children = rows(invoker.read(connection, method, List.of(localKey)));
+                children = rows(invoker.read(
+                        connection,
+                        method,
+                        relationParameters(selection, relation, List.of(localKey))
+                ));
+            }
+            if (selection.relationConnectionSelection().selected()) {
+                result.put(selection.responseKey(), renderRelationConnection(
+                        connection,
+                        relation.targetType(),
+                        relationPath,
+                        selection,
+                        relation,
+                        children,
+                        observable,
+                        relationCache
+                ));
+                continue;
             }
             if (relation.cardinality() == TitanGraphqlRelationDocument.RelationDocumentCardinality.ONE) {
                 result.put(selection.responseKey(), children.isEmpty() ? null : renderObject(connection,
@@ -336,6 +365,171 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         return result;
     }
 
+    private Object renderRelationConnection(
+            Connection connection,
+            String targetTypeName,
+            String relationPath,
+            GraphqlSelection.FieldSelection selection,
+            TitanGraphqlRelationDocument relation,
+            List<Row> children,
+            GraphqlPlan observable,
+            Map<RelationCacheKey, List<Row>> relationCache
+    ) throws SQLException {
+        if (relation.sortPaths().isEmpty()) {
+            throw unsupported("relation connection '" + relation.name() + "' without sort metadata");
+        }
+        TitanGraphqlRelationDocument.RelationDocumentSortPath ordering = relation.sortPaths().getFirst();
+        if (ordering.hops() != 0) {
+            throw unsupported("relation-hop ordering on connection '" + relation.name() + "'");
+        }
+        GraphqlCursorCodec.CursorPayload after = relationCursorArgument(
+                selection, GraphqlRelationArgumentDescriptor.RelationArgumentKind.RELAY_AFTER);
+        GraphqlCursorCodec.CursorPayload before = relationCursorArgument(
+                selection, GraphqlRelationArgumentDescriptor.RelationArgumentKind.RELAY_BEFORE);
+        boolean backward = selection.relationArguments().stream().anyMatch(argument ->
+                argument.kind() == GraphqlRelationArgumentDescriptor.RelationArgumentKind.RELAY_LAST);
+        List<Row> eligible = children.stream()
+                .filter(row -> after == null || compareRelationCursor(targetTypeName, row, after, ordering) > 0)
+                .filter(row -> before == null || compareRelationCursor(targetTypeName, row, before, ordering) < 0)
+                .toList();
+        int requested = selection.relationConnectionSelection().pageSize();
+        boolean overflow = eligible.size() > requested;
+        List<Row> page;
+        if (backward) {
+            int from = Math.max(0, eligible.size() - requested);
+            page = new ArrayList<>(eligible.subList(from, eligible.size()));
+        } else {
+            page = new ArrayList<>(eligible.subList(0, Math.min(requested, eligible.size())));
+        }
+
+        GraphqlSelection.RelationConnectionSelection connectionSelection =
+                selection.relationConnectionSelection();
+        Map<String, Object> value = new LinkedHashMap<>();
+        if (connectionSelection.edges()) {
+            List<Object> edges = new ArrayList<>();
+            for (Row child : page) {
+                Map<String, Object> edge = new LinkedHashMap<>();
+                if (connectionSelection.edgeCursor()) {
+                    edge.put("cursor", relationCursor(targetTypeName, child, ordering));
+                }
+                if (connectionSelection.edgeNode()) {
+                    edge.put("node", renderObject(
+                            connection,
+                            targetTypeName,
+                            relationPath,
+                            selection.selections(),
+                            child,
+                            observable,
+                            relationCache
+                    ));
+                }
+                edges.add(edge);
+            }
+            value.put("edges", edges);
+        }
+        if (connectionSelection.totalCount()) {
+            value.put("totalCount", children.size());
+        }
+        if (connectionSelection.pageInfo()) {
+            Map<String, Object> pageInfo = new LinkedHashMap<>();
+            for (String field : connectionSelection.pageInfoFields()) {
+                switch (field) {
+                    case "hasNextPage" -> pageInfo.put(field, backward ? before != null : overflow);
+                    case "hasPreviousPage" -> pageInfo.put(field, backward ? overflow : after != null);
+                    case "startCursor" -> pageInfo.put(field,
+                            page.isEmpty() ? null : relationCursor(targetTypeName, page.getFirst(), ordering));
+                    case "endCursor" -> pageInfo.put(field,
+                            page.isEmpty() ? null : relationCursor(targetTypeName, page.getLast(), ordering));
+                    default -> throw unsupported("pageInfo field '" + field + "'");
+                }
+            }
+            value.put("pageInfo", pageInfo);
+        }
+        return value;
+    }
+
+    private static GraphqlCursorCodec.CursorPayload relationCursorArgument(
+            GraphqlSelection.FieldSelection selection,
+            GraphqlRelationArgumentDescriptor.RelationArgumentKind kind
+    ) {
+        return selection.relationArguments().stream()
+                .filter(argument -> argument.kind() == kind)
+                .map(GraphqlSelection.RelationArgument::cursorPayload)
+                .findFirst()
+                .orElse(null);
+    }
+
+    private int compareRelationCursor(
+            String targetTypeName,
+            Row row,
+            GraphqlCursorCodec.CursorPayload cursor,
+            TitanGraphqlRelationDocument.RelationDocumentSortPath ordering
+    ) {
+        int comparison = compareBinding(targetTypeName, row, ordering.column(), cursor.value());
+        String tieBreaker = ordering.tieBreaker().isBlank() ? ordering.column() : ordering.tieBreaker();
+        if (comparison == 0 && !tieBreaker.equals(ordering.column())) {
+            comparison = compareBinding(targetTypeName, row, tieBreaker, cursor.tieBreakerValue());
+        }
+        return ordering.direction() == TitanGraphqlRelationDocument.RelationDocumentSortDirection.ASC
+                ? comparison : -comparison;
+    }
+
+    private int compareBinding(String typeName, Row row, String binding, String cursorValue) {
+        TitanGraphqlFieldDocument field = fieldForBinding(requireType(typeName), binding);
+        Object value = row.value(TitanGraphqlRoutineSourceGenerator.sqlAlias(field.name()));
+        return compareValues(value, coerce(cursorValue, field.type()));
+    }
+
+    private static int compareValues(Object left, Object right) {
+        if (left == right) return 0;
+        if (left == null) return -1;
+        if (right == null) return 1;
+        if (left instanceof Number || right instanceof Number) {
+            return new BigDecimal(left.toString()).compareTo(new BigDecimal(right.toString()));
+        }
+        if (left instanceof Boolean leftBoolean && right instanceof Boolean rightBoolean) {
+            return leftBoolean.compareTo(rightBoolean);
+        }
+        return left.toString().compareTo(right.toString());
+    }
+
+    private String relationCursor(
+            String targetTypeName,
+            Row row,
+            TitanGraphqlRelationDocument.RelationDocumentSortPath ordering
+    ) {
+        TitanGraphqlTypeDocument type = requireType(targetTypeName);
+        TitanGraphqlFieldDocument orderedField = fieldForBinding(type, ordering.column());
+        String tieBreaker = ordering.tieBreaker().isBlank() ? ordering.column() : ordering.tieBreaker();
+        TitanGraphqlFieldDocument tieField = fieldForBinding(type, tieBreaker);
+        Object value = row.value(TitanGraphqlRoutineSourceGenerator.sqlAlias(orderedField.name()));
+        Object tieValue = row.value(TitanGraphqlRoutineSourceGenerator.sqlAlias(tieField.name()));
+        return GraphqlCursorCodec.encode(GraphqlCursorCodec.payload(
+                new GraphqlFieldDescriptor.RelationSortPath(
+                        ordering.name(),
+                        ordering.column(),
+                        ordering.path().isBlank() ? ordering.column() : ordering.path(),
+                        ordering.hops(),
+                        ordering.direction() == TitanGraphqlRelationDocument.RelationDocumentSortDirection.ASC
+                                ? GraphqlFieldDescriptor.RelationSortDirection.ASC
+                                : GraphqlFieldDescriptor.RelationSortDirection.DESC,
+                        tieBreaker
+                ),
+                String.valueOf(value),
+                String.valueOf(tieValue)
+        ));
+    }
+
+    private static TitanGraphqlFieldDocument fieldForBinding(
+            TitanGraphqlTypeDocument type,
+            String binding
+    ) {
+        return type.fields().stream()
+                .filter(field -> binding.equals(field.name()) || binding.equals(field.column()))
+                .findFirst()
+                .orElseThrow(() -> unsupported("unmapped scalar column '" + type.name() + "." + binding + "'"));
+    }
+
     private void prefetchDirectRelations(
             Connection connection,
             String ownerTypeName,
@@ -349,7 +543,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         for (GraphqlSelection.FieldSelection selection : selections) {
             TitanGraphqlRelationDocument relation = relationOrNull(owner, selection.name());
             if (relation == null) continue;
-            String relationPath = ownerPath + "." + relation.name();
+            String relationPath = ownerPath + "." + selection.responseKey();
             Map<String, Object> keys = new LinkedHashMap<>();
             String localAlias = TitanGraphqlRoutineSourceGenerator.hiddenRelationAlias(relation.name());
             for (Row parent : parents) {
@@ -364,7 +558,11 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                 List<Object> chunk = new ArrayList<>(values.subList(offset, Math.min(offset + 64, values.size())));
                 if (chunk.size() == 1) {
                     String method = relationMethod(owner, relation);
-                    List<Row> children = rows(invoker.read(connection, method, chunk));
+                    List<Row> children = rows(invoker.read(
+                            connection,
+                            method,
+                            relationParameters(selection, relation, chunk)
+                    ));
                     relationCache.put(new RelationCacheKey(relationPath, cacheKey(chunk.getFirst())), children);
                     observable.addReadStep(relationPath + ".batch", "TITAN PACKAGE " + method + "(?)");
                     continue;
@@ -372,7 +570,11 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                 int arity = batchArity(chunk.size());
                 while (chunk.size() < arity) chunk.add(chunk.getLast());
                 String method = relationMethod(owner, relation) + "Batch" + arity;
-                List<Row> children = rows(invoker.read(connection, method, chunk));
+                List<Row> children = rows(invoker.read(
+                        connection,
+                        method,
+                        relationParameters(selection, relation, chunk)
+                ));
                 for (Row child : children) {
                     Object parentKey = child.value("__titan_parent_key");
                     RelationCacheKey key = new RelationCacheKey(relationPath, cacheKey(parentKey));
@@ -387,6 +589,40 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                         "TITAN PACKAGE " + method + "(" + arity + " parameters)");
             }
         }
+    }
+
+    private static List<Object> relationParameters(
+            GraphqlSelection.FieldSelection selection,
+            TitanGraphqlRelationDocument relation,
+            List<Object> localKeys
+    ) {
+        List<Object> parameters = new ArrayList<>(localKeys);
+        for (TitanGraphqlRelationDocument.RelationDocumentArgument modelArgument
+                : relationFilterArguments(relation)) {
+            if (modelArgument.hops() != 0) {
+                throw unsupported("relation-hop filter argument '" + modelArgument.name()
+                        + "' on relation '" + relation.name() + "'");
+            }
+            GraphqlSelection.RelationArgument selected = selection.relationArguments().stream()
+                    .filter(argument -> argument.kind()
+                            == GraphqlRelationArgumentDescriptor.RelationArgumentKind.INT_EQUALS)
+                    .filter(argument -> argument.argumentName().equals(modelArgument.name()))
+                    .findFirst()
+                    .orElse(null);
+            Object value = selected == null ? null : selected.intValue();
+            addOptional(parameters, value, modelArgument.type());
+        }
+        return List.copyOf(parameters);
+    }
+
+    private static List<TitanGraphqlRelationDocument.RelationDocumentArgument> relationFilterArguments(
+            TitanGraphqlRelationDocument relation
+    ) {
+        return relation.arguments().stream()
+                .filter(argument -> argument.kind()
+                        == TitanGraphqlRelationDocument.RelationDocumentArgumentKind.EQUALS)
+                .sorted(Comparator.comparing(TitanGraphqlRelationDocument.RelationDocumentArgument::name))
+                .toList();
     }
 
     private static String relationMethod(
@@ -474,11 +710,12 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                 throw unsupported("relation '" + typeName + "." + relation.name()
                         + "' beneath a collection until a batched carrier is emitted");
             }
-            if (selection.relationConnectionSelection().selected()) {
-                throw unsupported("relation connection '" + typeName + "." + relation.name() + "'");
-            }
-            if (!selection.relationArguments().isEmpty()) {
-                throw unsupported("relation arguments on '" + typeName + "." + relation.name() + "'");
+            for (GraphqlSelection.RelationArgument argument : selection.relationArguments()) {
+                if (argument.kind() == GraphqlRelationArgumentDescriptor.RelationArgumentKind.INT_EQUALS
+                        && argument.filterHopCount() != 0) {
+                    throw unsupported("relation-hop filter argument '" + argument.argumentName()
+                            + "' on relation '" + typeName + "." + relation.name() + "'");
+                }
             }
             validateFields(relation.targetType(), selection.selections(),
                     collectionParent || relation.cardinality()

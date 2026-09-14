@@ -71,6 +71,42 @@ types:
           selectable: true
           batchable: true
           selectionHopBudget: 2
+      orderConnection:
+        target: Order
+        cardinality: many
+        nullable: false
+        localColumn: id
+        targetColumn: customer_id
+        capabilities:
+          selectable: true
+          batchable: true
+          pagination: relay
+          totalCount: exact
+          selectionHopBudget: 2
+          filterHopBudget: 0
+          sortHopBudget: 0
+          defaultPageSize: 10
+          maxPageSize: 100
+        arguments:
+          orderId:
+            type: Int
+            kind: equals
+            column: id
+            path: id
+          first:
+            kind: relayFirst
+          after:
+            kind: relayAfter
+          last:
+            kind: relayLast
+          before:
+            kind: relayBefore
+        sortPaths:
+          id:
+            column: id
+            path: id
+            direction: asc
+            tieBreaker: id
 
   Order:
     table: orders

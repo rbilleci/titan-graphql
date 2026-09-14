@@ -178,8 +178,10 @@ The current metamodel layer stores:
 
 This keeps the API schema decoupled from physical table names. The generic JDBC path consumes the
 model now. `titanGraphqlGenerateRoutines` also generates a static database read boundary from that
-same model: typed and composite point roots, forward/backward page carriers, direct relations,
-safe row-local computed expressions, and a semantic-hash attestation routine. Titan compiles those carriers to JSONB
+same model: typed and composite point roots, forward/backward page carriers, direct and batched
+relations, safe row-local computed expressions, and a semantic-hash attestation routine. The
+compiled runtime also assembles reviewed Relay relation connections from those ordered carrier
+rows without issuing one query per collection parent. Titan compiles those carriers to JSONB
 functions on PostgreSQL and open-result-set procedures on MySQL. The generated carriers are now
 packaged and live-tested. The opt-in `compiled` runtime executes the supported generic plan subset
 through them. The older `sql` runtime still dispatches a whole request to the fixed demo kernel.

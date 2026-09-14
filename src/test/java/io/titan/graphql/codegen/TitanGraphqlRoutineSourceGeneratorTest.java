@@ -56,6 +56,8 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("readRootCustomersForward("), source);
         assertTrue(source.contains("readRelationCustomerOrders(Connection connection, int localKey)"), source);
         assertTrue(source.contains("readRelationCustomerOrdersBatch64(Connection connection"), source);
+        assertTrue(source.contains("readRelationCustomerOrderConnectionBatch64(Connection connection"), source);
+        assertTrue(source.contains("(? = FALSE OR id = ?) ORDER BY id ASC"), source);
         assertTrue(source.contains("customer_id AS __titan_parent_key FROM commerce.orders"), source);
         assertTrue(source.contains("WHERE customer_id = ? ORDER BY id ASC"), source);
         assertTrue(source.contains("FROM commerce.customers"), source);

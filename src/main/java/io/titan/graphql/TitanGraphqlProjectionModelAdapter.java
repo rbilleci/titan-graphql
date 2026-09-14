@@ -342,16 +342,18 @@ final class TitanGraphqlProjectionModelAdapter {
     }
 
     private static ProjectionRelation.ProjectionRelationCapabilities relationCapabilities(TitanGraphqlRelationDocument relation) {
+        boolean supportsFiltering = relation.arguments().stream().anyMatch(argument ->
+                argument.kind() == TitanGraphqlRelationDocument.RelationDocumentArgumentKind.EQUALS);
         TitanGraphqlRelationDocument.RelationDocumentPagination pagination = relation.pagination();
         if (pagination == null || pagination.mode() == TitanGraphqlRelationDocument.RelationDocumentPaginationMode.NONE) {
-            if (relation.sortPaths().isEmpty()) {
+            if (relation.sortPaths().isEmpty() && !supportsFiltering) {
                 return ProjectionRelation.ProjectionRelationCapabilities.currentDefault();
             }
             return new ProjectionRelation.ProjectionRelationCapabilities(
                     true,
                     true,
-                    false,
-                    true,
+                    supportsFiltering,
+                    !relation.sortPaths().isEmpty(),
                     ProjectionRelation.ProjectionRelationPaginationMode.NONE,
                     2,
                     0,
@@ -363,7 +365,7 @@ final class TitanGraphqlProjectionModelAdapter {
                     "relation '" + relation.name() + "' must use relay pagination with exact totalCount");
         }
         return ProjectionRelation.ProjectionRelationCapabilities.relayConnectionWithTotalCount(
-                false,
+                supportsFiltering,
                 !relation.sortPaths().isEmpty(),
                 2,
                 0,

@@ -304,11 +304,14 @@ titan.graphql.execution.mode=sql    # transitional deployed demo whole-request f
 
 `compiled` is the schema-driven database-resident route under active expansion. It currently
 supports integer, string, UUID, and explicit composite point roots; default-order forward pages
-and continuation; exact root counts,
-row-local computed scalars, direct relations below point roots, direct batched relations beneath
-collection roots, and declared context filters. Batch carriers use fixed arities through 64, so a
-100-parent page takes at most two child calls instead of N calls.
-Unsupported generated filters/order, protected carrier branches, relation connections, and
+and continuation; exact root counts; row-local computed scalars; direct relations below point
+roots; Relay relation connections with cursors, forward/backward windows, and counts; direct
+batched relations and relation connections beneath collection roots; and declared context
+filters. Batch carriers use fixed arities through 64, so a 100-parent page takes at most two child
+calls instead of N calls. Relation connection windows are currently assembled from the ordered
+compiled carrier rows after any reviewed local integer equality arguments are applied in SQL;
+SQL-side per-parent limiting remains to be added.
+Unsupported generated filters/order, protected carrier branches, relation-hop filters, and
 deeper nested collection batching return explicit GraphQL errors; they never fall back to `jdbc`,
 `java`, or the demo `sql` kernel.
 
