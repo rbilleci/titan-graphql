@@ -99,51 +99,11 @@ public final class TitanGraphqlRoutineSourceGenerator {
             throw unsupported("connection root '" + root.name() + "' requires cursor pagination");
         }
         TitanGraphqlRootDocument.Cursor cursor = pagination.cursor();
-        Parameter after = context.parameter("after", context.graphqlType(type, cursor.column()),
-                cursor.column(), type);
-        Parameter before = context.parameter("before", context.graphqlType(type, cursor.column()),
-                cursor.column(), type);
-        List<Parameter> parameters = new ArrayList<>();
-        parameters.add(new Parameter("hasAfter", "boolean", "setBoolean"));
-        parameters.add(after);
-        parameters.add(new Parameter("hasBefore", "boolean", "setBoolean"));
-        parameters.add(before);
-        for (TitanGraphqlRootDocument.RootDocumentArgument argument : root.arguments()) {
-            if (argument.kind() == TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS
-                    && argument.hops() == 0) {
-                parameters.add(new Parameter("has" + javaTypeName(argument.name()), "boolean", "setBoolean"));
-                parameters.add(context.parameter(argument.name(), argument.type(), argument.column(), type));
-            }
-        }
-        for (String contextFilterName : root.contextFilters()) {
-            TitanGraphqlContextFilterDocument filter = context.contextFilter(contextFilterName);
-            parameters.add(new Parameter("has" + javaTypeName(filter.contextKey()), "boolean", "setBoolean"));
-            String filterType = filter.operator() == TitanGraphqlContextFilterDocument.Operator.BOOLEAN_EQUALS
-                    ? "Boolean" : context.graphqlType(type, filter.column());
-            parameters.add(context.parameter(filter.contextKey(), filterType, filter.column(), type));
-        }
+        PredicateContract pagePredicate = rootPredicate(context, type, root, true);
+        List<Parameter> parameters = new ArrayList<>(pagePredicate.parameters());
         parameters.add(new Parameter("pageSize", "int", "setInt"));
-
-        String ascOperator = cursor.direction() == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC ? ">" : "<";
-        String descOperator = cursor.direction() == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC ? "<" : ">";
-        StringBuilder where = new StringBuilder(" WHERE (? = FALSE OR ")
-                .append(identifier(cursor.column(), "cursor column")).append(' ').append(ascOperator).append(" ?)")
-                .append(" AND (? = FALSE OR ").append(identifier(cursor.column(), "cursor column"))
-                .append(' ').append(descOperator).append(" ?)");
-        for (TitanGraphqlRootDocument.RootDocumentArgument argument : root.arguments()) {
-            if (argument.kind() == TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS
-                    && argument.hops() == 0) {
-                where.append(" AND (? = FALSE OR ").append(identifier(argument.column(), "root argument column"))
-                        .append(" = ?)");
-            }
-        }
-        for (String contextFilterName : root.contextFilters()) {
-            TitanGraphqlContextFilterDocument filter = context.contextFilter(contextFilterName);
-            where.append(filter.failClosed() ? " AND (? = TRUE AND " : " AND (? = FALSE OR ")
-                    .append(identifier(filter.column(), "context filter column")).append(" = ?)");
-        }
         String tieBreaker = cursor.tieBreaker().isBlank() ? cursor.column() : cursor.tieBreaker();
-        String base = selectList(context, type) + where;
+        String base = selectList(context, type) + pagePredicate.sql();
         String declaredDirection = cursor.direction().name();
         String reverseDirection = cursor.direction() == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
                 ? "DESC" : "ASC";
@@ -151,6 +111,63 @@ public final class TitanGraphqlRoutineSourceGenerator {
                 base + orderBy(cursor.column(), declaredDirection, tieBreaker) + " LIMIT ?");
         emitCarrier(source, "readRoot" + javaTypeName(root.name()) + "Backward", parameters,
                 base + orderBy(cursor.column(), reverseDirection, tieBreaker) + " LIMIT ?");
+        if (pagination.totalCount() == TitanGraphqlRootDocument.TotalCountMode.EXACT) {
+            PredicateContract countPredicate = rootPredicate(context, type, root, false);
+            emitCarrier(source, "countRoot" + javaTypeName(root.name()),
+                    countPredicate.parameters(), "SELECT COUNT(*) AS total_count FROM "
+                            + identifier(context.schema(type), "schema") + "."
+                            + identifier(context.table(type), "table") + countPredicate.sql());
+        }
+    }
+
+    private static PredicateContract rootPredicate(
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            TitanGraphqlRootDocument root,
+            boolean includeCursors
+    ) {
+        List<Parameter> parameters = new ArrayList<>();
+        List<String> clauses = new ArrayList<>();
+        if (includeCursors) {
+            TitanGraphqlRootDocument.Cursor cursor = root.pagination().cursor();
+            String afterOperator = cursor.direction() == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
+                    ? ">" : "<";
+            String beforeOperator = cursor.direction() == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
+                    ? "<" : ">";
+            parameters.add(new Parameter("hasAfter", "boolean", "setBoolean"));
+            parameters.add(context.parameter("after", context.graphqlType(type, cursor.column()),
+                    cursor.column(), type));
+            parameters.add(new Parameter("hasBefore", "boolean", "setBoolean"));
+            parameters.add(context.parameter("before", context.graphqlType(type, cursor.column()),
+                    cursor.column(), type));
+            clauses.add("(? = FALSE OR " + identifier(cursor.column(), "cursor column")
+                    + " " + afterOperator + " ?)");
+            clauses.add("(? = FALSE OR " + identifier(cursor.column(), "cursor column")
+                    + " " + beforeOperator + " ?)");
+        }
+        for (TitanGraphqlRootDocument.RootDocumentArgument argument : root.arguments()) {
+            if (argument.kind() == TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS
+                    && argument.hops() == 0) {
+                parameters.add(new Parameter("has" + javaTypeName(argument.name()), "boolean", "setBoolean"));
+                parameters.add(context.parameter(argument.name(), argument.type(), argument.column(), type));
+                clauses.add("(? = FALSE OR " + identifier(argument.column(), "root argument column") + " = ?)");
+            }
+        }
+        for (String contextFilterName : root.contextFilters()) {
+            TitanGraphqlContextFilterDocument filter = context.contextFilter(contextFilterName);
+            String suffix = javaTypeName(filter.contextKey());
+            parameters.add(new Parameter("apply" + suffix, "boolean", "setBoolean"));
+            parameters.add(new Parameter("has" + suffix, "boolean", "setBoolean"));
+            String filterType = filter.operator() == TitanGraphqlContextFilterDocument.Operator.BOOLEAN_EQUALS
+                    ? "Boolean" : context.graphqlType(type, filter.column());
+            parameters.add(context.parameter(filter.contextKey(), filterType, filter.column(), type));
+            String column = identifier(filter.column(), "context filter column");
+            clauses.add(filter.failClosed()
+                    ? "(? = FALSE OR (? = TRUE AND " + column + " = ?))"
+                    : "(? = FALSE OR ? = FALSE OR " + column + " = ?)");
+        }
+        return new PredicateContract(List.copyOf(parameters),
+                clauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", clauses));
     }
 
     private static void emitRelation(
@@ -193,6 +210,12 @@ public final class TitanGraphqlRoutineSourceGenerator {
             } else if (field.computed().selectable()) {
                 projections.add(computedExpression(type, field) + " AS "
                         + sqlAlias(field.name()));
+            }
+        }
+        for (TitanGraphqlRelationDocument relation : type.relations()) {
+            if (relation.policies().isEmpty()) {
+                projections.add(identifier(relation.localColumn(), "relation local column") + " AS "
+                        + hiddenRelationAlias(relation.name()));
             }
         }
         if (projections.isEmpty()) {
@@ -269,7 +292,8 @@ public final class TitanGraphqlRoutineSourceGenerator {
                 .append("    }\n");
     }
 
-    private static String javaTypeName(String value) {
+    /** Stable Java method-name suffix shared by generation and inventory-driven invocation. */
+    public static String javaTypeName(String value) {
         StringBuilder result = new StringBuilder();
         boolean capitalize = true;
         for (int index = 0; index < value.length(); index++) {
@@ -307,6 +331,12 @@ public final class TitanGraphqlRoutineSourceGenerator {
         return identifier(alias.toString(), "generated result alias");
     }
 
+    /** Internal carrier label that retains a relation join key without exposing it in GraphQL. */
+    public static String hiddenRelationAlias(String relationName) {
+        requireIdentifier(relationName, "GraphQL relation");
+        return "__titan_relation_" + sqlAlias(relationName);
+    }
+
     private static String identifier(String value, String label) {
         requireIdentifier(value, label);
         return value;
@@ -340,6 +370,9 @@ public final class TitanGraphqlRoutineSourceGenerator {
     }
 
     private record Parameter(String name, String javaType, String setter) {
+    }
+
+    private record PredicateContract(List<Parameter> parameters, String sql) {
     }
 
     private static final class GenerationContext {

@@ -24,16 +24,18 @@ import java.util.function.Supplier;
 
 /**
  * Selects the engine that answers application {@code /graphql} requests (completion plan
- * W5.1): the in-JVM Java kernel (default) or the deployed SQL stored functions.
+ * W5.1): the in-JVM Java kernel (default), generic JDBC reads, generated compiled carriers,
+ * or the legacy deployed whole-request SQL functions.
  *
  * <p>Configured by {@code titan.graphql.execution.mode} ({@code java} | {@code jdbc} |
- * {@code sql}, default {@code java}) — an ordinary MicroProfile/Quarkus config property, so
+ * {@code compiled} | {@code sql}, default {@code java}) — an ordinary MicroProfile/Quarkus
+ * config property, so
  * {@code application.properties}, {@code -Dtitan.graphql.execution.mode=...} and the
  * {@code TITAN_GRAPHQL_EXECUTION_MODE} environment variable all work. An unknown value fails
  * fast and descriptively; there is no silent defaulting on bad input.</p>
  *
- * <p>In SQL mode requests route over the Quarkus default datasource (Agroal,
- * {@code quarkus.datasource.*}); SQL mode also requires the reviewed model path and the exact
+ * <p>In compiled and SQL modes requests route over the Quarkus default datasource (Agroal,
+ * {@code quarkus.datasource.*}); both require the reviewed model path and the exact
  * model/package binding emitted by {@code titanGraphqlBindPackage}. The surfaced deployment
  * fingerprint identifies that combined binding, not merely an unbound SQL artifact.
  * The admin/management plane ({@code /admin/graphql}) is not affected — only the application
@@ -54,6 +56,7 @@ public class GraphqlExecutionEngine {
     public enum Mode {
         JAVA,
         JDBC,
+        COMPILED,
         SQL;
 
         static Mode parse(String configuredValue) {
@@ -61,9 +64,11 @@ public class GraphqlExecutionEngine {
             return switch (normalized) {
                 case "", "java" -> JAVA;
                 case "jdbc" -> JDBC;
+                case "compiled" -> COMPILED;
                 case "sql" -> SQL;
                 default -> throw new IllegalStateException(
-                        MODE_PROPERTY + " must be 'java', 'jdbc', or 'sql' but was '" + configuredValue + "'");
+                        MODE_PROPERTY + " must be 'java', 'jdbc', 'compiled', or 'sql' but was '"
+                                + configuredValue + "'");
             };
         }
     }
@@ -75,8 +80,10 @@ public class GraphqlExecutionEngine {
 
     private volatile GraphqlSqlModeRuntime sqlRuntime;
     private volatile GenericJdbcGraphqlRuntime genericJdbcRuntime;
+    private volatile TitanCompiledGraphqlRuntime compiledRuntime;
     private volatile TitanGraphqlPackageBinding packageBinding;
     private volatile TitanGraphqlGap005ArtifactMetadata packageMetadata;
+    private volatile TitanGraphqlModelDocument packageModel;
     private volatile String fingerprint;
 
     /** CDI wiring: mode from MicroProfile config, datasource from the Agroal default bean. */
@@ -115,7 +122,7 @@ public class GraphqlExecutionEngine {
     /**
      * Non-CDI fallback used when the HTTP resource is constructed directly (unit tests,
      * plain JAX-RS): mode from the system property / environment variable, no datasource —
-     * SQL mode then fails descriptively rather than ever falling back to Java mode.
+     * database-backed modes then fail descriptively rather than ever falling back to Java mode.
      */
     public static GraphqlExecutionEngine fromSystemConfig() {
         String configured = System.getProperty(MODE_PROPERTY, "");
@@ -136,7 +143,7 @@ public class GraphqlExecutionEngine {
         return mode;
     }
 
-    /** The config value form of the active mode ({@code java} | {@code jdbc} | {@code sql}). */
+    /** Config value of the active mode ({@code java}, {@code jdbc}, {@code compiled}, or {@code sql}). */
     public String modeName() {
         return mode.name().toLowerCase(Locale.ROOT);
     }
@@ -169,6 +176,27 @@ public class GraphqlExecutionEngine {
             }
             return runtime;
         }
+        if (mode == Mode.COMPILED) {
+            TitanCompiledGraphqlRuntime runtime = compiledRuntime;
+            if (runtime == null) {
+                synchronized (this) {
+                    if (compiledRuntime == null) {
+                        verifiedPackageBinding();
+                        try {
+                            compiledRuntime = new TitanCompiledGraphqlRuntime(
+                                    packageModel, dataSourceSupplier.get(), dataSourceDescription, packageMetadata);
+                        } catch (GraphqlExecutionModeUnavailableException ex) {
+                            throw ex;
+                        } catch (RuntimeException ex) {
+                            throw compiledUnavailable("the compiled runtime or datasource could not be initialized ("
+                                    + ex.getMessage() + ")", ex);
+                        }
+                    }
+                    runtime = compiledRuntime;
+                }
+            }
+            return runtime;
+        }
         GraphqlSqlModeRuntime runtime = sqlRuntime;
         if (runtime == null) {
             synchronized (this) {
@@ -185,12 +213,12 @@ public class GraphqlExecutionEngine {
     }
 
     /**
-     * Deployment fingerprint for the mode surface: in SQL mode, a stable hash over the exact
-     * reviewed model and Titan package binding; empty in Java/JDBC mode. An unreadable or
+     * Deployment fingerprint for compiled/SQL mode: a stable hash over the exact reviewed model
+     * and Titan package binding; empty in Java/JDBC mode. An unreadable or
      * mismatched binding yields {@code unavailable}; runtime execution still refuses the package.
      */
     public String fingerprint() {
-        if (mode != Mode.SQL) {
+        if (mode != Mode.SQL && mode != Mode.COMPILED) {
             return "";
         }
         String value = fingerprint;
@@ -237,7 +265,7 @@ public class GraphqlExecutionEngine {
         synchronized (this) {
             if (packageBinding == null) {
                 if (modelPath.isBlank()) {
-                    throw sqlUnavailable("no reviewed model path is configured", null);
+                    throw packageUnavailable("no reviewed model path is configured", null);
                 }
                 try {
                     Path path = Path.of(modelPath);
@@ -252,11 +280,12 @@ public class GraphqlExecutionEngine {
                             TitanGraphqlArtifactsDirectory.configuredDirectory());
                     candidate.verify(document, metadata);
                     packageMetadata = metadata;
+                    packageModel = document;
                     packageBinding = candidate;
                 } catch (GraphqlExecutionModeUnavailableException ex) {
                     throw ex;
                 } catch (IOException | RuntimeException ex) {
-                    throw sqlUnavailable("the reviewed model/package binding could not be verified ("
+                    throw packageUnavailable("the reviewed model/package binding could not be verified ("
                             + ex.getMessage() + ")", ex);
                 }
             }
@@ -268,21 +297,33 @@ public class GraphqlExecutionEngine {
         String detail = cause + " [model: " + (modelPath.isBlank() ? "not configured" : modelPath)
                 + "; package: " + TitanGraphqlArtifactsDirectory.configuredDirectory() + "]. "
                 + "Set " + MODEL_PATH_PROPERTY + " (or " + MODEL_PATH_ENVIRONMENT_VARIABLE
-                + ") and run titanGraphqlBindPackage for that reviewed model before enabling SQL mode.";
+                + ") and run titanGraphqlBindPackage for that reviewed model before enabling "
+                + modeName() + " mode.";
         return GraphqlSqlModeUnavailableException.describe(dataSourceDescription, detail, failure);
+    }
+
+    private GraphqlExecutionModeUnavailableException compiledUnavailable(String cause, Throwable failure) {
+        String message = "Titan-compiled execution mode (" + MODE_PROPERTY
+                + "=compiled) could not answer this request: " + cause
+                + " [model: " + (modelPath.isBlank() ? "not configured" : modelPath)
+                + "; package: " + TitanGraphqlArtifactsDirectory.configuredDirectory()
+                + "; datasource: " + dataSourceDescription + "]. Remedy: set " + MODEL_PATH_PROPERTY
+                + " to the reviewed model, run titanGraphqlBindPackage, deploy that package, and configure "
+                + "the datasource for the target database.";
+        return failure == null
+                ? new GraphqlExecutionModeUnavailableException(message)
+                : new GraphqlExecutionModeUnavailableException(message, failure);
+    }
+
+    private GraphqlExecutionModeUnavailableException packageUnavailable(String cause, Throwable failure) {
+        return mode == Mode.COMPILED ? compiledUnavailable(cause, failure) : sqlUnavailable(cause, failure);
     }
 
     private static Supplier<DataSource> quarkusDataSourceSupplier(Instance<DataSource> dataSources) {
         Objects.requireNonNull(dataSources, "dataSources");
         return () -> {
             if (dataSources.isUnsatisfied()) {
-                throw new GraphqlSqlModeUnavailableException(
-                        "SQL execution mode (" + MODE_PROPERTY + "=sql) could not answer this request:"
-                                + " no Quarkus datasource bean is available"
-                                + " [datasource: " + QUARKUS_DATASOURCE_DESCRIPTION + "]."
-                                + " Remedy: configure quarkus.datasource.jdbc.url (plus credentials) for the"
-                                + " database carrying the deployed Titan migrations, or switch "
-                                + MODE_PROPERTY + " back to java.");
+                throw new IllegalStateException("no Quarkus datasource bean is available");
             }
             return dataSources.get();
         };

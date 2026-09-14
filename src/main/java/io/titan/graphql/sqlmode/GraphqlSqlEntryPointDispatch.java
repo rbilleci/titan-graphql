@@ -136,6 +136,18 @@ public final class GraphqlSqlEntryPointDispatch {
         return "SELECT " + qualifiedRoutine + "()";
     }
 
+    /** Builds a safe parameterized function/procedure call for a generated carrier routine. */
+    public static String carrierSql(String qualifiedRoutine, int parameterCount, boolean procedure) {
+        if (qualifiedRoutine == null || !qualifiedRoutine.matches(QUALIFIED_ROUTINE)) {
+            throw new IllegalArgumentException("invalid Titan package routine identity '" + qualifiedRoutine + "'");
+        }
+        if (parameterCount < 0 || parameterCount > 256) {
+            throw new IllegalArgumentException("generated carrier parameter count must be between 0 and 256");
+        }
+        String placeholders = String.join(", ", java.util.Collections.nCopies(parameterCount, "?"));
+        return (procedure ? "CALL " : "SELECT ") + qualifiedRoutine + "(" + placeholders + ")";
+    }
+
     private static String routineName(Invocation invocation) {
         String method = methodName(invocation);
         StringBuilder name = new StringBuilder();

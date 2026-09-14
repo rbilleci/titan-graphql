@@ -11,8 +11,6 @@ import io.titan.runtime.jdbc.TitanExecutionListener;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Objects;
@@ -50,6 +48,7 @@ public final class GraphqlSqlModeRuntime implements GraphqlModelRuntime {
     private final String dataSourceDescription;
     private final Function<DataSource, TitanExecutionListener> listenerFactory;
     private final GraphqlSqlPackageEntryPoints packageEntryPoints;
+    private final TitanGraphqlRoutineInvoker routineInvoker;
     private final String expectedModelSemanticHash;
 
     private volatile DataSource resolvedDataSource;
@@ -88,6 +87,7 @@ public final class GraphqlSqlModeRuntime implements GraphqlModelRuntime {
         this.dataSourceDescription = Objects.requireNonNull(dataSourceDescription, "dataSourceDescription");
         this.listenerFactory = Objects.requireNonNull(listenerFactory, "listenerFactory");
         this.packageEntryPoints = packageMetadata == null ? null : new GraphqlSqlPackageEntryPoints(packageMetadata);
+        this.routineInvoker = packageMetadata == null ? null : new TitanGraphqlRoutineInvoker(packageMetadata);
         this.expectedModelSemanticHash = expectedModelSemanticHash == null ? "" : expectedModelSemanticHash;
         if (packageMetadata != null && !this.expectedModelSemanticHash.matches("[0-9a-f]{64}")) {
             throw new IllegalArgumentException("expected model semantic hash must be a lowercase SHA-256 value");
@@ -196,19 +196,7 @@ public final class GraphqlSqlModeRuntime implements GraphqlModelRuntime {
             if (databasePackageAttested) {
                 return;
             }
-            String routine = packageEntryPoints.resolve(connection, "modelSemanticHash");
-            String sql = GraphqlSqlEntryPointDispatch.noArgumentFunctionSql(routine);
-            try (PreparedStatement statement = connection.prepareStatement(sql);
-                 ResultSet resultSet = statement.executeQuery()) {
-                if (!resultSet.next()) {
-                    throw new SQLException("model attestation routine returned no row: " + sql);
-                }
-                String actual = resultSet.getString(1);
-                if (!expectedModelSemanticHash.equals(actual)) {
-                    throw new SQLException("deployed Titan GraphQL model semantic hash mismatch: expected '"
-                            + expectedModelSemanticHash + "' but database returned '" + actual + "'");
-                }
-            }
+            routineInvoker.attest(connection, expectedModelSemanticHash);
             databasePackageAttested = true;
         }
     }

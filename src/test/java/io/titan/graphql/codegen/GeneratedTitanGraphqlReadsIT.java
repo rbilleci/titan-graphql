@@ -6,9 +6,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.titan.graphql.GraphqlEngine;
+import io.titan.graphql.GraphqlExecutionEngine;
+import io.titan.graphql.GraphqlJsonWriter;
+import io.titan.graphql.GraphqlRequest;
+import io.titan.graphql.GraphqlRequestContext;
+import io.titan.graphql.GraphqlRuntimeRequest;
+import io.titan.graphql.TitanCompiledGraphqlDataModel;
+import io.titan.graphql.artifact.TitanGraphqlGap005ArtifactMetadata;
 import io.titan.graphql.conformance.DemoBlogSqlDeployment;
+import io.titan.graphql.model.TitanGraphqlModelDocument;
 import io.titan.graphql.model.TitanGraphqlModelDocumentJson;
 import io.titan.graphql.model.TitanGraphqlModelDocumentYaml;
+import io.titan.runtime.jdbc.SingleConnectionDataSource;
 import io.titan.runtime.testing.DatabaseTarget;
 import io.titan.runtime.testing.TitanTest;
 import io.titan.runtime.testing.TitanTestContext;
@@ -57,9 +67,11 @@ class GeneratedTitanGraphqlReadsIT {
             assertFalse(author.get(0).has("email"), "protected email leaked from carrier on " + target);
 
             JsonNode publishedPage = rows(connection, target, "read_root_articles_forward",
-                    false, 0, false, 0, false, 0, true, true, 10);
+                    false, 0, false, 0, false, 0, true, true, true, 10);
             assertEquals(1, publishedPage.size(), target.name());
             assertEquals(1, publishedPage.get(0).get("id").asInt(), target.name());
+            assertEquals(2L, count(connection, target, false, 0, false, false, false));
+            assertEquals(1L, count(connection, target, false, 0, true, true, true));
 
             try (Statement statement = connection.createStatement()) {
                 statement.executeUpdate("UPDATE public.articles SET title = 'Changed in database' WHERE id = 1");
@@ -70,11 +82,117 @@ class GeneratedTitanGraphqlReadsIT {
         }
     }
 
+    @Test
+    void genericGraphqlPlannerExecutesGeneratedPackageWithoutDemoDispatch(TitanTestContext context) throws Exception {
+        TitanGraphqlModelDocument model = TitanGraphqlModelDocumentYaml.parse(
+                Files.readString(Path.of("src/test/resources/graphql/demo-blog.titan.graphql.yaml")));
+        TitanGraphqlGap005ArtifactMetadata metadata = TitanGraphqlGap005ArtifactMetadata.read(
+                Path.of("build/generated/migrations/titan"));
+
+        for (DatabaseTarget target : List.of(DatabaseTarget.POSTGRESQL, DatabaseTarget.MYSQL)) {
+            Connection connection = context.connection(target);
+            if (target == DatabaseTarget.POSTGRESQL) {
+                DemoBlogSqlDeployment.deployPackagedKernel(connection);
+            } else {
+                DemoBlogSqlDeployment.deployPackagedKernelMySql(connection);
+            }
+            TitanCompiledGraphqlDataModel dataModel = new TitanCompiledGraphqlDataModel(
+                    model, new SingleConnectionDataSource(connection), metadata);
+
+            GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
+                    "compiled", () -> new SingleConnectionDataSource(connection), target.name(),
+                    "src/test/resources/graphql/demo-blog.titan.graphql.yaml");
+            assertEquals("titan-compiled", engine.runtime().name(), target.name());
+            JsonNode enginePoint = JSON.readTree(engine.runtime().execute(
+                    new GraphqlRuntimeRequest("{ article(id: 1) { id titleLength } }", "", "", ""),
+                    GraphqlRequestContext.legacy(10L, "reader")));
+            assertEquals(19, enginePoint.at("/data/article/titleLength").asInt(), target.name());
+            assertTrue(engine.fingerprint().matches("[0-9a-f]{64}"), target.name());
+
+            JsonNode point = graphql(dataModel, """
+                    { aliased: article(id: 1) {
+                        id title titleLength author { id name }
+                    } }
+                    """, GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals("Titan GraphQL proof", point.at("/data/aliased/title").asText(), target.name());
+            assertEquals(19, point.at("/data/aliased/titleLength").asInt(), target.name());
+            assertEquals("Ada Lovelace", point.at("/data/aliased/author/name").asText(), target.name());
+
+            JsonNode firstPage = graphql(dataModel, """
+                    { articles(first: 1) {
+                        edges { cursor node { id titleLength } }
+                        totalCount
+                        pageInfo { hasNextPage hasPreviousPage startCursor endCursor }
+                    } }
+                    """, GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(2, firstPage.at("/data/articles/totalCount").asInt(), target.name());
+            assertTrue(firstPage.at("/data/articles/pageInfo/hasNextPage").asBoolean(), target.name());
+            String cursor = firstPage.at("/data/articles/pageInfo/endCursor").asText();
+
+            JsonNode continuation = graphql(dataModel,
+                    "{ articles(first: 1, after: \"" + cursor
+                            + "\") { edges { node { id } } pageInfo { hasPreviousPage } } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(2, continuation.at("/data/articles/edges/0/node/id").asInt(), target.name());
+            assertTrue(continuation.at("/data/articles/pageInfo/hasPreviousPage").asBoolean(), target.name());
+
+            JsonNode twoRows = graphql(dataModel,
+                    "{ articles(first: 2) { edges { cursor node { id } } } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            String secondCursor = twoRows.at("/data/articles/edges/1/cursor").asText();
+            JsonNode backward = graphql(dataModel,
+                    "{ articles(last: 1, before: \"" + secondCursor
+                            + "\") { edges { node { id } } pageInfo { hasNextPage hasPreviousPage } } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(1, backward.at("/data/articles/edges/0/node/id").asInt(), target.name());
+            assertTrue(backward.at("/data/articles/pageInfo/hasNextPage").asBoolean(), target.name());
+
+            JsonNode visible = graphql(dataModel,
+                    "{ articles(first: 10) { edges { node { id } } totalCount } }",
+                    GraphqlRequestContext.articleVisibility(10L, "reader", true));
+            assertEquals(1, visible.at("/data/articles/edges").size(), target.name());
+            assertEquals(1, visible.at("/data/articles/totalCount").asInt(), target.name());
+
+            JsonNode protectedField = graphql(dataModel,
+                    "{ article(id: 1) { author { email } } }",
+                    GraphqlRequestContext.legacy(10L, "admin"));
+            assertTrue(protectedField.at("/errors/0/message").asText().contains("protected field"),
+                    protectedField.toString());
+
+            JsonNode missingContext = graphql(dataModel,
+                    "{ articles(first: 1) { edges { node { id } } } }",
+                    GraphqlRequestContext.missingArticleVisibility(10L, "reader"));
+            assertTrue(missingContext.at("/errors/0/message").asText().contains("required request context"),
+                    missingContext.toString());
+
+            JsonNode nPlusOne = graphql(dataModel,
+                    "{ articles(first: 1) { edges { node { author { id } } } } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertTrue(nPlusOne.at("/errors/0/message").asText().contains("batched carrier"),
+                    nPlusOne.toString());
+        }
+    }
+
+    private static JsonNode graphql(
+            TitanCompiledGraphqlDataModel dataModel,
+            String query,
+            GraphqlRequestContext context
+    ) throws Exception {
+        return JSON.readTree(GraphqlEngine.execute(
+                dataModel, new GraphqlJsonWriter(), GraphqlRequest.query(query), context).json());
+    }
+
     private static String scalar(Connection connection, String sql) throws Exception {
         try (Statement statement = connection.createStatement(); ResultSet resultSet = statement.executeQuery(sql)) {
             assertTrue(resultSet.next(), "scalar routine returned no row");
             return resultSet.getString(1);
         }
+    }
+
+    private static long count(Connection connection, DatabaseTarget target, Object... parameters) throws Exception {
+        JsonNode rows = rows(connection, target, "count_root_articles", parameters);
+        assertEquals(1, rows.size(), "count carrier row count on " + target);
+        return rows.get(0).get("total_count").asLong();
     }
 
     private static JsonNode rows(

@@ -15,8 +15,8 @@ Titan codegen schema.json
 
 This is the schema-portable route and does not require handwritten read resolvers. The built-in
 demo blog separately proves that a bounded whole-request GraphQL kernel can be lowered while
-preserving behavior. Model-generated database read carriers now exist, but the SQL HTTP runtime
-has not yet been moved from that demo kernel to the generated carrier set.
+preserving behavior. The opt-in `compiled` runtime now executes its supported generic plan subset
+through model-generated database read carriers; the older `sql` mode remains on the demo kernel.
 
 ## Current State
 
@@ -45,6 +45,8 @@ The proof path is fully automated:
 - `GeneratedTitanGraphqlReadsIT` calls the generated PostgreSQL functions and MySQL procedures
   directly, verifies the model hash, computed projection, policy omission, relation/page reads,
   and confirms that changing a database row changes the carrier result on both dialects.
+  It also runs the generic GraphQL parser/validator/planner over those carriers for a point root,
+  relation, computed scalar, forward cursor, exact count, aliases, and fail-closed visibility.
 - `titan.graphql.execution.mode=sql` turns the proof into a live runtime: the Quarkus
   `/graphql` endpoint answers from the deployed stored functions (section 4;
   automated by `GraphqlSqlModeHttpIT` under `integrationTest`).
@@ -280,8 +282,16 @@ The switch is one config property:
 ```properties
 titan.graphql.execution.mode=java   # default: the in-JVM kernel
 titan.graphql.execution.mode=jdbc   # reviewed model + generic Titan DSL/JDBC reads
+titan.graphql.execution.mode=compiled # reviewed model + installed generated Titan carriers
 titan.graphql.execution.mode=sql    # transitional deployed demo whole-request function
 ```
+
+`compiled` is the schema-driven database-resident route under active expansion. It currently
+supports integer point roots, default-order forward pages and continuation, exact root counts,
+row-local computed scalars, direct relations below point roots, and declared context filters.
+Unsupported generated filters/order, protected carrier branches, relation connections, and
+collection relation batching return explicit GraphQL errors; they never fall back to `jdbc`,
+`java`, or the demo `sql` kernel.
 
 It is ordinary Quarkus/MicroProfile config, so `-Dtitan.graphql.execution.mode=sql`
 and the `TITAN_GRAPHQL_EXECUTION_MODE` environment variable work too. The automated

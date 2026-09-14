@@ -134,6 +134,9 @@ Keep the implementation split into small Java classes so Titan's failure mode is
 - `TitanGraphqlRoutineSourceGenerator`: turns reviewed physical/model bindings into deterministic,
   static Titan-transpilable read carriers and a semantic-hash attestation routine. It emits no
   fixture data and contains no application schema registry.
+- `TitanCompiledGraphqlDataModel`: executes the shared validated read plan by invoking generated
+  carriers resolved from Titan's verified object inventory, with no model-name dispatch. It
+  normalizes the two dialect carrier shapes and rejects unsupported plan shapes before I/O.
 - `GraphqlDataModel`: binds a schema descriptor to execution and leaves mutations as explicit
   extension points.
 - `GraphqlPolicy`: maps actor context to allowed fields and row predicates.
@@ -178,15 +181,15 @@ model now. `titanGraphqlGenerateRoutines` also generates a static database read 
 same model: point roots, forward/backward page carriers, direct relations, safe row-local computed
 expressions, and a semantic-hash attestation routine. Titan compiles those carriers to JSONB
 functions on PostgreSQL and open-result-set procedures on MySQL. The generated carriers are now
-packaged and live-tested, but the current SQL HTTP runtime still dispatches a whole request to the
-fixed demo kernel rather than executing a generic read plan through them.
+packaged and live-tested. The opt-in `compiled` runtime executes the supported generic plan subset
+through them. The older `sql` runtime still dispatches a whole request to the fixed demo kernel.
 
 `titanGraphqlBindPackage` links the canonical model semantic hash to Titan's artifact, manifest,
 source-input hashes, and routine inventory. SQL startup verifies that sidecar, resolves routine
 identities from the inventory, and calls the database-resident model attestation routine. This
 prevents serving a stale, unrelated, or wrongly deployed package. The remaining architectural step
-is to make inventory-resolved carriers the `GraphqlDataModel` read backend, then delete the demo
-kernel from production dispatch.
+is to complete carrier/plan coverage, prove separate unrelated-model packages, promote compiled
+mode, then delete the demo kernel from production dispatch.
 
 The engine must stay model-agnostic: parsing, validation, policy application, and selection-tree construction cannot know about `Article`, `User`, or any future application type. Concrete data models provide descriptors and execution adapters. The current `DemoBlogGraphqlSchema` and demo executor are only the first adapter.
 

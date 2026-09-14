@@ -1,7 +1,7 @@
 # Generated Titan Routine Contract
 
-Status: transitional compiled-read contract; generated carriers are packaged and verified, but
-the public SQL HTTP route does not consume them yet.
+Status: active compiled-read contract. Opt-in `compiled` mode consumes the supported subset; the
+legacy `sql` route still uses the transitional demo whole-request kernel.
 
 ## Purpose
 
@@ -21,6 +21,7 @@ For each supported reviewed model the generator emits:
 - `modelSemanticHash()`, returning the canonical lowercase SHA-256 of the normalized model;
 - `readRoot<Name>(...)` for point roots;
 - `readRoot<Name>Forward(...)` and `readRoot<Name>Backward(...)` for Relay roots;
+- `countRoot<Name>(...)` for roots declaring exact visible counts;
 - `readRelation<Owner><Name>(...)` for unprotected direct relations.
 
 Every query uses prepared-statement parameters. Physical identifiers must satisfy the portable
@@ -49,9 +50,9 @@ omission, and observing a row update.
 
 ## Deliberate Remaining Boundary
 
-The generated carriers are not yet the backend used by `titan.graphql.execution.mode=sql`. That
-mode still invokes `DemoBlogTitanGraphqlFunctions` as a transitional whole-request kernel so its
-existing equivalence corpus remains useful while carrier coverage grows.
+The generated carriers back `titan.graphql.execution.mode=compiled`. The separate `sql` mode still
+invokes `DemoBlogTitanGraphqlFunctions` as a transitional whole-request kernel so its equivalence
+corpus remains useful while carrier coverage grows. Compiled mode has no fallback to that kernel.
 
 Before the carrier route can replace it, generation and generic runtime invocation must cover:
 
@@ -64,5 +65,5 @@ Before the carrier route can replace it, generation and generic runtime invocati
 - portable null ordering and scalar/null value preservation;
 - generic mutation routing at the application boundary.
 
-No release claim should describe SQL mode as schema-portable until the public route executes these
-inventory-resolved carriers and production dispatch no longer depends on demo names.
+No release claim should describe the legacy `sql` mode as schema-portable. Compiled mode may be
+described as schema-driven only for its verified plan subset until all items above are closed.

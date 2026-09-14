@@ -11,7 +11,8 @@ read [SECURITY.md](SECURITY.md) before exposing either HTTP endpoint.
 The product goal is to put GraphQL over supported schemas without handwritten read resolvers or
 queries. Custom mutations remain explicit application code. Model-driven database read carriers
 now compile and install beside the fixed demo kernel; routing validated GraphQL plans through those
-carriers is the remaining migration before SQL mode is schema-portable.
+carriers is available as the opt-in `compiled` runtime; expanding its supported plan shapes and
+promoting it over the legacy `sql` mode is the remaining migration.
 
 New developers should start with [docs/getting-started.md](docs/getting-started.md).
 
@@ -38,6 +39,11 @@ The full pipeline is automated and green on both supported dialects:
   for PostgreSQL and MySQL; live tests prove that they read current rows, expose a reviewed
   computed expression, enforce the first fail-closed context predicate, and omit an unguarded
   protected scalar. See [docs/generated-routines.md](docs/generated-routines.md).
+- **Execute GraphQL through generated routines:** `titan.graphql.execution.mode=compiled` uses the
+  generic parser, validator, and planner, resolves generated entry points from the verified package
+  inventory, and normalizes PostgreSQL JSONB functions and MySQL result-set procedures behind one
+  data model. The dual-dialect live proof covers aliases, a point root, a direct relation, computed
+  output, forward cursor continuation, page info, exact count, and fail-closed row visibility.
 - **Transpile (both dialects):** `titanTranspile` lowers the generated carriers and the transitional
   demo-blog whole-request kernel (`DemoBlogTitanGraphqlFunctions`) into PostgreSQL **and MySQL**
   routines with zero validator diagnostics. Its inputs are an explicit allowlist; unrelated
@@ -103,14 +109,15 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   forward page of root Relay connections. Cursor continuation, backward pagination, relation
   connections, computed SQL expressions, and batched relations beneath collection roots fail explicitly.
   Those are the next generic executor increments.
-- **Generated carriers exist; whole-request SQL serving remains demo-specific.** A reviewed model
+- **Compiled mode is generic but still bounded; legacy SQL mode is demo-specific.** A reviewed model
   now becomes Titan-compiled point, page, relation, computed-field, and attestation routines, and
-  those routines are install-tested on both dialects. The current `sql` HTTP route still calls the
-  bounded `DemoBlogTitanGraphqlFunctions` whole-request entry point, so it is not yet the generic
-  production route. Generated carriers also do not yet cover arbitrary generated filters/order,
+  `compiled` mode executes supported GraphQL plans through those inventory-resolved routines. The
+  older `sql` route still calls the bounded `DemoBlogTitanGraphqlFunctions` whole-request entry
+  point and remains only an equivalence/compiler proof. Generated carriers do not yet cover
+  arbitrary generated filters/order,
   counts, protected-field policy branches, relation connections, or batched collection relations.
-  The next increment is a model-agnostic data model that invokes inventory-resolved carriers and
-  removes the demo whole-request kernel from production dispatch.
+  The next increments expand compiled-plan coverage, prove a separately packaged unrelated model,
+  then retire the demo whole-request kernel from production dispatch.
 - **Management storage: durable JDBC store available (opt-in `jdbc` mode); file-backed by
   default.** Core dogfooded the management store — it transpiles the management mutation
   routines in-tree and ships a durable JDBC-backed transactional store over them

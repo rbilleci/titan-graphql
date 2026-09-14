@@ -61,6 +61,7 @@ class GraphqlExecutionModeTest {
         assertEquals(GraphqlExecutionEngine.Mode.JAVA, engine("").mode());
         assertEquals(GraphqlExecutionEngine.Mode.JAVA, engine(" Java ").mode());
         assertEquals(GraphqlExecutionEngine.Mode.JDBC, engine("JDBC").mode());
+        assertEquals(GraphqlExecutionEngine.Mode.COMPILED, engine("COMPILED").mode());
         assertEquals(GraphqlExecutionEngine.Mode.SQL, engine("SQL").mode());
     }
 
@@ -69,7 +70,7 @@ class GraphqlExecutionModeTest {
         IllegalStateException failure = assertThrows(IllegalStateException.class, () -> engine("yaml"));
 
         assertTrue(failure.getMessage().contains(GraphqlExecutionEngine.MODE_PROPERTY), failure.getMessage());
-        assertTrue(failure.getMessage().contains("'java', 'jdbc', or 'sql'"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("'java', 'jdbc', 'compiled', or 'sql'"), failure.getMessage());
         assertTrue(failure.getMessage().contains("yaml"), failure.getMessage());
     }
 
@@ -154,6 +155,24 @@ class GraphqlExecutionModeTest {
     }
 
     @Test
+    void compiledModeRequiresAnExactlyBoundReviewedModelBeforeResolvingTheDataSource() {
+        GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
+                "compiled",
+                () -> {
+                    throw new AssertionError("missing model must fail before datasource resolution");
+                },
+                "must-not-be-used",
+                "");
+
+        GraphqlExecutionModeUnavailableException failure = assertThrows(
+                GraphqlExecutionModeUnavailableException.class, engine::runtime);
+
+        assertTrue(failure.getMessage().contains("execution.mode=compiled"), failure.getMessage());
+        assertTrue(failure.getMessage().contains(GraphqlExecutionEngine.MODEL_PATH_PROPERTY), failure.getMessage());
+        assertTrue(failure.getMessage().contains("titanGraphqlBindPackage"), failure.getMessage());
+    }
+
+    @Test
     void sqlModeRejectsSemanticModelDriftBeforeResolvingTheDataSource() throws IOException {
         Path fixturePackage = Path.of("src/test/resources/titan-artifacts");
         for (String file : List.of(
@@ -202,10 +221,16 @@ class GraphqlExecutionModeTest {
                 GraphqlSqlEntryPointDispatch.placeholderSql(invocation, "tenant_api.graphql_execute"));
         assertEquals("SELECT tenant_api.model_semantic_hash()",
                 GraphqlSqlEntryPointDispatch.noArgumentFunctionSql("tenant_api.model_semantic_hash"));
+        assertEquals("SELECT tenant_api.read_root(?, ?)",
+                GraphqlSqlEntryPointDispatch.carrierSql("tenant_api.read_root", 2, false));
+        assertEquals("CALL tenant_api.read_root(?, ?)",
+                GraphqlSqlEntryPointDispatch.carrierSql("tenant_api.read_root", 2, true));
         assertThrows(IllegalArgumentException.class,
                 () -> GraphqlSqlEntryPointDispatch.placeholderSql(invocation, "public.fn; DROP TABLE users"));
         assertThrows(IllegalArgumentException.class,
                 () -> GraphqlSqlEntryPointDispatch.noArgumentFunctionSql("public.fn; DROP TABLE users"));
+        assertThrows(IllegalArgumentException.class,
+                () -> GraphqlSqlEntryPointDispatch.carrierSql("public.fn; DROP TABLE users", 0, false));
     }
 
     @Test

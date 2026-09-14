@@ -24,12 +24,16 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("public static List<Map<String,Object>> readRootArticle("), source);
         assertTrue(source.contains("public static List<Map<String,Object>> readRootArticlesForward("), source);
         assertTrue(source.contains("public static List<Map<String,Object>> readRootArticlesBackward("), source);
+        assertTrue(source.contains("public static List<Map<String,Object>> countRootArticles("), source);
         assertTrue(source.contains("readRelationArticleAuthor(Connection connection, int localKey)"), source);
         assertTrue(source.contains("readRelationArticleComments(Connection connection, int localKey)"), source);
         assertTrue(source.contains("length(title) AS title_length"), source);
         assertTrue(source.contains("WHERE id = ?"), source);
         assertTrue(source.contains("ORDER BY id ASC LIMIT ?"), source);
         assertTrue(source.contains("ORDER BY id DESC LIMIT ?"), source);
+        assertTrue(source.contains("author_id AS __titan_relation_author"), source);
+        assertTrue(source.contains("id AS __titan_relation_comments"), source);
+        assertTrue(source.contains("(? = FALSE OR (? = TRUE AND published = ?))"), source);
         assertTrue(source.contains("ResultSetMetaData metadata = resultSet.getMetaData()"), source);
         assertFalse(source.contains("email AS email"),
                 "a protected scalar must not enter an unguarded generated carrier:\n" + source);
@@ -46,7 +50,8 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("readRelationCustomerOrders(Connection connection, int localKey)"), source);
         assertTrue(source.contains("FROM commerce.customers"), source);
         assertTrue(source.contains("FROM commerce.orders WHERE customer_id = ?"), source);
-        assertTrue(source.contains("(? = TRUE AND active = ?)"), source);
+        assertTrue(source.contains("public static List<Map<String,Object>> countRootCustomers("), source);
+        assertTrue(source.contains("(? = FALSE OR (? = TRUE AND active = ?))"), source);
         assertFalse(source.contains("Article"), source);
         assertFalse(source.contains("articles"), source);
         assertFalse(source.contains("DemoBlog"), source);
