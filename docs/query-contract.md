@@ -1,6 +1,6 @@
 # Titan GraphQL Query Contract
 
-Status: draft reference contract, materialized from `docs/query-contract-questionnaire.md`.
+Status: reference contract for the bounded demo surface.
 
 This document defines the target query contract for the next Titan GraphQL expansion phase. It intentionally excludes mutations and subscriptions from the supported execution surface for now.
 
@@ -501,7 +501,7 @@ The contract is closed only when:
 
 ## Formalization Decisions Applied
 
-The eight follow-ups from the questionnaire review are now resolved as contract defaults:
+The contract defaults are:
 
 1. Quarkus frontend scope is `POST /graphql`, optional query-only `GET /graphql`, standard GraphQL-over-HTTP request fields, compact auth/context transport, and GraphQL-shaped response/error mapping.
 2. Shorthand and explicit `query` documents are both accepted; multi-operation documents require `operationName`; mutation/subscription syntax is parsed but rejected.

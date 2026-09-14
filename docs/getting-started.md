@@ -46,8 +46,7 @@ The proof path is fully automated:
 > boolean→JSON rendering, titan f9e3b43), so `titanVerifyInstall` passes both dialects
 > and the equivalence legs are **97/97 strictly equivalent each** — PostgreSQL
 > (`GraphqlSqlModeEquivalenceIT`) and MySQL (`GraphqlSqlModeEquivalenceMySqlIT`), zero
-> divergences. The dual-dialect status is fully clean (register entries in
-> `docs/titan-blocker-register.md`).
+> divergences. The dual-dialect status is fully clean.
 
 In its default Java mode the Quarkus runtime is a secondary smoke test; in SQL mode
 (section 4) it is the live demonstration of the proof.
@@ -405,9 +404,8 @@ If you want to author a model:
 
 If you want to work on management/productization:
 
-- read `docs/developer-experience-proposal.md`
-- read `docs/developer-experience-roadmap.md`
 - inspect `src/main/java/io/titan/graphql/GraphqlAdminHttpResource.java`
+- read `docs/mutation-runtime-lowering-boundary.md`
 
 ## Common Failures
 
@@ -443,6 +441,5 @@ If you want to work on management/productization:
 
 : The Java HTTP path is not the proof path. A divergence reported by
   `GraphqlSqlModeEquivalenceIT` means the deployed stored-function engine disagrees
-  with the Java engine — fix that first (each divergence report names the corpus
-  case and both responses; real transpiler defects go to
-  `docs/titan-blocker-register.md`).
+  with the Java engine — fix that first. Each divergence report names the corpus
+  case and both responses.

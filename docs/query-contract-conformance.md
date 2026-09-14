@@ -74,8 +74,8 @@ Running the database legs locally (Docker required):
 ./gradlew integrationTest
 ```
 
-The live database legs have surfaced four core transpiler defects so far, all registered in
-`docs/titan-blocker-register.md`: `TG-BLK-006` (control-character char literals corrupted in
+The live database legs have surfaced four core transpiler defects, all now resolved:
+`TG-BLK-006` (control-character char literals corrupted in
 emitted SQL) and `TG-BLK-007` (unsupported `String.equalsIgnoreCase` silently emitted as a
 nonexistent SQL function) — both fixed by core (titan e13b7b6) with the kernel workarounds
 since reverted — `TG-BLK-011` (identifier overflow, fixed by core in titan 5649ebb,

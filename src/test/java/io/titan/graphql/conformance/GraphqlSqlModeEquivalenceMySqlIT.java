@@ -22,7 +22,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * MySQL leg of the SQL-mode equivalence proof (completion plan W5.2): the same 97-case
+ * MySQL leg of the SQL-mode equivalence proof: the same 97-case
  * conformance corpus as {@link GraphqlSqlModeEquivalenceIT}, executed Java-vs-MySQL.
  *
  * <p>Core's {@code TitanTestExtension} provisions a per-test database on a live
@@ -33,16 +33,8 @@ import org.junit.jupiter.api.Test;
  * in-JVM Java kernel and {@code SELECT public.execute_graphql*(...)} on MySQL as canonical
  * JSON through core's {@link EquivalenceOracle} — exactly the PostgreSQL leg's method.</p>
  *
- * <p><b>Honest accounting at titan HEAD (TG-BLK-012, docs/titan-blocker-register.md):</b>
- * 91 of 97 cases compare strictly. The remaining 6 form a single divergence class — MySQL
- * renders boolean routine values as JSON numbers {@code 1}/{@code 0} where Java and
- * PostgreSQL render {@code true}/{@code false} (core backlog B-10). Those cases are listed
- * in {@link #KNOWN_DIVERGENT_TG_BLK_012} and are asserted to STILL diverge in exactly that
- * boolean-rendering way: the MySQL response must equal the Java response after coercing
- * integer {@code 1}/{@code 0} to booleans only at positions where the Java leg holds a
- * boolean, with at least one such coercion. Any other divergence fails the leg, and so does
- * a tracked case that compares strictly equal — when core delivers B-10, each fixed case
- * flips loudly back to strict comparison by being removed from the allowlist.</p>
+ * <p>All cases compare strictly. The empty historical boolean-parity allowlist remains as a
+ * regression guard: any returning divergence fails strict comparison loudly.</p>
  */
 @Tag("docker")
 @TitanTest(targets = DatabaseTarget.MYSQL)

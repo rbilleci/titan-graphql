@@ -11,8 +11,7 @@ New developers should start with [docs/getting-started.md](docs/getting-started.
 
 ## What The Proof Demonstrates Today
 
-The full pipeline is automated and green on BOTH dialects (completion plan W0–W5, see
-[docs/completion-plan.md](docs/completion-plan.md)):
+The full pipeline is automated and green on both supported dialects:
 
 - **Transpile (both dialects)**: `titanTranspile` lowers the demo-blog GraphQL kernel
   (`DemoBlogTitanGraphqlFunctions`, ~6,900 lines, plus its supporting types) into
@@ -67,19 +66,6 @@ The full pipeline is automated and green on BOTH dialects (completion plan W0–
 Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run under
 `integrationTest`, mirroring core's convention.
 
-## The Blocker Register
-
-titan-graphql never patches core. Every gap or defect in Titan discovered while driving
-this proof is recorded in [docs/titan-blocker-register.md](docs/titan-blocker-register.md)
-(`TG-BLK-001`..`TG-BLK-012`) with a boundary-respecting workaround marked by the blocker ID
-in code comments where one exists. The register — not chat or memory — is the source of
-truth for the titan↔titan-graphql gap; core picks entries up on its own schedule. The live
-database legs alone surfaced four transpiler defects that signature-level verification
-could not catch (`TG-BLK-006`, `TG-BLK-007` — fixed by core, workarounds reverted —
-`TG-BLK-011` identifier overflow — fixed by core, recovery verified on both dialects —
-and `TG-BLK-012` MySQL boolean→JSON rendering — fixed by core in titan f9e3b43, MySQL leg
-now 97/97 strict) — exactly what a stress test exists to find. All four are now closed.
-
 ## Honest Boundaries
 
 - **Management storage: durable JDBC store available (opt-in `jdbc` mode); file-backed by
@@ -113,32 +99,15 @@ now 97/97 strict) — exactly what a stress test exists to find. All four are no
 
 For architecture context, continue with [docs/design.md](docs/design.md).
 
-The original M1-M6 projection-metamodel roadmap is complete for the bounded demo-blog proof;
-see [docs/roadmap.md](docs/roadmap.md) and
-[docs/generated-schema.md](docs/generated-schema.md) for the generated demo schema surface.
-The query-contract planning pass starts with
-[docs/query-contract-questionnaire.md](docs/query-contract-questionnaire.md)
-and is materialized in [docs/query-contract.md](docs/query-contract.md), implemented through
-[docs/query-contract-roadmap.md](docs/query-contract-roadmap.md), and tracked in
-[docs/query-contract-conformance.md](docs/query-contract-conformance.md).
-The productization proposal is [docs/developer-experience-proposal.md](docs/developer-experience-proposal.md),
-with execution planning in [docs/developer-experience-roadmap.md](docs/developer-experience-roadmap.md).
-The demo/core split goal is [docs/titan-core-feedback-goal.md](docs/titan-core-feedback-goal.md);
-the resulting (closed) core gap series is tracked in
-[docs/titan-core-gap-ledger.md](docs/titan-core-gap-ledger.md), consumed via
-[docs/titan-core-handoff-roadmap.md](docs/titan-core-handoff-roadmap.md), and succeeded by
-the live [docs/titan-blocker-register.md](docs/titan-blocker-register.md).
-The first source-format reference is [docs/model-document-format.md](docs/model-document-format.md).
-The public Java projection builder is documented in [docs/projection-api.md](docs/projection-api.md).
-Validation report text and JSON renderings are documented in [docs/validation-diagnostics.md](docs/validation-diagnostics.md).
-The minimal mutation runtime lowering boundary is documented in [docs/mutation-runtime-lowering-boundary.md](docs/mutation-runtime-lowering-boundary.md).
+The bounded demo schema is described in [docs/generated-schema.md](docs/generated-schema.md).
+The supported query surface is specified in [docs/query-contract.md](docs/query-contract.md)
+and verified by [docs/query-contract-conformance.md](docs/query-contract-conformance.md).
+The source-model format is documented in [docs/model-document-format.md](docs/model-document-format.md),
+the public Java projection builder in [docs/projection-api.md](docs/projection-api.md),
+and validation report text and JSON renderings in
+[docs/validation-diagnostics.md](docs/validation-diagnostics.md).
+The minimal mutation runtime lowering boundary is documented in
+[docs/mutation-runtime-lowering-boundary.md](docs/mutation-runtime-lowering-boundary.md).
 
 This repo vendors pinned Titan sources as Git submodules. Initialize them with
-`git submodule update --init --recursive` before building. Supporting core documentation is in
-`vendor/titan`:
-the core execution record is [vendor/titan/docs/architecture-audit-and-improvement-plan.md](vendor/titan/docs/architecture-audit-and-improvement-plan.md);
-the core security posture for SQL-text safety is [vendor/titan/docs/security-review-sql-text-safety.md](vendor/titan/docs/security-review-sql-text-safety.md);
-the durable JDBC management store this repo runs on in `jdbc` mode is specified in
-[vendor/titan/docs/management-store-dogfood-plan.md](vendor/titan/docs/management-store-dogfood-plan.md)
-and its [vendor/titan/docs/management-store-dogfood-spike.md](vendor/titan/docs/management-store-dogfood-spike.md);
-and the dialect-onboarding contract behind dual-dialect support is [vendor/titan/docs/adding-a-dialect.md](vendor/titan/docs/adding-a-dialect.md).
+`git submodule update --init --recursive` before building.

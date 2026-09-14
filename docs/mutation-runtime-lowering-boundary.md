@@ -18,7 +18,7 @@ on transpiled routines, exercised on live PG + MySQL by
 `FileTransactionalMutationStore` (file-backed, single-process), and "durable"
 there means that file boundary. Either way the GAP-006 transaction / idempotency
 / audit semantics are the same contract; only the persistence substrate differs.
-Tracked as `TG-BLK-003` (CLOSED) in `docs/titan-blocker-register.md`.
+This durable-store boundary is implemented and covered by the JDBC management-store tests.
 
 The current query-contract conformance matrix remains query-only. The rows below
 are the developer-experience mutation-runtime profile that future `/admin/graphql`

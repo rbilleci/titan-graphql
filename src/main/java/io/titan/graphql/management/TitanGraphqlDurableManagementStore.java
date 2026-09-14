@@ -45,7 +45,7 @@ import java.util.Map;
 // means the file-backed, single-process boundary. Two recorded routine-design gaps are known and
 // non-blocking: the adapter performs the typed activate_deployment precondition in-transaction (the
 // void routine cannot return a typed failure), and passes the canonical input hash for the import
-// routine's single collapsed hash column. See docs/titan-blocker-register.md TG-BLK-003.
+// routine's single collapsed hash column.
 public final class TitanGraphqlDurableManagementStore implements TitanGraphqlManagementStore {
     private static final Instant DEFAULT_INSTANT = Instant.EPOCH;
 
