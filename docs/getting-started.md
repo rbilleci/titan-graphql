@@ -43,7 +43,8 @@ The proof path is fully automated:
   has a Java-vs-MySQL leg (`GraphqlSqlModeEquivalenceMySqlIT`) deploying the MySQL
   bundle and `ddl/mysql/titan_graphql_mysql.sql`.
 - `GeneratedTitanGraphqlReadsIT` calls the generated PostgreSQL functions and MySQL procedures
-  directly, verifies the model hash, computed projection, policy omission, relation/page reads,
+  directly, verifies the model hash, computed projection, denied policy masking, authorized
+  protected-field access, relation/page reads,
   and confirms that changing a database row changes the carrier result on both dialects.
   It also runs the generic GraphQL parser/validator/planner over those carriers for a point root,
   relation, computed scalar, forward/backward and reviewed local custom-order cursors, exact
@@ -52,7 +53,8 @@ The proof path is fully automated:
 - `commerceIntegrationTest` runs a separate generate, transpile, package, install-verification,
   binding, deployment, and serving chain for the unrelated customers/orders model. Its package
   inventory is generated-only, and its live PostgreSQL/MySQL checks cover batching, counts,
-  cursors, context filtering, mutations, and restart visibility.
+  cursors, context filtering, protected-relation authorization/rejection, mutations, and restart
+  visibility.
 - `titan.graphql.execution.mode=sql` turns the proof into a live runtime: the Quarkus
   `/graphql` endpoint answers from the deployed stored functions (section 4;
   automated by `GraphqlSqlModeHttpIT` under `integrationTest`).
@@ -320,8 +322,8 @@ directions. Generated filters keep equality, null checks, numeric comparisons, e
 matching, pagination, and exact counts inside the database. A single local `in` predicate supports
 at most 16 values; composed `and`/`or`/`not`, filter/order combinations, and reviewed one-hop
 to-one relation filters use a static 3-by-3 DNF carrier. Larger filter plans, multiple simultaneous
-order keys, nullable/to-many or multi-hop relation ordering, protected carrier branches, to-many
-or multi-hop filters, and deeper nested
+order keys, nullable/to-many or multi-hop relation ordering, to-many or multi-hop filters,
+root/row policy predicates, and deeper nested
 collection batching return explicit GraphQL errors; they never fall back to `jdbc`, `java`, or the
 demo `sql` kernel.
 

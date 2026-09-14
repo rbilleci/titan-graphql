@@ -25,7 +25,8 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("public static List<Map<String,Object>> readRootArticlesForward("), source);
         assertTrue(source.contains("public static List<Map<String,Object>> readRootArticlesBackward("), source);
         assertTrue(source.contains("public static List<Map<String,Object>> countRootArticles("), source);
-        assertTrue(source.contains("readRelationArticleAuthor(Connection connection, int localKey)"), source);
+        assertTrue(source.contains("readRelationArticleAuthor(Connection connection, "
+                + "boolean allowFieldEmail, int localKey)"), source);
         assertTrue(source.contains("readRelationArticleComments(Connection connection, int localKey)"), source);
         assertTrue(source.contains("readRelationArticleAuthorBatch64(Connection connection"), source);
         assertTrue(source.contains("id AS __titan_parent_key FROM public.users WHERE id IN ("), source);
@@ -53,8 +54,8 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("id AS __titan_relation_comments"), source);
         assertTrue(source.contains("(? = FALSE OR (? = TRUE AND published = ?))"), source);
         assertTrue(source.contains("ResultSetMetaData metadata = resultSet.getMetaData()"), source);
-        assertFalse(source.contains("email AS email"),
-                "a protected scalar must not enter an unguarded generated carrier:\n" + source);
+        assertTrue(source.contains("CASE WHEN ? = TRUE THEN email ELSE NULL END AS email"),
+                "a protected scalar must be guarded at the generated SQL boundary:\n" + source);
         assertFalse(source.contains("Titan GraphQL proof"),
                 "generated routines must contain no fixture row data:\n" + source);
     }
@@ -63,21 +64,23 @@ class TitanGraphqlRoutineSourceGeneratorTest {
     void sameGeneratorProducesUnrelatedCommerceRoutinesWithoutDemoNames() throws IOException {
         String source = TitanGraphqlRoutineSourceGenerator.generate(model("commerce.titan.graphql.yaml"));
 
-        assertTrue(source.contains("readRootCustomer(Connection connection, int id)"), source);
+        assertTrue(source.contains("readRootCustomer(Connection connection, "
+                + "boolean allowRelationOrders, int id)"), source);
         assertTrue(source.contains("readRootCountry(Connection connection, String code)"), source);
         assertTrue(source.contains("readRootApiClient(Connection connection, UUID id)"), source);
         assertTrue(source.contains(
                 "readRootInventoryItem(Connection connection, String sku, String warehouse)"), source);
         assertTrue(source.contains("WHERE sku = ? AND warehouse_code = ?"), source);
         assertTrue(source.contains("readRootCustomersForward("), source);
-        assertTrue(source.contains("readRelationCustomerOrders(Connection connection, int localKey)"), source);
+        assertTrue(source.contains("readRelationCustomerOrders(Connection connection, "
+                + "boolean allowRelation, int localKey)"), source);
         assertTrue(source.contains("readRelationCustomerOrdersBatch64(Connection connection"), source);
         assertTrue(source.contains("readRelationCustomerOrderConnectionBatch64(Connection connection"), source);
         assertTrue(source.contains("(? = FALSE OR id = ?) ORDER BY id ASC"), source);
         assertTrue(source.contains("customer_id AS __titan_parent_key FROM commerce.orders"), source);
-        assertTrue(source.contains("WHERE customer_id = ? ORDER BY id ASC"), source);
+        assertTrue(source.contains("WHERE ? = TRUE AND customer_id = ? ORDER BY id ASC"), source);
         assertTrue(source.contains("FROM commerce.customers"), source);
-        assertTrue(source.contains("FROM commerce.orders WHERE customer_id = ?"), source);
+        assertTrue(source.contains("FROM commerce.orders WHERE ? = TRUE AND customer_id = ?"), source);
         assertTrue(source.contains("public static List<Map<String,Object>> countRootCustomers("), source);
         assertTrue(source.contains("readRootCustomersOrderNameDescForward("), source);
         assertTrue(source.contains("readRootCustomersOrderNameDescFilterPlanForward("), source);
@@ -99,6 +102,25 @@ class TitanGraphqlRoutineSourceGeneratorTest {
 
         assertEquals(TitanGraphqlRoutineSourceGenerator.generate(document),
                 TitanGraphqlRoutineSourceGenerator.generate(document));
+    }
+
+    @Test
+    void generatesSqlGuardsForProtectedRelationsAndTheirBatches() throws IOException {
+        String yaml = Files.readString(Path.of(
+                "src/test/resources/graphql/demo-blog.titan.graphql.yaml"))
+                .replace("      author:\n        target: User",
+                        "      author:\n        policies: [canReadUserEmail]\n        target: User");
+
+        String source = TitanGraphqlRoutineSourceGenerator.generate(
+                TitanGraphqlModelDocumentYaml.parse(yaml));
+
+        assertTrue(source.contains("CASE WHEN ? = TRUE THEN author_id ELSE NULL END "
+                + "AS __titan_relation_author"), source);
+        assertTrue(source.contains("readRelationArticleAuthor(Connection connection, "
+                + "boolean allowFieldEmail, boolean allowRelation, int localKey)"), source);
+        assertTrue(source.contains("FROM public.users WHERE ? = TRUE AND id = ?"), source);
+        assertTrue(source.contains("readRelationArticleAuthorBatch64(Connection connection, "
+                + "boolean allowFieldEmail, boolean allowRelation"), source);
     }
 
     @Test

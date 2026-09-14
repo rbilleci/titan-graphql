@@ -507,8 +507,11 @@ Fields:
 | `expression.name` | yes | Reviewed named expression: `adminOnly`, `authenticated`, `allowAll`, `denyAll`, `roleEquals:<role>`, or `roleIn:<role,...>`. Multiple attached policies are ANDed. |
 
 The same compiler is used for field and relation authorization and unknown expressions fail
-closed while adapting the model. Reserved for later: arbitrary expression languages, user-defined Java snippets,
-nested write policies, and actor-shaped schema generation.
+closed while adapting the model. In compiled mode, each protected projection is emitted with a SQL
+`CASE` guard driven by the compiled decision, and protected relation routines also require the
+decision in their row predicate. Reserved for later: root/row policy predicates, arbitrary
+expression languages, user-defined Java snippets, nested write policies, and actor-shaped schema
+generation.
 
 ## Context Filters
 
@@ -915,11 +918,8 @@ The adapter accepts the currently compiled subset:
   filter/sort capability shapes
 - `one` and `many` relations, Relay relation pagination with exact
   `totalCount`, Relay arguments, and declared relation sort paths
-- the current named `adminOnly` field-policy predicate used by
-  `canReadUserEmail`
-
-Relation policies currently fail closed with `UNSUPPORTED_RELATION_POLICY`; the adapter does not
-discard or post-filter a policy it cannot enforce before reading.
+- reviewed named field and relation policies: `adminOnly`, `authenticated`, `allowAll`, `denyAll`,
+  `roleEquals:<role>`, and `roleIn:<role,...>`; multiple attached policies are ANDed
 
 Unsupported adapter input fails explicitly with adapter diagnostics such as
 `UNSUPPORTED_POLICY`, `UNSUPPORTED_FIELD_TYPE`,

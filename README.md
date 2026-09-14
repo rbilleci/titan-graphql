@@ -38,8 +38,8 @@ The full pipeline is automated and green on both supported dialects:
   carriers plus a model-hash attestation routine. The same generator produces unrelated
   customers/orders routines without blog names or fixture rows. Titan transpiles these carriers
   for PostgreSQL and MySQL; live tests prove that they read current rows, expose a reviewed
-  computed expression, enforce the first fail-closed context predicate, and omit an unguarded
-  protected scalar. See [docs/generated-routines.md](docs/generated-routines.md).
+  computed expression, enforce the first fail-closed context predicate, and expose a protected
+  scalar only through a reviewed SQL policy guard. See [docs/generated-routines.md](docs/generated-routines.md).
 - **Execute GraphQL through generated routines:** `titan.graphql.execution.mode=compiled` uses the
   generic parser, validator, and planner, resolves generated entry points from the verified package
   inventory, and normalizes PostgreSQL JSONB functions and MySQL result-set procedures behind one
@@ -129,7 +129,7 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   production package and from `compiledSchemaIntegrationTest`; `legacySqlIntegrationTest` owns a
   separate package/output tree. Generated carriers do not yet cover
   multiple simultaneous custom order keys, relation ordering beyond a reviewed non-null to-one
-  hop, protected-field policy branches, or nested multi-level batching. Generated filters run in
+  hop, root/row policy predicates, or nested multi-level batching. Generated filters run in
   static Titan carriers: one local predicate retains `in` arities through 16, while composed
   `and`/`or`/`not`, filter-plus-order, and reviewed to-one relation paths use a bounded 3-by-3 DNF
   plan. Expressions beyond that declared carrier budget fail closed.
@@ -172,8 +172,14 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   but still requires an author to review and declare the public key arguments instead of silently
   choosing one component. The projection adapter compiles the reviewed named-policy subset
   (`adminOnly`, `authenticated`, `allowAll`, `denyAll`, `roleEquals:<role>`, and
-  `roleIn:<role,...>`) for fields and relations, conjoining multiple attached rules. Generated
-  policy-specific database carriers remain a release blocker.
+  `roleIn:<role,...>`) for fields and relations, conjoining multiple attached rules. Compiled
+  reads pass those reviewed decisions into generated carriers: protected scalar and relation-key
+  projections use SQL `CASE` guards, and protected relation routines also require an explicit
+  allow predicate. The dual-dialect demo proof covers an authorized protected scalar, direct
+  carrier masking, and an unauthorized rejection. The unrelated dual-dialect commerce proof
+  covers an authorized protected relation and rejects an unreviewed role; generated relation SQL
+  is also checked for guarded keys and direct/batch allow predicates. Root/row policy predicates
+  remain a release blocker.
 
 ## Documentation Map
 

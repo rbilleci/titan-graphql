@@ -31,6 +31,15 @@ database:
       schema: commerce
       primaryKey: warehouse_code
 
+policies:
+  canReadOrders:
+    description: Customer orders are visible to reviewed reader and admin roles.
+    appliesTo: [Customer.orders]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:reader,admin"
+
 contextFilters:
   activeCustomers:
     description: Example fail-closed row predicate supplied by trusted request context.
@@ -69,6 +78,7 @@ types:
         nullable: false
         localColumn: id
         targetColumn: customer_id
+        policies: [canReadOrders]
         capabilities:
           selectable: true
           batchable: true

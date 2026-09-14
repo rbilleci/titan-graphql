@@ -70,9 +70,12 @@ class GeneratedTitanGraphqlReadsIT {
             assertEquals("Titan GraphQL proof", point.get(0).get("title").asText(), target.name());
             assertEquals(19, point.get(0).get("title_length").asInt(), target.name());
 
-            JsonNode author = rows(connection, target, "read_relation_article_author", 10);
+            JsonNode author = rows(connection, target, "read_relation_article_author", false, 10);
             assertEquals("Ada Lovelace", author.get(0).get("name").asText(), target.name());
-            assertFalse(author.get(0).has("email"), "protected email leaked from carrier on " + target);
+            assertTrue(author.get(0).get("email").isNull(),
+                    "protected email leaked from carrier on " + target);
+            JsonNode authorizedAuthor = rows(connection, target, "read_relation_article_author", true, 10);
+            assertEquals("ada@example.test", authorizedAuthor.get(0).get("email").asText(), target.name());
 
             JsonNode publishedPage = rows(connection, target, "read_root_articles_forward",
                     false, 0, false, 0, false, 0, true, true, true, 10);
@@ -271,8 +274,13 @@ class GeneratedTitanGraphqlReadsIT {
             JsonNode protectedField = graphql(dataModel,
                     "{ article(id: 1) { author { email } } }",
                     GraphqlRequestContext.legacy(10L, "admin"));
-            assertTrue(protectedField.at("/errors/0/message").asText().contains("protected field"),
+            assertEquals("ada@example.test", protectedField.at("/data/article/author/email").asText(),
                     protectedField.toString());
+            JsonNode rejectedProtectedField = graphql(dataModel,
+                    "{ article(id: 1) { author { email } } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertTrue(rejectedProtectedField.at("/errors/0/message").asText().contains("not authorized"),
+                    rejectedProtectedField.toString());
 
             JsonNode missingContext = graphql(dataModel,
                     "{ articles(first: 1) { edges { node { id } } } }",

@@ -87,7 +87,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
         TitanGraphqlTypeDocument type = context.type(root.type());
         if (root.operation() == TitanGraphqlRootDocument.RootDocumentOperation.POINT) {
             List<TitanGraphqlRootDocument.RootDocumentArgument> keys = pointKeyArguments(root);
-            List<Parameter> parameters = new ArrayList<>();
+            List<Parameter> parameters = new ArrayList<>(projectionParameters(type));
             List<String> predicates = new ArrayList<>();
             for (TitanGraphqlRootDocument.RootDocumentArgument key : keys) {
                 if (key.kind() != TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS
@@ -198,7 +198,8 @@ public final class TitanGraphqlRoutineSourceGenerator {
         String select = selectList(context, type, extra, rootAlias, from);
         PredicateContract base = rootPredicate(context, type, root, sort, rootAlias, null);
         String where = base.sql() + (base.sql().isEmpty() ? " WHERE " : " AND ") + filter.predicate();
-        List<Parameter> parameters = new ArrayList<>(filter.parameters());
+        List<Parameter> parameters = new ArrayList<>(projectionParameters(type));
+        parameters.addAll(filter.parameters());
         parameters.addAll(base.parameters());
         parameters.add(new Parameter("pageSize", "int", "setInt"));
         requireRoutineParameterBudget(root.name(), parameters);
@@ -518,7 +519,8 @@ public final class TitanGraphqlRoutineSourceGenerator {
             ScalarFilterContract scalarFilter
     ) {
         PredicateContract pagePredicate = rootPredicate(context, type, root, sort, rootQualifier, scalarFilter);
-        List<Parameter> parameters = new ArrayList<>(pagePredicate.parameters());
+        List<Parameter> parameters = new ArrayList<>(projectionParameters(type));
+        parameters.addAll(pagePredicate.parameters());
         parameters.add(new Parameter("pageSize", "int", "setInt"));
         String base = select + pagePredicate.sql();
         String reverseDirection = direction == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
@@ -741,9 +743,6 @@ public final class TitanGraphqlRoutineSourceGenerator {
             TitanGraphqlTypeDocument owner,
             TitanGraphqlRelationDocument relation
     ) {
-        if (!relation.policies().isEmpty()) {
-            return; // Never generate an unguarded carrier for a protected relation.
-        }
         TitanGraphqlTypeDocument target = context.type(relation.targetType());
         String graphqlType = context.graphqlTypeOrNull(owner, relation.localColumn());
         if (graphqlType == null) {
@@ -763,12 +762,18 @@ public final class TitanGraphqlRoutineSourceGenerator {
             relationClauses.add("(? = FALSE OR "
                     + identifier(argument.column(), "relation argument column") + " = ?)");
         }
-        List<Parameter> directParameters = new ArrayList<>();
+        List<Parameter> directParameters = new ArrayList<>(projectionParameters(target));
+        if (!relation.policies().isEmpty()) {
+            directParameters.add(new Parameter("allowRelation", "boolean", "setBoolean"));
+        }
         directParameters.add(localKey);
         directParameters.addAll(relationParameters);
         StringBuilder sql = new StringBuilder(selectList(context, target))
-                .append(" WHERE ").append(identifier(relation.targetColumn(), "relation target column"))
-                .append(" = ?");
+                .append(" WHERE ");
+        if (!relation.policies().isEmpty()) {
+            sql.append("? = TRUE AND ");
+        }
+        sql.append(identifier(relation.targetColumn(), "relation target column")).append(" = ?");
         for (String clause : relationClauses) {
             sql.append(" AND ").append(clause);
         }
@@ -776,7 +781,10 @@ public final class TitanGraphqlRoutineSourceGenerator {
         emitCarrier(source, "readRelation" + javaTypeName(owner.name()) + javaTypeName(relation.name()),
                 directParameters, sql.toString());
         for (int batchSize : RELATION_BATCH_SIZES) {
-            List<Parameter> batchParameters = new ArrayList<>();
+            List<Parameter> batchParameters = new ArrayList<>(projectionParameters(target));
+            if (!relation.policies().isEmpty()) {
+                batchParameters.add(new Parameter("allowRelation", "boolean", "setBoolean"));
+            }
             for (int index = 1; index <= batchSize; index++) {
                 batchParameters.add(new Parameter("localKey" + index, localKey.javaType(), localKey.setter()));
             }
@@ -784,7 +792,8 @@ public final class TitanGraphqlRoutineSourceGenerator {
             String batchSql = selectList(context, target, List.of(
                     identifier(relation.targetColumn(), "relation target column")
                             + " AS __titan_parent_key"))
-                    + " WHERE " + identifier(relation.targetColumn(), "relation target column")
+                    + " WHERE " + (!relation.policies().isEmpty() ? "? = TRUE AND " : "")
+                    + identifier(relation.targetColumn(), "relation target column")
                     + " IN (" + String.join(", ", java.util.Collections.nCopies(batchSize, "?")) + ")";
             StringBuilder orderedBatchSql = new StringBuilder(batchSql);
             for (String clause : relationClauses) {
@@ -858,28 +867,48 @@ public final class TitanGraphqlRoutineSourceGenerator {
     ) {
         List<String> projections = new ArrayList<>();
         for (TitanGraphqlFieldDocument field : type.fields()) {
-            if (!field.policies().isEmpty()) {
-                continue; // Protected scalars require a policy-specific generated routine.
-            }
+            String expression;
             if (field.computed() == null) {
-                projections.add(columnExpression(qualifier, field.column()) + " AS "
-                        + sqlAlias(field.name()));
+                expression = columnExpression(qualifier, field.column());
             } else if (field.computed().selectable()) {
-                projections.add(computedExpression(type, field, qualifier) + " AS "
-                        + sqlAlias(field.name()));
+                expression = computedExpression(type, field, qualifier);
+            } else {
+                continue;
             }
+            projections.add(guardedProjection(expression, field.policies()) + " AS "
+                    + sqlAlias(field.name()));
         }
         for (TitanGraphqlRelationDocument relation : type.relations()) {
-            if (relation.policies().isEmpty()) {
-                projections.add(columnExpression(qualifier, relation.localColumn()) + " AS "
-                        + hiddenRelationAlias(relation.name()));
-            }
+            projections.add(guardedProjection(
+                    columnExpression(qualifier, relation.localColumn()), relation.policies()) + " AS "
+                    + hiddenRelationAlias(relation.name()));
         }
         projections.addAll(extraProjections);
         if (projections.isEmpty()) {
-            throw unsupported("type '" + type.name() + "' has no unprotected selectable scalar fields");
+            throw unsupported("type '" + type.name() + "' has no selectable scalar fields");
         }
         return "SELECT " + String.join(", ", projections) + " FROM " + from;
+    }
+
+    private static String guardedProjection(String expression, List<String> policies) {
+        return policies.isEmpty() ? expression : "CASE WHEN ? = TRUE THEN " + expression + " ELSE NULL END";
+    }
+
+    private static List<Parameter> projectionParameters(TitanGraphqlTypeDocument type) {
+        List<Parameter> parameters = new ArrayList<>();
+        for (TitanGraphqlFieldDocument field : type.fields()) {
+            if (!field.policies().isEmpty() && (field.computed() == null || field.computed().selectable())) {
+                parameters.add(new Parameter("allowField" + javaTypeName(field.name()),
+                        "boolean", "setBoolean"));
+            }
+        }
+        for (TitanGraphqlRelationDocument relation : type.relations()) {
+            if (!relation.policies().isEmpty()) {
+                parameters.add(new Parameter("allowRelation" + javaTypeName(relation.name()),
+                        "boolean", "setBoolean"));
+            }
+        }
+        return List.copyOf(parameters);
     }
 
     private static String computedExpression(TitanGraphqlTypeDocument type, TitanGraphqlFieldDocument field) {

@@ -66,6 +66,12 @@ class CommerceCompiledGraphqlIT {
             assertEquals("Northwind", pointJson.at("/data/customer/name").asText(), target.name());
             assertEquals("NW-001", pointJson.at("/data/customer/orders/0/reference").asText(), target.name());
 
+            JsonNode rejectedOrders = JSON.readTree(execute(runtime,
+                    "{ customer(id: 7) { orders { id } } }",
+                    GraphqlRequestContext.legacy(1L, "anonymous")).json());
+            assertTrue(rejectedOrders.at("/errors/0/message").asText().contains("not authorized"),
+                    target.name());
+
             JsonNode stringKey = JSON.readTree(execute(runtime,
                     "{ country(code: \"NL\") { code name } }",
                     GraphqlRequestContext.legacy(1L, "reader")).json());

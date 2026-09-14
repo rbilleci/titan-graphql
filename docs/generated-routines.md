@@ -8,7 +8,7 @@ legacy `sql` route still uses the transitional demo whole-request kernel.
 `titanGraphqlGenerateRoutines` converts one validated, reviewed `titan.graphql.yaml` document into
 static Java carriers that Titan can analyze and transpile. Schema authors do not write read SQL or
 Java resolvers. The generator owns physical table/column binding, stable method naming, parameters,
-projection aliases, policy omission, pagination order, and model attestation.
+projection aliases, policy guards, pagination order, and model attestation.
 
 The generated Java file lives under `build/generated/sources/titan-graphql/`. It is reproducible
 build output and must not be committed. `titanTranspile` consumes it directly; `titanPackage`,
@@ -27,15 +27,17 @@ For each supported reviewed model the generator emits:
   arity-specific `in` carriers for 0, 1, 2, 4, 8, and 16 values;
 - `countRoot<Name>(...)` for roots declaring exact visible counts;
 - filter-specific count carriers so `totalCount` observes the same local predicate;
-- `readRelation<Owner><Name>(...)` for unprotected direct relations;
+- `readRelation<Owner><Name>(...)` for direct relations, including a required allow predicate
+  when the relation is protected;
 - `readRelation<Owner><Name>Batch<N>(...)` at fixed arities 2, 4, 8, 16, 32, and 64,
   allowing a 100-parent page to batch in at most two static calls. Both forms include optional
   parameters for reviewed local integer equality arguments.
 
 Every query uses prepared-statement parameters. Physical identifiers must satisfy the portable
 unquoted identifier subset and unsafe computed templates are rejected during generation. Scalar
-fields with policies and relations with policies are not placed in an unguarded carrier. A model
-that cannot be represented safely fails generation rather than emitting a partial unsafe query.
+fields and relation keys with policies use `CASE WHEN ? = TRUE ... ELSE NULL` projections.
+Protected relation reads additionally use `? = TRUE` in their row predicate. A model that cannot
+be represented safely fails generation rather than emitting a partial unsafe query.
 
 Titan currently compiles the metadata-driven JDBC carrier shape differently by dialect:
 
@@ -51,17 +53,19 @@ bound package metadata; deriving or hard-coding SQL routine names is not a produ
 ## Verified Properties
 
 Docker-free generator tests prove byte stability, absence of fixture rows, fail-closed rejection
-of unsafe identifiers, protected-field omission, and reuse for unrelated blog and commerce models.
+of unsafe identifiers, protected field/relation SQL guards, and reuse for unrelated blog and
+commerce models.
 `GeneratedTitanGraphqlReadsIT` installs the package and proves both dialect shapes against live
-databases, including model attestation, point/page/relation reads, a computed field, policy
-omission, observing a row update, and direct collection-relation grouping in a root-plus-batch
+databases, including model attestation, point/page/relation reads, a computed field, protected-field
+masking and authorized access, observing a row update, and direct collection-relation grouping in a root-plus-batch
 two-step plan. `commerceIntegrationTest` repeats the complete generate-to-serve chain in an
 isolated output tree for an unrelated customers/orders model. It asserts that every packaged
 entry point belongs to the generated carrier class and that no demo-blog or article routine is
 present, then proves integer, string, native UUID, and composite point keys; nested reads;
 batching; root and relation counts; root and relation cursor continuation; relation backward
 windows; fail-closed context filtering; generated local scalar filtering with exact counts; live
-mutations; and restart visibility on PostgreSQL and MySQL. Both schemas also prove stable one-hop
+mutations; protected-relation authorization/rejection; and restart visibility on PostgreSQL and
+MySQL. Both schemas also prove stable one-hop
 root ordering through reviewed non-null to-one relations. Both schemas prove relation connections
 below collection roots with one generated
 batch read rather than one child read per parent. The demo proof additionally covers bounded
@@ -81,8 +85,7 @@ Before the carrier route can replace it, generation and generic runtime invocati
 
 - filter expressions beyond the static 3 OR-group by 3 AND-term DNF budget, multiple simultaneous
   custom order keys, and relation ordering beyond a non-null to-one hop;
-- exact visible counts for policy-specific branches;
-- protected-field and protected-relation policy-specific branches;
+- root/row policy predicates and their exact visible counts;
 - to-many or multi-hop filter paths and SQL-side per-parent connection limiting;
 - nested multi-level relation batching;
 - portable null ordering and scalar/null value preservation;
@@ -90,3 +93,8 @@ Before the carrier route can replace it, generation and generic runtime invocati
 
 No release claim should describe the legacy `sql` mode as schema-portable. Compiled mode may be
 described as schema-driven only for its verified plan subset until all items above are closed.
+Protected field values and relation keys are guarded in generated SQL by reviewed boolean policy
+decisions supplied by the runtime. Protected relation carriers additionally include an allow
+predicate, so direct invocation with a denied decision returns no relation rows. GraphQL validation
+still rejects unauthorized selections before I/O; the SQL guard is a second boundary rather than
+a masking substitute.
