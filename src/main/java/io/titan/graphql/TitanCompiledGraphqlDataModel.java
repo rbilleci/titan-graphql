@@ -108,8 +108,13 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         } else {
             boolean backward = read.cursorWindow().direction()
                     == GraphqlReadPlan.RootCursorWindowDirection.BACKWARD;
-            method = "readRoot" + suffix + (backward ? "Backward" : "Forward");
-            parameters = rootParameters(root, read, context, true);
+            GraphqlSelection.RootOrder order = selection.rootOrderBy().isEmpty()
+                    ? null : selection.rootOrderBy().getFirst();
+            String orderSuffix = order == null ? "" : "Order"
+                    + TitanGraphqlRoutineSourceGenerator.javaTypeName(order.name())
+                    + (order.direction() == GraphqlRootField.RootCursorDirection.ASC ? "Asc" : "Desc");
+            method = "readRoot" + suffix + orderSuffix + (backward ? "Backward" : "Forward");
+            parameters = rootParameters(root, read, context, true, order);
         }
         observable.addReadStep(read.stepName(), "TITAN PACKAGE " + method + "(?)");
         return rows(invoker.read(connection, method, parameters));
@@ -142,7 +147,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             List<Object> edges = new ArrayList<>();
             for (Row row : page) {
                 Map<String, Object> edge = new LinkedHashMap<>();
-                if (connectionSelection.edgeCursor()) edge.put("cursor", rootCursor(read, row));
+                if (connectionSelection.edgeCursor()) edge.put("cursor", rootCursor(selection, read, row));
                 if (connectionSelection.edgeNode()) edge.put("node", renderObject(
                         connection, selection.rootTypeName(), selection.rootFieldName(), selection.fields(),
                         row, observable, relationCache));
@@ -154,7 +159,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             String method = "countRoot" + TitanGraphqlRoutineSourceGenerator.javaTypeName(
                     selection.rootFieldName());
             List<Row> countRows = rows(invoker.read(connection, method,
-                    rootParameters(requireRoot(selection.rootFieldName()), read, context, false)));
+                    rootParameters(requireRoot(selection.rootFieldName()), read, context, false, null)));
             if (countRows.size() != 1 || !(countRows.getFirst().value("total_count") instanceof Number count)) {
                 throw new SQLException("generated count carrier '" + method + "' returned an invalid row");
             }
@@ -168,9 +173,9 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                     case "hasNextPage" -> pageInfo.put(field, hasNextPage);
                     case "hasPreviousPage" -> pageInfo.put(field, hasPreviousPage);
                     case "startCursor" -> pageInfo.put(field,
-                            page.isEmpty() ? null : rootCursor(read, page.getFirst()));
+                            page.isEmpty() ? null : rootCursor(selection, read, page.getFirst()));
                     case "endCursor" -> pageInfo.put(field,
-                            page.isEmpty() ? null : rootCursor(read, page.getLast()));
+                            page.isEmpty() ? null : rootCursor(selection, read, page.getLast()));
                     default -> throw unsupported("pageInfo field '" + field + "'");
                 }
             }
@@ -183,15 +188,22 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             TitanGraphqlRootDocument root,
             GraphqlReadPlan.RootRead read,
             GraphqlRequestContext context,
-            boolean cursors
+            boolean cursors,
+            GraphqlSelection.RootOrder order
     ) {
         List<Object> parameters = new ArrayList<>();
-        String cursorType = scalarType(root.type(), root.pagination().cursor().column());
         if (cursors) {
-            addOptional(parameters, read.cursorWindow().afterCursor() == null ? null
-                    : read.cursorWindow().afterCursor().value(), cursorType);
-            addOptional(parameters, read.cursorWindow().beforeCursor() == null ? null
-                    : read.cursorWindow().beforeCursor().value(), cursorType);
+            String cursorBinding = order == null
+                    ? root.pagination().cursor().column() : order.columnName();
+            String tieBreakerBinding = order == null
+                    ? root.pagination().cursor().tieBreaker() : order.tieBreakerColumnName();
+            if (tieBreakerBinding == null || tieBreakerBinding.isBlank()) tieBreakerBinding = cursorBinding;
+            addCursorParameters(parameters, read.cursorWindow().afterCursor(),
+                    scalarType(root.type(), cursorBinding), tieBreakerBinding,
+                    scalarType(root.type(), tieBreakerBinding), cursorBinding);
+            addCursorParameters(parameters, read.cursorWindow().beforeCursor(),
+                    scalarType(root.type(), cursorBinding), tieBreakerBinding,
+                    scalarType(root.type(), tieBreakerBinding), cursorBinding);
         }
         for (TitanGraphqlRootDocument.RootDocumentArgument argument : root.arguments()) {
             if (argument.kind() != TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS
@@ -217,6 +229,25 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         }
         if (cursors) parameters.add(read.cursorWindow().fetchRowCount());
         return List.copyOf(parameters);
+    }
+
+    private static void addCursorParameters(
+            List<Object> parameters,
+            GraphqlCursorCodec.CursorPayload cursor,
+            String cursorType,
+            String tieBreakerBinding,
+            String tieBreakerType,
+            String cursorBinding
+    ) {
+        boolean present = cursor != null;
+        parameters.add(present);
+        Object value = present ? coerce(cursor.value(), cursorType) : defaultValue(cursorType);
+        parameters.add(value);
+        if (!tieBreakerBinding.equals(cursorBinding)) {
+            parameters.add(value);
+            parameters.add(present
+                    ? coerce(cursor.tieBreakerValue(), tieBreakerType) : defaultValue(tieBreakerType));
+        }
     }
 
     private static void addOptional(List<Object> parameters, Object value, String type) {
@@ -349,7 +380,20 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         return value == null ? "<null>" : String.valueOf(value);
     }
 
-    private static String rootCursor(GraphqlReadPlan.RootRead read, Row row) {
+    private static String rootCursor(
+            GraphqlSelection selection,
+            GraphqlReadPlan.RootRead read,
+            Row row
+    ) {
+        if (!selection.rootOrderBy().isEmpty()) {
+            GraphqlSelection.RootOrder ordering = selection.rootOrderBy().getFirst();
+            Object value = row.value(TitanGraphqlRoutineSourceGenerator.sqlAlias(ordering.name()));
+            Object tie = row.value(TitanGraphqlRoutineSourceGenerator.sqlAlias(
+                    ordering.tieBreakerColumnName().equals(ordering.columnName())
+                            ? ordering.name() : ordering.tieBreakerColumnName()));
+            return GraphqlCursorCodec.encode(GraphqlCursorCodec.payload(
+                    ordering, String.valueOf(value), String.valueOf(tie)));
+        }
         GraphqlRootField.RootCursorOrdering ordering = read.cursorOrdering();
         Object value = row.value(TitanGraphqlRoutineSourceGenerator.sqlAlias(ordering.name()));
         Object tie = row.value(TitanGraphqlRoutineSourceGenerator.sqlAlias(
@@ -364,13 +408,13 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         if (!selection.generatedRootFilters().isEmpty()) {
             throw unsupported("generated root filters until filter carriers are emitted");
         }
-        if (!selection.rootOrderBy().isEmpty()) {
-            throw unsupported("custom root ordering until order-specific carriers are emitted");
+        if (selection.rootOrderBy().size() > 1) {
+            throw unsupported("multiple custom root order paths");
         }
-        if (root.operation() == TitanGraphqlRootDocument.RootDocumentOperation.CONNECTION
-                && !root.pagination().cursor().tieBreaker().isBlank()
-                && !root.pagination().cursor().tieBreaker().equals(root.pagination().cursor().column())) {
-            throw unsupported("compound cursor ordering until tuple predicates are emitted");
+        if (!selection.rootOrderBy().isEmpty()
+                && selection.rootOrderBy().getFirst().sortHopCount() != 0) {
+            throw unsupported("relation-hop root ordering '"
+                    + selection.rootOrderBy().getFirst().name() + "'");
         }
         boolean collection = selection.rootCardinality() == GraphqlRootField.ResultCardinality.MANY;
         validateFields(selection.rootTypeName(), selection.fields(), collection, collection);
@@ -448,7 +492,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
 
     private String scalarType(String typeName, String column) {
         TitanGraphqlFieldDocument field = requireType(typeName).fields().stream()
-                .filter(candidate -> column.equals(candidate.column()))
+                .filter(candidate -> column.equals(candidate.column()) || column.equals(candidate.name()))
                 .findFirst().orElseThrow(() -> unsupported("unmapped scalar column '" + typeName + "." + column + "'"));
         return field.type();
     }

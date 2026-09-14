@@ -70,7 +70,7 @@ class CommerceCompiledGraphqlIT {
                             + "totalCount pageInfo { hasNextPage endCursor } } }",
                     GraphqlRequestContext.legacy(1L, "reader"));
             JsonNode collectionJson = JSON.readTree(collection.json());
-            assertEquals(2, collectionJson.at("/data/customers/totalCount").asInt(), target.name());
+            assertEquals(3, collectionJson.at("/data/customers/totalCount").asInt(), target.name());
             assertEquals("AW-001",
                     collectionJson.at("/data/customers/edges/1/node/orders/0/reference").asText(), target.name());
             assertEquals(3, collection.plan().readStepCount(),
@@ -83,6 +83,35 @@ class CommerceCompiledGraphqlIT {
                     GraphqlRequestContext.legacy(1L, "reader")).json());
             assertEquals(8, continued.at("/data/customers/edges/0/node/id").asInt(), target.name());
 
+            JsonNode ordered = JSON.readTree(execute(runtime,
+                    "{ customers(first: 1, orderBy: [{ name: DESC }]) { "
+                            + "edges { cursor node { id name } } pageInfo { hasNextPage } } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals("Northwind", ordered.at("/data/customers/edges/0/node/name").asText(), target.name());
+            assertEquals(9, ordered.at("/data/customers/edges/0/node/id").asInt(), target.name());
+            String orderedCursor = ordered.at("/data/customers/edges/0/cursor").asText();
+            JsonNode orderedContinuation = JSON.readTree(execute(runtime,
+                    "{ customers(first: 1, after: \"" + orderedCursor
+                            + "\", orderBy: [{ name: DESC }]) { edges { cursor node { id name } } } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals("Northwind",
+                    orderedContinuation.at("/data/customers/edges/0/node/name").asText(), target.name());
+            assertEquals(7, orderedContinuation.at("/data/customers/edges/0/node/id").asInt(), target.name());
+            String secondOrderedCursor = orderedContinuation.at("/data/customers/edges/0/cursor").asText();
+            JsonNode afterTie = JSON.readTree(execute(runtime,
+                    "{ customers(first: 1, after: \"" + secondOrderedCursor
+                            + "\", orderBy: [{ name: DESC }]) { edges { node { name } } } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals("Adventure Works", afterTie.at("/data/customers/edges/0/node/name").asText(),
+                    target.name());
+            JsonNode orderedBackward = JSON.readTree(execute(runtime,
+                    "{ customers(last: 1, orderBy: [{ name: DESC }]) { edges { node { name } } "
+                            + "pageInfo { hasPreviousPage } } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals("Adventure Works",
+                    orderedBackward.at("/data/customers/edges/0/node/name").asText(), target.name());
+            assertTrue(orderedBackward.at("/data/customers/pageInfo/hasPreviousPage").asBoolean(), target.name());
+
             GraphqlRequestContext activeOnly = new GraphqlRequestContext(
                     1L, "reader", "actor-1", "", "commerce-request", "", List.of(),
                     List.of("activeCustomers"), false, false, false, 0L,
@@ -90,7 +119,7 @@ class CommerceCompiledGraphqlIT {
             JsonNode filtered = JSON.readTree(execute(runtime,
                     "{ customers(first: 10) { edges { node { id name } } totalCount } }",
                     activeOnly).json());
-            assertEquals(1, filtered.at("/data/customers/totalCount").asInt(), target.name());
+            assertEquals(2, filtered.at("/data/customers/totalCount").asInt(), target.name());
             assertEquals("Northwind", filtered.at("/data/customers/edges/0/node/name").asText(), target.name());
 
             try (Statement statement = connection.createStatement()) {
@@ -151,7 +180,7 @@ class CommerceCompiledGraphqlIT {
         apply(connection, target, migrations.resolve("R__titan_020_routines.sql"));
         try (Statement statement = connection.createStatement()) {
             statement.executeUpdate("INSERT INTO commerce.customers (id, name, active) VALUES "
-                    + "(7, 'Northwind', true), (8, 'Adventure Works', false)");
+                    + "(7, 'Northwind', true), (8, 'Adventure Works', false), (9, 'Northwind', true)");
             statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference) VALUES "
                     + "(70, 7, 'NW-001'), (71, 7, 'NW-002'), (80, 8, 'AW-001')");
         }

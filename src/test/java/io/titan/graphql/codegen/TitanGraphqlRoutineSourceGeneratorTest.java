@@ -56,6 +56,9 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("FROM commerce.customers"), source);
         assertTrue(source.contains("FROM commerce.orders WHERE customer_id = ?"), source);
         assertTrue(source.contains("public static List<Map<String,Object>> countRootCustomers("), source);
+        assertTrue(source.contains("readRootCustomersOrderNameDescForward("), source);
+        assertTrue(source.contains("name < ? OR (name = ? AND id < ?)"), source);
+        assertTrue(source.contains("ORDER BY name DESC, id DESC LIMIT ?"), source);
         assertTrue(source.contains("(? = FALSE OR (? = TRUE AND active = ?))"), source);
         assertFalse(source.contains("Article"), source);
         assertFalse(source.contains("articles"), source);

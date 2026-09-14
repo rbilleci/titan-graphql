@@ -100,20 +100,23 @@ public final class TitanGraphqlRoutineSourceGenerator {
             throw unsupported("connection root '" + root.name() + "' requires cursor pagination");
         }
         TitanGraphqlRootDocument.Cursor cursor = pagination.cursor();
-        PredicateContract pagePredicate = rootPredicate(context, type, root, true);
-        List<Parameter> parameters = new ArrayList<>(pagePredicate.parameters());
-        parameters.add(new Parameter("pageSize", "int", "setInt"));
-        String tieBreaker = cursor.tieBreaker().isBlank() ? cursor.column() : cursor.tieBreaker();
-        String base = selectList(context, type) + pagePredicate.sql();
-        String declaredDirection = cursor.direction().name();
-        String reverseDirection = cursor.direction() == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
-                ? "DESC" : "ASC";
-        emitCarrier(source, "readRoot" + javaTypeName(root.name()) + "Forward", parameters,
-                base + orderBy(cursor.column(), declaredDirection, tieBreaker) + " LIMIT ?");
-        emitCarrier(source, "readRoot" + javaTypeName(root.name()) + "Backward", parameters,
-                base + orderBy(cursor.column(), reverseDirection, tieBreaker) + " LIMIT ?");
+        String cursorTieBreaker = cursor.tieBreaker().isBlank() ? cursor.column() : cursor.tieBreaker();
+        emitPageCarriers(source, context, type, root, "",
+                cursor.column(), cursorTieBreaker, cursor.direction());
+        for (TitanGraphqlRootDocument.RootDocumentSortPath sort : root.sortPaths()) {
+            if (sort.hops() != 0) {
+                continue;
+            }
+            String tieBreaker = sort.tieBreaker().isBlank() ? sort.column() : sort.tieBreaker();
+            emitPageCarriers(source, context, type, root,
+                    "Order" + javaTypeName(sort.name()) + "Asc",
+                    sort.column(), tieBreaker, TitanGraphqlRootDocument.RootDocumentSortDirection.ASC);
+            emitPageCarriers(source, context, type, root,
+                    "Order" + javaTypeName(sort.name()) + "Desc",
+                    sort.column(), tieBreaker, TitanGraphqlRootDocument.RootDocumentSortDirection.DESC);
+        }
         if (pagination.totalCount() == TitanGraphqlRootDocument.TotalCountMode.EXACT) {
-            PredicateContract countPredicate = rootPredicate(context, type, root, false);
+            PredicateContract countPredicate = rootPredicate(context, type, root, null);
             emitCarrier(source, "countRoot" + javaTypeName(root.name()),
                     countPredicate.parameters(), "SELECT COUNT(*) AS total_count FROM "
                             + identifier(context.schema(type), "schema") + "."
@@ -121,30 +124,59 @@ public final class TitanGraphqlRoutineSourceGenerator {
         }
     }
 
+    private static void emitPageCarriers(
+            StringBuilder source,
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            TitanGraphqlRootDocument root,
+            String methodSuffix,
+            String sortBinding,
+            String tieBreakerBinding,
+            TitanGraphqlRootDocument.RootDocumentSortDirection direction
+    ) {
+        SortContract sort = sortContract(context, type, sortBinding, tieBreakerBinding, direction);
+        PredicateContract pagePredicate = rootPredicate(context, type, root, sort);
+        List<Parameter> parameters = new ArrayList<>(pagePredicate.parameters());
+        parameters.add(new Parameter("pageSize", "int", "setInt"));
+        String base = selectList(context, type) + pagePredicate.sql();
+        String reverseDirection = direction == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
+                ? "DESC" : "ASC";
+        String rootMethod = "readRoot" + javaTypeName(root.name()) + methodSuffix;
+        emitCarrier(source, rootMethod + "Forward", parameters,
+                base + orderBy(sort.expression(), direction.name(), sort.tieBreakerExpression()) + " LIMIT ?");
+        emitCarrier(source, rootMethod + "Backward", parameters,
+                base + orderBy(sort.expression(), reverseDirection, sort.tieBreakerExpression()) + " LIMIT ?");
+    }
+
     private static PredicateContract rootPredicate(
             GenerationContext context,
             TitanGraphqlTypeDocument type,
             TitanGraphqlRootDocument root,
-            boolean includeCursors
+            SortContract sort
     ) {
         List<Parameter> parameters = new ArrayList<>();
         List<String> clauses = new ArrayList<>();
-        if (includeCursors) {
-            TitanGraphqlRootDocument.Cursor cursor = root.pagination().cursor();
-            String afterOperator = cursor.direction() == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
+        if (sort != null) {
+            String afterOperator = sort.direction() == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
                     ? ">" : "<";
-            String beforeOperator = cursor.direction() == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
+            String beforeOperator = sort.direction() == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
                     ? "<" : ">";
             parameters.add(new Parameter("hasAfter", "boolean", "setBoolean"));
-            parameters.add(context.parameter("after", context.graphqlType(type, cursor.column()),
-                    cursor.column(), type));
+            parameters.add(context.parameter("after", sort.graphqlType(), sort.binding(), type));
+            if (sort.compound()) {
+                parameters.add(context.parameter("afterEqual", sort.graphqlType(), sort.binding(), type));
+                parameters.add(context.parameter("afterTie", sort.tieBreakerGraphqlType(),
+                        sort.tieBreakerBinding(), type));
+            }
             parameters.add(new Parameter("hasBefore", "boolean", "setBoolean"));
-            parameters.add(context.parameter("before", context.graphqlType(type, cursor.column()),
-                    cursor.column(), type));
-            clauses.add("(? = FALSE OR " + identifier(cursor.column(), "cursor column")
-                    + " " + afterOperator + " ?)");
-            clauses.add("(? = FALSE OR " + identifier(cursor.column(), "cursor column")
-                    + " " + beforeOperator + " ?)");
+            parameters.add(context.parameter("before", sort.graphqlType(), sort.binding(), type));
+            if (sort.compound()) {
+                parameters.add(context.parameter("beforeEqual", sort.graphqlType(), sort.binding(), type));
+                parameters.add(context.parameter("beforeTie", sort.tieBreakerGraphqlType(),
+                        sort.tieBreakerBinding(), type));
+            }
+            clauses.add(cursorClause(sort, afterOperator));
+            clauses.add(cursorClause(sort, beforeOperator));
         }
         for (TitanGraphqlRootDocument.RootDocumentArgument argument : root.arguments()) {
             if (argument.kind() == TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS
@@ -171,6 +203,35 @@ public final class TitanGraphqlRoutineSourceGenerator {
                 clauses.isEmpty() ? "" : " WHERE " + String.join(" AND ", clauses));
     }
 
+    private static String cursorClause(SortContract sort, String operator) {
+        if (!sort.compound()) {
+            return "(? = FALSE OR " + sort.expression() + " " + operator + " ?)";
+        }
+        return "(? = FALSE OR (" + sort.expression() + " " + operator + " ? OR ("
+                + sort.expression() + " = ? AND " + sort.tieBreakerExpression()
+                + " " + operator + " ?)))";
+    }
+
+    private static SortContract sortContract(
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            String binding,
+            String tieBreakerBinding,
+            TitanGraphqlRootDocument.RootDocumentSortDirection direction
+    ) {
+        String normalizedTie = tieBreakerBinding == null || tieBreakerBinding.isBlank()
+                ? binding : tieBreakerBinding;
+        return new SortContract(
+                binding,
+                context.sortExpression(type, binding),
+                context.graphqlType(type, binding),
+                normalizedTie,
+                context.sortExpression(type, normalizedTie),
+                context.graphqlType(type, normalizedTie),
+                direction
+        );
+    }
+
     private static void emitRelation(
             StringBuilder source,
             GenerationContext context,
@@ -189,7 +250,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
         StringBuilder sql = new StringBuilder(selectList(context, target))
                 .append(" WHERE ").append(identifier(relation.targetColumn(), "relation target column"))
                 .append(" = ?");
-        appendRelationOrder(sql, target, relation);
+        appendRelationOrder(sql, context, target, relation);
         emitCarrier(source, "readRelation" + javaTypeName(owner.name()) + javaTypeName(relation.name()),
                 List.of(localKey), sql.toString());
         for (int batchSize : RELATION_BATCH_SIZES) {
@@ -203,7 +264,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
                     + " WHERE " + identifier(relation.targetColumn(), "relation target column")
                     + " IN (" + String.join(", ", java.util.Collections.nCopies(batchSize, "?")) + ")";
             StringBuilder orderedBatchSql = new StringBuilder(batchSql);
-            appendRelationOrder(orderedBatchSql, target, relation);
+            appendRelationOrder(orderedBatchSql, context, target, relation);
             emitCarrier(source, "readRelation" + javaTypeName(owner.name())
                     + javaTypeName(relation.name()) + "Batch" + batchSize,
                     batchParameters, orderedBatchSql.toString());
@@ -212,6 +273,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
 
     private static void appendRelationOrder(
             StringBuilder sql,
+            GenerationContext context,
             TitanGraphqlTypeDocument target,
             TitanGraphqlRelationDocument relation
     ) {
@@ -220,7 +282,11 @@ public final class TitanGraphqlRoutineSourceGenerator {
             if (sort.hops() != 0) {
                 throw unsupported("relation '" + relation.name() + "' uses relation-hop ordering");
             }
-            sql.append(orderBy(sort.column(), sort.direction().name(), sort.tieBreaker()));
+            String tieBreaker = sort.tieBreaker().isBlank() ? sort.column() : sort.tieBreaker();
+            sql.append(orderBy(
+                    context.sortExpression(target, sort.column()),
+                    sort.direction().name(),
+                    context.sortExpression(target, tieBreaker)));
             return;
         }
         if (relation.cardinality() == TitanGraphqlRelationDocument.RelationDocumentCardinality.MANY) {
@@ -228,7 +294,8 @@ public final class TitanGraphqlRoutineSourceGenerator {
                 throw unsupported("to-many relation '" + relation.name()
                         + "' has no sort path or target primary key");
             }
-            sql.append(orderBy(target.primaryKey(), "ASC", target.primaryKey()));
+            String primaryKey = identifier(target.primaryKey(), "target primary key");
+            sql.append(orderBy(primaryKey, "ASC", primaryKey));
         }
     }
 
@@ -292,11 +359,11 @@ public final class TitanGraphqlRoutineSourceGenerator {
         return expression;
     }
 
-    private static String orderBy(String column, String direction, String tieBreaker) {
-        String primary = identifier(column, "sort column");
-        StringBuilder order = new StringBuilder(" ORDER BY ").append(primary).append(' ').append(direction);
-        if (tieBreaker != null && !tieBreaker.isBlank() && !tieBreaker.equals(column)) {
-            order.append(", ").append(identifier(tieBreaker, "sort tie breaker")).append(' ').append(direction);
+    private static String orderBy(String expression, String direction, String tieBreakerExpression) {
+        StringBuilder order = new StringBuilder(" ORDER BY ").append(expression).append(' ').append(direction);
+        if (tieBreakerExpression != null && !tieBreakerExpression.isBlank()
+                && !tieBreakerExpression.equals(expression)) {
+            order.append(", ").append(tieBreakerExpression).append(' ').append(direction);
         }
         return order.toString();
     }
@@ -418,6 +485,20 @@ public final class TitanGraphqlRoutineSourceGenerator {
     private record PredicateContract(List<Parameter> parameters, String sql) {
     }
 
+    private record SortContract(
+            String binding,
+            String expression,
+            String graphqlType,
+            String tieBreakerBinding,
+            String tieBreakerExpression,
+            String tieBreakerGraphqlType,
+            TitanGraphqlRootDocument.RootDocumentSortDirection direction
+    ) {
+        boolean compound() {
+            return !tieBreakerExpression.equals(expression);
+        }
+    }
+
     private static final class GenerationContext {
         private final TitanGraphqlModelDocument document;
         private final Map<String, TitanGraphqlTypeDocument> types = new LinkedHashMap<>();
@@ -476,11 +557,24 @@ public final class TitanGraphqlRoutineSourceGenerator {
 
         private String graphqlTypeOrNull(TitanGraphqlTypeDocument type, String column) {
             for (TitanGraphqlFieldDocument field : type.fields()) {
-                if (column.equals(field.column())) {
+                if (column.equals(field.column()) || column.equals(field.name())) {
                     return field.type();
                 }
             }
             return null;
+        }
+
+        private String sortExpression(TitanGraphqlTypeDocument type, String binding) {
+            for (TitanGraphqlFieldDocument field : type.fields()) {
+                if (!binding.equals(field.column()) && !binding.equals(field.name())) {
+                    continue;
+                }
+                return field.computed() == null
+                        ? identifier(field.column(), "sort column")
+                        : computedExpression(type, field);
+            }
+            throw unsupported("sort binding '" + binding + "' on type '" + type.name()
+                    + "' has no scalar field binding");
         }
 
         private Parameter parameter(String name, String graphqlType, String column, TitanGraphqlTypeDocument type) {

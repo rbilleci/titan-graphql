@@ -192,6 +192,13 @@ builds and serves a second generated-only package without the demo kernel. The r
 architectural step is to complete carrier/plan coverage, promote compiled mode, then delete the
 demo kernel from production dispatch.
 
+For reviewed local root sort paths, code generation emits separate ascending and descending page
+carriers. Cursor predicates compare the declared value and tie-breaker as a tuple-equivalent
+boolean expression, so continuation remains stable when sort values repeat. Runtime SQL never
+substitutes a client-provided identifier or direction; the validated plan only chooses among
+inventory-resolved generated entry points. Multiple custom order keys and relation-hop ordering
+remain explicit unsupported shapes.
+
 The engine must stay model-agnostic: parsing, validation, policy application, and selection-tree construction cannot know about `Article`, `User`, or any future application type. Concrete data models provide descriptors and execution adapters. The current `DemoBlogGraphqlSchema` and demo executor are only the first adapter.
 
 The demo Java engine now exercises both relation cardinalities: `Article.author` as a one-to-one relation and `Article.comments` as a one-to-many relation. The public SQL kernel may still expose a narrower subset while lowering catches up, but the generic planner records enough join metadata to batch supported nested relation reads from descriptors rather than hard-coded model names.

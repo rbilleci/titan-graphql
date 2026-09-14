@@ -101,3 +101,10 @@ roots:
         tieBreaker: id
     contextFilters:
       - activeCustomers
+    sortPaths:
+      name:
+        column: name
+        path: name
+        direction: asc
+        nulls: last
+        tieBreaker: id

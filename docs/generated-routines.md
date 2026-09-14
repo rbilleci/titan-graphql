@@ -21,6 +21,8 @@ For each supported reviewed model the generator emits:
 - `modelSemanticHash()`, returning the canonical lowercase SHA-256 of the normalized model;
 - `readRoot<Name>(...)` for point roots;
 - `readRoot<Name>Forward(...)` and `readRoot<Name>Backward(...)` for Relay roots;
+- direction-specific forward/backward carriers for each reviewed local root sort path, with the
+  declared stable tie-breaker included in both ordering and cursor predicates;
 - `countRoot<Name>(...)` for roots declaring exact visible counts;
 - `readRelation<Owner><Name>(...)` for unprotected direct relations.
 - `readRelation<Owner><Name>Batch<N>(...)` at fixed arities 2, 4, 8, 16, 32, and 64,
@@ -63,7 +65,7 @@ corpus remains useful while carrier coverage grows. Compiled mode has no fallbac
 
 Before the carrier route can replace it, generation and generic runtime invocation must cover:
 
-- all generated scalar filters and declared order paths;
+- all generated scalar filters, multi-column custom ordering, and relation-hop order paths;
 - exact visible counts;
 - composite and non-integer point keys;
 - protected-field and protected-relation policy-specific branches;

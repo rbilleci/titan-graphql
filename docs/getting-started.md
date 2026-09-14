@@ -46,7 +46,8 @@ The proof path is fully automated:
   directly, verifies the model hash, computed projection, policy omission, relation/page reads,
   and confirms that changing a database row changes the carrier result on both dialects.
   It also runs the generic GraphQL parser/validator/planner over those carriers for a point root,
-  relation, computed scalar, forward/backward cursors, exact count, aliases, fail-closed
+  relation, computed scalar, forward/backward and reviewed local custom-order cursors, exact
+  count, aliases, fail-closed
   visibility, and a direct collection relation with a two-step root-plus-batch plan.
 - `commerceIntegrationTest` runs a separate generate, transpile, package, install-verification,
   binding, deployment, and serving chain for the unrelated customers/orders model. Its package
