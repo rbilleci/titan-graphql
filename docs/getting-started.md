@@ -8,20 +8,25 @@ The application path for a reviewed database schema is:
 Titan codegen schema.json
   -> fail-closed projection draft
   -> reviewed titan.graphql.yaml
-  -> generic planner + Titan DSL + Titan JDBC
-  -> PostgreSQL or MySQL rows
+  -> generic planner + Titan DSL + Titan JDBC (current schema-portable serving path)
+  -> generated static carriers + Titan transpiler (database-resident read artifacts)
+  -> PostgreSQL or MySQL
 ```
 
 This is the schema-portable route and does not require handwritten read resolvers. The built-in
-demo blog separately proves that a bounded GraphQL kernel can be lowered to database-resident
-stored functions while preserving behavior. That compiled kernel is not yet generated from an
-arbitrary projection document.
+demo blog separately proves that a bounded whole-request GraphQL kernel can be lowered while
+preserving behavior. Model-generated database read carriers now exist, but the SQL HTTP runtime
+has not yet been moved from that demo kernel to the generated carrier set.
 
 ## Current State
 
 The proof path is fully automated:
 
-- `titanTranspile` generates the stored-function bundles for BOTH configured dialects —
+- `titanGraphqlGenerateRoutines` validates the selected reviewed model and emits deterministic
+  static point, page, relation, computed-field, and model-attestation carriers under
+  `build/generated/sources/titan-graphql/`.
+- `titanTranspile` compiles those generated carriers and the transitional demo whole-request
+  kernel for BOTH configured dialects —
   PostgreSQL and MySQL (completion plan W5.2) — with zero validator errors.
 - `titanPackage` packages them into deterministic per-dialect migration artifacts
   (`build/generated/migrations/titan/<dialect>/R__titan_010_runtime.sql` and
@@ -37,6 +42,9 @@ The proof path is fully automated:
   equivalence oracle (`GraphqlSqlModeEquivalenceIT`, 97 corpus cases). The same corpus
   has a Java-vs-MySQL leg (`GraphqlSqlModeEquivalenceMySqlIT`) deploying the MySQL
   bundle and `ddl/mysql/titan_graphql_mysql.sql`.
+- `GeneratedTitanGraphqlReadsIT` calls the generated PostgreSQL functions and MySQL procedures
+  directly, verifies the model hash, computed projection, policy omission, relation/page reads,
+  and confirms that changing a database row changes the carrier result on both dialects.
 - `titan.graphql.execution.mode=sql` turns the proof into a live runtime: the Quarkus
   `/graphql` endpoint answers from the deployed stored functions (section 4;
   automated by `GraphqlSqlModeHttpIT` under `integrationTest`).
@@ -162,6 +170,10 @@ build/generated/migrations/titan/
   titan-rollback.postgresql.sql          # rollback script
 ```
 
+The generated source is an intermediate reproducible build output, not a checked-in source file.
+Its method names and dialect-specific invocation shapes are documented in
+[generated-routines.md](generated-routines.md).
+
 The public entrypoint generated from the demo-blog SQL kernel,
 `DemoBlogTitanGraphqlFunctions.executeGraphqlRequestWithCompactContext(...)`, is:
 
@@ -197,8 +209,10 @@ generated objects, routine signatures, and drift on all configured dialects, wri
 
 SQL serving additionally requires `titan.graphql.model.path`. At startup the runtime parses and
 validates that model, compares it with `titan-graphql-package.json` and Titan's GAP-005 metadata,
-and only then resolves the dialect-specific schema-qualified entry point from the package
-inventory. The `X-Titan-Deployment-Fingerprint` header identifies this combined binding.
+and only then resolves dialect-specific schema-qualified identities from the package inventory.
+Before serving its first request it calls the generated `modelSemanticHash` database routine and
+requires an exact match, preventing a correct local sidecar from masking deployment to the wrong
+database. The `X-Titan-Deployment-Fingerprint` header identifies the combined binding.
 
 ## 3. Run The Automated SQL-Mode Proof
 
@@ -266,7 +280,7 @@ The switch is one config property:
 ```properties
 titan.graphql.execution.mode=java   # default: the in-JVM kernel
 titan.graphql.execution.mode=jdbc   # reviewed model + generic Titan DSL/JDBC reads
-titan.graphql.execution.mode=sql    # deployed demo-specific Titan stored functions
+titan.graphql.execution.mode=sql    # transitional deployed demo whole-request function
 ```
 
 It is ordinary Quarkus/MicroProfile config, so `-Dtitan.graphql.execution.mode=sql`

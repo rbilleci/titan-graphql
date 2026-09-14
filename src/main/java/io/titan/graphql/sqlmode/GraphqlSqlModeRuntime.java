@@ -11,6 +11,8 @@ import io.titan.runtime.jdbc.TitanExecutionListener;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.Objects;
@@ -48,17 +50,21 @@ public final class GraphqlSqlModeRuntime implements GraphqlModelRuntime {
     private final String dataSourceDescription;
     private final Function<DataSource, TitanExecutionListener> listenerFactory;
     private final GraphqlSqlPackageEntryPoints packageEntryPoints;
+    private final String expectedModelSemanticHash;
 
     private volatile DataSource resolvedDataSource;
     private volatile TitanExecutionListener resolvedListener;
+    private volatile boolean databasePackageAttested;
 
     /** Production wiring with entry-point identities sourced from the verified Titan package. */
     public GraphqlSqlModeRuntime(
             Supplier<DataSource> dataSourceSupplier,
             String dataSourceDescription,
-            TitanGraphqlGap005ArtifactMetadata packageMetadata
+            TitanGraphqlGap005ArtifactMetadata packageMetadata,
+            String expectedModelSemanticHash
     ) {
-        this(dataSourceSupplier, dataSourceDescription, JdbcTelemetrySink::new, packageMetadata);
+        this(dataSourceSupplier, dataSourceDescription, JdbcTelemetrySink::new, packageMetadata,
+                expectedModelSemanticHash);
     }
 
     /** Test seam: a fixed listener instead of the datasource-bound telemetry sink. */
@@ -67,7 +73,7 @@ public final class GraphqlSqlModeRuntime implements GraphqlModelRuntime {
             String dataSourceDescription,
             TitanExecutionListener listener
     ) {
-        this(dataSourceSupplier, dataSourceDescription, ignored -> listener, null);
+        this(dataSourceSupplier, dataSourceDescription, ignored -> listener, null, "");
         Objects.requireNonNull(listener, "listener");
     }
 
@@ -75,12 +81,17 @@ public final class GraphqlSqlModeRuntime implements GraphqlModelRuntime {
             Supplier<DataSource> dataSourceSupplier,
             String dataSourceDescription,
             Function<DataSource, TitanExecutionListener> listenerFactory,
-            TitanGraphqlGap005ArtifactMetadata packageMetadata
+            TitanGraphqlGap005ArtifactMetadata packageMetadata,
+            String expectedModelSemanticHash
     ) {
         this.dataSourceSupplier = Objects.requireNonNull(dataSourceSupplier, "dataSourceSupplier");
         this.dataSourceDescription = Objects.requireNonNull(dataSourceDescription, "dataSourceDescription");
         this.listenerFactory = Objects.requireNonNull(listenerFactory, "listenerFactory");
         this.packageEntryPoints = packageMetadata == null ? null : new GraphqlSqlPackageEntryPoints(packageMetadata);
+        this.expectedModelSemanticHash = expectedModelSemanticHash == null ? "" : expectedModelSemanticHash;
+        if (packageMetadata != null && !this.expectedModelSemanticHash.matches("[0-9a-f]{64}")) {
+            throw new IllegalArgumentException("expected model semantic hash must be a lowercase SHA-256 value");
+        }
     }
 
     @Override
@@ -139,6 +150,7 @@ public final class GraphqlSqlModeRuntime implements GraphqlModelRuntime {
             if (packageEntryPoints == null) {
                 responseJson = GraphqlSqlEntryPointDispatch.execute(connection, invocation);
             } else {
+                attestDatabasePackage(connection);
                 String qualifiedRoutine = packageEntryPoints.resolve(connection, invocation);
                 placeholderSql = GraphqlSqlEntryPointDispatch.placeholderSql(invocation, qualifiedRoutine);
                 responseJson = GraphqlSqlEntryPointDispatch.execute(connection, invocation, qualifiedRoutine);
@@ -170,6 +182,35 @@ public final class GraphqlSqlModeRuntime implements GraphqlModelRuntime {
                     listenerFailure);
         }
         return responseJson;
+    }
+
+    /**
+     * Proves the connected database carries routines generated from the bound model, rather than
+     * trusting that a matching package sidecar was deployed to this particular datasource.
+     */
+    private void attestDatabasePackage(Connection connection) throws SQLException {
+        if (databasePackageAttested) {
+            return;
+        }
+        synchronized (this) {
+            if (databasePackageAttested) {
+                return;
+            }
+            String routine = packageEntryPoints.resolve(connection, "modelSemanticHash");
+            String sql = GraphqlSqlEntryPointDispatch.noArgumentFunctionSql(routine);
+            try (PreparedStatement statement = connection.prepareStatement(sql);
+                 ResultSet resultSet = statement.executeQuery()) {
+                if (!resultSet.next()) {
+                    throw new SQLException("model attestation routine returned no row: " + sql);
+                }
+                String actual = resultSet.getString(1);
+                if (!expectedModelSemanticHash.equals(actual)) {
+                    throw new SQLException("deployed Titan GraphQL model semantic hash mismatch: expected '"
+                            + expectedModelSemanticHash + "' but database returned '" + actual + "'");
+                }
+            }
+            databasePackageAttested = true;
+        }
     }
 
     private DataSource resolveDataSource() {

@@ -21,7 +21,14 @@ final class GraphqlSqlPackageEntryPoints {
 
     String resolve(Connection connection, GraphqlSqlEntryPointDispatch.Invocation invocation) throws SQLException {
         String dialect = dialect(connection);
-        String methodName = GraphqlSqlEntryPointDispatch.methodName(invocation);
+        return resolve(dialect, GraphqlSqlEntryPointDispatch.methodName(invocation));
+    }
+
+    String resolve(Connection connection, String methodName) throws SQLException {
+        return resolve(dialect(connection), methodName);
+    }
+
+    private String resolve(String dialect, String methodName) throws SQLException {
         TitanGraphqlSqlRoutineRef match = null;
         for (TitanGraphqlEntryPointRef entryPoint : metadata.entryPoints()) {
             if (!methodName.equals(entryPoint.methodName())) {

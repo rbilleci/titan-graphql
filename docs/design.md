@@ -12,8 +12,8 @@ Titan codegen schema.json
   -> conservative GraphQL projection draft
   -> reviewed exposure and policy model
   -> generic parser, validator, and read planner
-  -> parameterized Titan DSL
-  -> Titan JDBC runtime
+  -> parameterized Titan DSL + Titan JDBC (portable in-process route)
+  -> generated static database carriers + Titan transpiler (compiled read route)
 ```
 
 This path must not require handwritten read queries or resolvers. Custom mutations are the
@@ -131,6 +131,9 @@ Keep the implementation split into small Java classes so Titan's failure mode is
 - `GraphqlReadPlanner` and `GraphqlReadPlan`: compile a validated selection plus schema descriptors into logical root and relation reads, including projected columns, backing tables, join keys, cardinality, and limits.
 - `GenericJdbcGraphqlDataModel`: executes supported read plans for any reviewed projection
   through Titan DSL and Titan JDBC, without model-specific query code.
+- `TitanGraphqlRoutineSourceGenerator`: turns reviewed physical/model bindings into deterministic,
+  static Titan-transpilable read carriers and a semantic-hash attestation routine. It emits no
+  fixture data and contains no application schema registry.
 - `GraphqlDataModel`: binds a schema descriptor to execution and leaves mutations as explicit
   extension points.
 - `GraphqlPolicy`: maps actor context to allowed fields and row predicates.
@@ -171,13 +174,19 @@ The current metamodel layer stores:
 - root descriptors: field name, result type, result cardinality, supported key/filter arguments, pagination mode, cursor ordering, and default/max page sizes
 
 This keeps the API schema decoupled from physical table names. The generic JDBC path consumes the
-model now. The constrained SQL kernel still mirrors a fixed demo; generating its static,
-Titan-transpilable accessors from the reviewed model is the remaining database-resident step.
-The compiled package is nevertheless bound exactly: `titanGraphqlBindPackage` links the canonical
-model semantic hash to Titan's artifact, manifest, and source-input hashes. SQL startup verifies
-that sidecar before opening the datasource and resolves the dialect-specific routine identity from
-Titan's object inventory. This prevents serving a stale or unrelated kernel while generation is
-being generalized; it is an integrity boundary, not a claim that the demo kernel is portable.
+model now. `titanGraphqlGenerateRoutines` also generates a static database read boundary from that
+same model: point roots, forward/backward page carriers, direct relations, safe row-local computed
+expressions, and a semantic-hash attestation routine. Titan compiles those carriers to JSONB
+functions on PostgreSQL and open-result-set procedures on MySQL. The generated carriers are now
+packaged and live-tested, but the current SQL HTTP runtime still dispatches a whole request to the
+fixed demo kernel rather than executing a generic read plan through them.
+
+`titanGraphqlBindPackage` links the canonical model semantic hash to Titan's artifact, manifest,
+source-input hashes, and routine inventory. SQL startup verifies that sidecar, resolves routine
+identities from the inventory, and calls the database-resident model attestation routine. This
+prevents serving a stale, unrelated, or wrongly deployed package. The remaining architectural step
+is to make inventory-resolved carriers the `GraphqlDataModel` read backend, then delete the demo
+kernel from production dispatch.
 
 The engine must stay model-agnostic: parsing, validation, policy application, and selection-tree construction cannot know about `Article`, `User`, or any future application type. Concrete data models provide descriptors and execution adapters. The current `DemoBlogGraphqlSchema` and demo executor are only the first adapter.
 

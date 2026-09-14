@@ -9,8 +9,9 @@ This project is licensed under [GPL-3.0-or-later](LICENSE). It is a bounded proo
 read [SECURITY.md](SECURITY.md) before exposing either HTTP endpoint.
 
 The product goal is to put GraphQL over supported schemas without handwritten read resolvers or
-queries. Custom mutations remain explicit application code. The database-resident kernel is a
-second, narrower proof until model-driven kernel generation replaces the fixed demo package.
+queries. Custom mutations remain explicit application code. Model-driven database read carriers
+now compile and install beside the fixed demo kernel; routing validated GraphQL plans through those
+carriers is the remaining migration before SQL mode is schema-portable.
 
 New developers should start with [docs/getting-started.md](docs/getting-started.md).
 
@@ -30,11 +31,17 @@ The full pipeline is automated and green on both supported dialects:
   keys, and foreign-key relation candidates in a fail-closed review draft. Public roots and
   sensitive or relational exposure still require deliberate approval. Composite keys are
   retained as diagnostics and are never silently reduced to their first column.
-- **Transpile (both dialects)**: `titanTranspile` lowers the demo-blog GraphQL kernel
-  (`DemoBlogTitanGraphqlFunctions`) into PostgreSQL **and MySQL** stored functions with zero
-  validator diagnostics. The transpiler input is an explicit one-file kernel allowlist, so
-  application, HTTP, inference, artifact, and management records do not leak into the SQL
-  package. The kernel follows core's GAP-004 bounded-traversal contract.
+- **Generate model-bound database reads:** `titanGraphqlGenerateRoutines` validates the selected
+  reviewed model and deterministically emits static point, connection-page, and direct-relation
+  carriers plus a model-hash attestation routine. The same generator produces unrelated
+  customers/orders routines without blog names or fixture rows. Titan transpiles these carriers
+  for PostgreSQL and MySQL; live tests prove that they read current rows, expose a reviewed
+  computed expression, enforce the first fail-closed context predicate, and omit an unguarded
+  protected scalar. See [docs/generated-routines.md](docs/generated-routines.md).
+- **Transpile (both dialects):** `titanTranspile` lowers the generated carriers and the transitional
+  demo-blog whole-request kernel (`DemoBlogTitanGraphqlFunctions`) into PostgreSQL **and MySQL**
+  routines with zero validator diagnostics. Its inputs are an explicit allowlist; unrelated
+  application, HTTP, inference, artifact, and management records do not enter the SQL package.
 - **Package (both dialects)**: `titanPackage` produces deterministic migration artifacts
   per dialect (`R__titan_010_runtime.sql` + `R__titan_020_routines.sql`) plus
   manifest/inventory/install-plan/verification JSON and rollback scripts, with zero
@@ -42,8 +49,9 @@ The full pipeline is automated and green on both supported dialects:
 - **Bind the reviewed model exactly**: `titanGraphqlBindPackage` validates the selected model,
   runs package/install verification, and writes the deterministic
   `titan-graphql-package.json` sidecar. It binds the normalized model semantic hash to Titan's
-  artifact id, manifest hash, and source-input hash; SQL serving rejects a missing, stale, or
-  mismatched binding before opening the datasource.
+  artifact id, manifest hash, and source-input hash. SQL serving rejects a missing or stale local
+  binding before opening the datasource and calls the generated attestation routine before its
+  first request, so deploying the otherwise-valid package to the wrong database also fails closed.
 - **Verify (both dialects)**: `titanVerifyInstall` installs the package into scratch
   PostgreSQL and MySQL containers and verifies objects, routine signatures, and drift with
   zero diagnostics.
@@ -78,6 +86,7 @@ The full pipeline is automated and green on both supported dialects:
 
 ```bash
 ./gradlew test               # Docker-free tests (Java-mode reference + doc guards)
+./gradlew titanGraphqlGenerateRoutines # reviewed model -> deterministic Titan carrier source
 ./gradlew titanPackage       # transpile + package migration artifacts (postgresql + mysql)
 ./gradlew titanVerifyInstall # install + verify against scratch PG + MySQL containers (Docker)
 ./gradlew titanGraphqlBindPackage # verify and bind package to the reviewed model (Docker)
@@ -94,12 +103,14 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   forward page of root Relay connections. Cursor continuation, backward pagination, relation
   connections, computed SQL expressions, and batched relations beneath collection roots fail explicitly.
   Those are the next generic executor increments.
-- **The transpiled SQL kernel remains demo-specific.** The 97-case SQL equivalence corpus is a
-  strong Titan compiler proof, but its application rows are embedded in the bounded blog kernel.
-  It does not yet prove that an arbitrary projection document becomes a database-resident GraphQL
-  routine. Model-driven kernel generation remains required before `sql` mode is schema-portable.
-  Artifact generation and SQL serving now require an exact semantic model/package binding, but
-  binding correctly identifies the current demo kernel; it does not make that kernel generic.
+- **Generated carriers exist; whole-request SQL serving remains demo-specific.** A reviewed model
+  now becomes Titan-compiled point, page, relation, computed-field, and attestation routines, and
+  those routines are install-tested on both dialects. The current `sql` HTTP route still calls the
+  bounded `DemoBlogTitanGraphqlFunctions` whole-request entry point, so it is not yet the generic
+  production route. Generated carriers also do not yet cover arbitrary generated filters/order,
+  counts, protected-field policy branches, relation connections, or batched collection relations.
+  The next increment is a model-agnostic data model that invokes inventory-resolved carriers and
+  removes the demo whole-request kernel from production dispatch.
 - **Management storage: durable JDBC store available (opt-in `jdbc` mode); file-backed by
   default.** Core dogfooded the management store — it transpiles the management mutation
   routines in-tree and ships a durable JDBC-backed transactional store over them
@@ -138,6 +149,7 @@ The supported query surface is specified in [docs/query-contract.md](docs/query-
 and verified by [docs/query-contract-conformance.md](docs/query-contract-conformance.md).
 The source-model format is documented in [docs/model-document-format.md](docs/model-document-format.md),
 the public Java projection builder in [docs/projection-api.md](docs/projection-api.md),
+the compiled carrier contract in [docs/generated-routines.md](docs/generated-routines.md),
 and validation report text and JSON renderings in
 [docs/validation-diagnostics.md](docs/validation-diagnostics.md).
 The minimal mutation runtime lowering boundary is documented in

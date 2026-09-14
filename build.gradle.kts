@@ -160,20 +160,37 @@ configure<TitanExtension> {
 // Generated catalog sources are wired into sourceSets by the Titan plugin itself
 // (core plan Phase 4.1), so no manual srcDir/dependsOn wiring is needed here.
 
+val titanGraphqlModelFile = providers.gradleProperty("titanGraphqlModel")
+    .orElse("src/test/resources/graphql/demo-blog.titan.graphql.yaml")
+val titanGraphqlGeneratedRoutineSource = layout.buildDirectory.file(
+    "generated/sources/titan-graphql/io/titan/graphql/generated/GeneratedTitanGraphqlReads.java"
+)
+val titanGraphqlPackageDirectory = layout.buildDirectory.dir("generated/migrations/titan")
+
+tasks.register<JavaExec>("titanGraphqlGenerateRoutines") {
+    description = "Generates Titan-transpilable read routines from the reviewed GraphQL model."
+    group = "titan"
+    dependsOn("classes")
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("io.titan.graphql.codegen.TitanGraphqlRoutineSourceGeneratorCli")
+    args(titanGraphqlModelFile.get(), titanGraphqlGeneratedRoutineSource.get().asFile.absolutePath)
+    inputs.file(layout.projectDirectory.file(titanGraphqlModelFile.get()))
+    outputs.file(titanGraphqlGeneratedRoutineSource)
+}
+
 tasks.named<TitanTranspileTask>("titanTranspile") {
+    dependsOn("titanGraphqlGenerateRoutines")
     // The database proof kernel is intentionally self-contained. Keep this an allowlist: feeding
-    // the entire application source tree makes unrelated admin, inference, HTTP, and model records
-    // part of the SQL package merely because the transpiler can see them.
+    // the entire application source tree makes unrelated records part of the SQL package. The
+    // generated model routines are now compiled beside the legacy demo kernel while serving is
+    // migrated to the generated entry points.
     sourceFiles.setFrom(
         layout.projectDirectory.file(
             "src/main/java/io/titan/graphql/demo/blog/DemoBlogTitanGraphqlFunctions.java"
-        )
+        ),
+        titanGraphqlGeneratedRoutineSource
     )
 }
-
-val titanGraphqlModelFile = providers.gradleProperty("titanGraphqlModel")
-    .orElse("src/test/resources/graphql/demo-blog.titan.graphql.yaml")
-val titanGraphqlPackageDirectory = layout.buildDirectory.dir("generated/migrations/titan")
 
 tasks.register<JavaExec>("titanGraphqlBindPackage") {
     description = "Binds an install-verified Titan package to the exact reviewed GraphQL model."

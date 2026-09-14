@@ -200,8 +200,12 @@ class GraphqlExecutionModeTest {
 
         assertEquals("SELECT tenant_api.graphql_execute(?, ?, ?)",
                 GraphqlSqlEntryPointDispatch.placeholderSql(invocation, "tenant_api.graphql_execute"));
+        assertEquals("SELECT tenant_api.model_semantic_hash()",
+                GraphqlSqlEntryPointDispatch.noArgumentFunctionSql("tenant_api.model_semantic_hash"));
         assertThrows(IllegalArgumentException.class,
                 () -> GraphqlSqlEntryPointDispatch.placeholderSql(invocation, "public.fn; DROP TABLE users"));
+        assertThrows(IllegalArgumentException.class,
+                () -> GraphqlSqlEntryPointDispatch.noArgumentFunctionSql("public.fn; DROP TABLE users"));
     }
 
     @Test

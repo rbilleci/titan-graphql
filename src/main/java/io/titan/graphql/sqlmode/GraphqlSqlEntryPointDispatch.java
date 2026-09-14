@@ -128,6 +128,14 @@ public final class GraphqlSqlEntryPointDispatch {
         };
     }
 
+    /** Builds a safe no-argument function call for package/model attestation. */
+    public static String noArgumentFunctionSql(String qualifiedRoutine) {
+        if (qualifiedRoutine == null || !qualifiedRoutine.matches(QUALIFIED_ROUTINE)) {
+            throw new IllegalArgumentException("invalid Titan package routine identity '" + qualifiedRoutine + "'");
+        }
+        return "SELECT " + qualifiedRoutine + "()";
+    }
+
     private static String routineName(Invocation invocation) {
         String method = methodName(invocation);
         StringBuilder name = new StringBuilder();

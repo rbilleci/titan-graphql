@@ -175,7 +175,8 @@ public class GraphqlExecutionEngine {
                 if (sqlRuntime == null) {
                     verifiedPackageBinding();
                     sqlRuntime = new GraphqlSqlModeRuntime(
-                            dataSourceSupplier, dataSourceDescription, packageMetadata);
+                            dataSourceSupplier, dataSourceDescription, packageMetadata,
+                            packageBinding.modelSemanticSha256());
                 }
                 runtime = sqlRuntime;
             }
