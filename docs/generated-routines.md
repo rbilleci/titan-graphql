@@ -73,7 +73,9 @@ combined with ordering.
 
 The generated carriers back `titan.graphql.execution.mode=compiled`. The separate `sql` mode still
 invokes `DemoBlogTitanGraphqlFunctions` as a transitional whole-request kernel so its equivalence
-corpus remains useful while carrier coverage grows. Compiled mode has no fallback to that kernel.
+corpus remains useful while carrier coverage grows. The default production package contains only
+`GeneratedTitanGraphqlReads`; the legacy kernel has a separate package and test task. Compiled mode
+has no fallback to that kernel.
 
 Before the carrier route can replace it, generation and generic runtime invocation must cover:
 

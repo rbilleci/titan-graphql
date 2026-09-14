@@ -302,6 +302,10 @@ titan.graphql.execution.mode=compiled # reviewed model + installed generated Tit
 titan.graphql.execution.mode=sql    # transitional deployed demo whole-request function
 ```
 
+The standard `titanPackage`/`titanGraphqlBindPackage` output contains generated carriers only.
+The historical `sql` mode is packaged solely by `titanGraphqlPackageLegacySql` and exercised by
+`legacySqlIntegrationTest`; it is not part of the compiled production proof.
+
 `compiled` is the schema-driven database-resident route under active expansion. It currently
 supports integer, string, UUID, and explicit composite point roots; default-order forward pages
 and continuation; exact root counts; row-local computed scalars; direct relations below point

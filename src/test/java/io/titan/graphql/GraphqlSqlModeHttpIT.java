@@ -43,6 +43,7 @@ import org.junit.jupiter.api.Test;
  * prove the config/Agroal path.</p>
  */
 @Tag("docker")
+@Tag("legacy-sql")
 @QuarkusTest
 @QuarkusTestResource(value = GraphqlSqlModeServingResource.class, restrictToAnnotatedClass = true)
 class GraphqlSqlModeHttpIT {

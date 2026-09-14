@@ -107,6 +107,7 @@ The full pipeline is automated and green on both supported dialects:
 ./gradlew integrationTest    # Java-vs-SQL equivalence on both dialects + live SQL-mode HTTP serving (Docker)
 ./gradlew commerceIntegrationTest # isolated generated-only commerce package on both dialects (Docker)
 ./gradlew compiledSchemaIntegrationTest # both independently packaged schema proofs (Docker)
+./gradlew legacySqlIntegrationTest # optional isolated historical whole-request equivalence proof
 ```
 
 Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run under
@@ -123,7 +124,9 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   now becomes Titan-compiled point, page, relation, computed-field, and attestation routines, and
   `compiled` mode executes supported GraphQL plans through those inventory-resolved routines. The
   older `sql` route still calls the bounded `DemoBlogTitanGraphqlFunctions` whole-request entry
-  point and remains only an equivalence/compiler proof. Generated carriers do not yet cover
+  point and remains only an isolated equivalence/compiler proof. It is excluded from the
+  production package and from `compiledSchemaIntegrationTest`; `legacySqlIntegrationTest` owns a
+  separate package/output tree. Generated carriers do not yet cover
   multiple simultaneous custom order keys, relation ordering beyond a reviewed non-null to-one
   hop, protected-field policy branches, or nested multi-level batching. Generated filters run in
   static Titan carriers: one local predicate retains `in` arities through 16, while composed

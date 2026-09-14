@@ -46,6 +46,13 @@ class GeneratedTitanGraphqlReadsIT {
 
     @Test
     void generatedRoutinesAttestReadRelationsPageAndReflectMutations(TitanTestContext context) throws Exception {
+        TitanGraphqlGap005ArtifactMetadata packageMetadata = TitanGraphqlGap005ArtifactMetadata.read(
+                Path.of("build/generated/migrations/titan"));
+        assertTrue(packageMetadata.entryPoints().stream().allMatch(entry ->
+                        entry.className().equals("io.titan.graphql.generated.GeneratedTitanGraphqlReads")),
+                "production proof package must contain generated carriers only");
+        assertFalse(packageMetadata.entryPoints().stream().anyMatch(entry ->
+                entry.className().contains("DemoBlog") || entry.methodName().equals("executeGraphql")));
         for (DatabaseTarget target : List.of(DatabaseTarget.POSTGRESQL, DatabaseTarget.MYSQL)) {
             Connection connection = context.connection(target);
             if (target == DatabaseTarget.POSTGRESQL) {

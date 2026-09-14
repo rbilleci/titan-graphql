@@ -37,6 +37,7 @@ import org.junit.jupiter.api.Test;
  * regression guard: any returning divergence fails strict comparison loudly.</p>
  */
 @Tag("docker")
+@Tag("legacy-sql")
 @TitanTest(targets = DatabaseTarget.MYSQL)
 class GraphqlSqlModeEquivalenceMySqlIT {
 

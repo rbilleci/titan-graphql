@@ -42,6 +42,7 @@ import org.junit.jupiter.api.Test;
  * {@code test} stays Docker-free.</p>
  */
 @Tag("docker")
+@Tag("legacy-sql")
 @TitanTest(targets = DatabaseTarget.POSTGRESQL)
 class GraphqlSqlModeEquivalenceIT {
 

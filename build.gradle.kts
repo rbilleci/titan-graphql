@@ -112,9 +112,10 @@ tasks.register<Test>("integrationTest") {
     useJUnitPlatform {
         includeTags("docker")
         excludeTags("commerce-compiled")
+        excludeTags("legacy-sql")
     }
-    // The SQL-mode tests consume only a package that is install-verified and exactly bound to
-    // the reviewed model. titanGraphqlBindPackage owns that complete dependency chain.
+    // Generic compiled-mode tests consume only the install-verified, model-bound generated package.
+    // Historical whole-request SQL equivalence tests run separately in legacySqlIntegrationTest.
     dependsOn("titanGraphqlBindPackage")
     systemProperty(
         "titan.graphql.migrations.dir",
@@ -183,16 +184,9 @@ tasks.register<JavaExec>("titanGraphqlGenerateRoutines") {
 
 tasks.named<TitanTranspileTask>("titanTranspile") {
     dependsOn("titanGraphqlGenerateRoutines")
-    // The database proof kernel is intentionally self-contained. Keep this an allowlist: feeding
-    // the entire application source tree makes unrelated records part of the SQL package. The
-    // generated model routines are now compiled beside the legacy demo kernel while serving is
-    // migrated to the generated entry points.
-    sourceFiles.setFrom(
-        layout.projectDirectory.file(
-            "src/main/java/io/titan/graphql/demo/blog/DemoBlogTitanGraphqlFunctions.java"
-        ),
-        titanGraphqlGeneratedRoutineSource
-    )
+    // Production packages contain only schema-generated carriers. The historical whole-request
+    // demo kernel is compiled into a separate, explicitly legacy proof package below.
+    sourceFiles.setFrom(titanGraphqlGeneratedRoutineSource)
 }
 
 tasks.register<JavaExec>("titanGraphqlBindPackage") {
@@ -210,6 +204,83 @@ tasks.register<JavaExec>("titanGraphqlBindPackage") {
         titanGraphqlPackageDirectory.map { it.file("titan-install-verification.json") }
     )
     outputs.file(titanGraphqlPackageDirectory.map { it.file("titan-graphql-package.json") })
+}
+
+// Transitional equivalence-only package. It is deliberately isolated from the production
+// generated-carrier package and from compiledSchemaIntegrationTest.
+val legacySqlDirectory = layout.buildDirectory.dir("generated/proofs/legacy-sql/sql")
+val legacyPackageDirectory = layout.buildDirectory.dir("generated/proofs/legacy-sql/package")
+
+tasks.register<TitanTranspileTask>("titanGraphqlTranspileLegacySql") {
+    description = "Transpiles the historical demo whole-request kernel for equivalence tests only."
+    group = "verification"
+    dependsOn("classes", "titanGraphqlGenerateRoutines")
+    sourceFiles.setFrom(
+        layout.projectDirectory.file(
+            "src/main/java/io/titan/graphql/demo/blog/DemoBlogTitanGraphqlFunctions.java"
+        ),
+        titanGraphqlGeneratedRoutineSource
+    )
+    classpathFiles.from(sourceSets["main"].runtimeClasspath)
+    targets.set(listOf("postgresql", "mysql"))
+    schemas.set(listOf("public"))
+    strictWraparound.set(false)
+    sqlSafety.set("strict")
+    observability.set(true)
+    debugMode.set(false)
+    sensitiveColumns.set(listOf("email"))
+    outputDir.set(legacySqlDirectory)
+}
+
+tasks.register<TitanPackageTask>("titanGraphqlPackageLegacySql") {
+    description = "Packages the isolated historical SQL equivalence kernel."
+    group = "verification"
+    dependsOn("titanGraphqlTranspileLegacySql")
+    sqlInputDir.set(legacySqlDirectory)
+    mode.set("migration")
+    titanVersion.set(providers.provider { project.version.toString() })
+    outputDir.set(legacyPackageDirectory)
+}
+
+tasks.register<TitanVerifyInstallTask>("titanGraphqlVerifyLegacySqlInstall") {
+    description = "Install-verifies the isolated historical SQL equivalence package."
+    group = "verification"
+    dependsOn("titanGraphqlPackageLegacySql")
+    sqlInputDir.set(legacySqlDirectory)
+    artifactDir.set(legacyPackageDirectory)
+    mode.set("migration")
+    titanVersion.set(providers.provider { project.version.toString() })
+    jdbcUrl.set("")
+    username.set("")
+    password.set("")
+    dialect.set("postgresql")
+    failOnVerificationError.set(true)
+    jdbcDriverClasspath.from(configurations["titanJdbc"])
+    outputs.upToDateWhen { false }
+}
+
+tasks.register<JavaExec>("titanGraphqlBindLegacySqlPackage") {
+    description = "Binds the isolated historical SQL equivalence package to the demo model."
+    group = "verification"
+    dependsOn("classes", "titanGraphqlVerifyLegacySqlInstall")
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("io.titan.graphql.artifact.TitanGraphqlPackageBindingCli")
+    args(titanGraphqlModelFile.get(), legacyPackageDirectory.get().asFile.absolutePath)
+}
+
+tasks.register<Test>("legacySqlIntegrationTest") {
+    description = "Runs the isolated historical SQL-mode equivalence proofs."
+    group = "verification"
+    dependsOn("titanGraphqlBindLegacySqlPackage")
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { includeTags("legacy-sql") }
+    systemProperty("titan.graphql.migrations.dir",
+        legacyPackageDirectory.map { it.dir("postgresql") }.get().asFile.absolutePath)
+    systemProperty("titan.graphql.migrations.dir.mysql",
+        legacyPackageDirectory.map { it.dir("mysql") }.get().asFile.absolutePath)
+    systemProperty("titan.graphql.artifacts.dir", legacyPackageDirectory.get().asFile.absolutePath)
+    shouldRunAfter(tasks.named("integrationTest"))
 }
 
 // Isolated second-schema proof. Its generated source, SQL, package metadata, binding, and tests
