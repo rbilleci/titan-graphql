@@ -32,7 +32,7 @@ class GraphqlHttpResourceQuarkusSmokeTest {
                 .then()
                 .statusCode(200)
                 .header("Content-Type", startsWith("application/graphql-response+json"))
-                // Mode surface (W5.1): the default profile answers from the Java kernel.
+                // Test profile explicitly selects the small Java reference kernel.
                 .header("X-Titan-Execution-Mode", equalTo("java"))
                 .body("data.article.id", equalTo(1))
                 .body("data.article.title", equalTo("Titan GraphQL proof"));

@@ -24,11 +24,11 @@ import java.util.function.Supplier;
 
 /**
  * Selects the engine that answers application {@code /graphql} requests (completion plan
- * W5.1): the in-JVM Java kernel (default), generic JDBC reads, generated compiled carriers,
+ * W5.1): generated compiled carriers (default), the in-JVM Java proof kernel, generic JDBC reads,
  * or the legacy deployed whole-request SQL functions.
  *
  * <p>Configured by {@code titan.graphql.execution.mode} ({@code java} | {@code jdbc} |
- * {@code compiled} | {@code sql}, default {@code java}) — an ordinary MicroProfile/Quarkus
+ * {@code compiled} | {@code sql}, default {@code compiled}) — an ordinary MicroProfile/Quarkus
  * config property, so
  * {@code application.properties}, {@code -Dtitan.graphql.execution.mode=...} and the
  * {@code TITAN_GRAPHQL_EXECUTION_MODE} environment variable all work. An unknown value fails
@@ -62,7 +62,8 @@ public class GraphqlExecutionEngine {
         static Mode parse(String configuredValue) {
             String normalized = configuredValue == null ? "" : configuredValue.trim().toLowerCase(Locale.ROOT);
             return switch (normalized) {
-                case "", "java" -> JAVA;
+                case "" -> COMPILED;
+                case "java" -> JAVA;
                 case "jdbc" -> JDBC;
                 case "compiled" -> COMPILED;
                 case "sql" -> SQL;
@@ -89,7 +90,7 @@ public class GraphqlExecutionEngine {
     /** CDI wiring: mode from MicroProfile config, datasource from the Agroal default bean. */
     @Inject
     public GraphqlExecutionEngine(
-            @ConfigProperty(name = MODE_PROPERTY, defaultValue = "java") String configuredMode,
+            @ConfigProperty(name = MODE_PROPERTY, defaultValue = "compiled") String configuredMode,
             @ConfigProperty(name = MODEL_PATH_PROPERTY, defaultValue = "__unset__") String configuredModelPath,
             Instance<DataSource> dataSources
     ) {

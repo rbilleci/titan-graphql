@@ -50,7 +50,7 @@ public final class GraphqlHttpResource {
         this(engine, false);
     }
 
-    /** Direct-construction path (unit tests, plain JAX-RS): system-config engine, default java. */
+    /** Direct-construction path (unit tests, plain JAX-RS): system-config engine, default compiled. */
     public GraphqlHttpResource() {
         this(GraphqlExecutionEngine.fromSystemConfig());
     }

@@ -10,10 +10,10 @@ read [SECURITY.md](SECURITY.md) before exposing either HTTP endpoint.
 
 The product goal is to put GraphQL over supported schemas without handwritten read resolvers or
 queries. Custom mutations remain explicit application code. Model-driven database read carriers
-now compile and install beside the fixed demo kernel; routing validated GraphQL plans through those
-carriers is available as the opt-in `compiled` runtime. Two independently generated packages now
-prove that route against unrelated blog and commerce models. Expanding its supported plan shapes
-and promoting it over the legacy `sql` mode is the remaining migration.
+compile and install in generated-only production packages; routing validated GraphQL plans through
+those carriers is the fail-closed default `compiled` runtime. Two independently generated packages
+prove that route against unrelated blog and commerce models. The fixed demo kernel is isolated in
+an optional legacy equivalence package while remaining plan-shape and policy gaps are closed.
 
 New developers should start with [docs/getting-started.md](docs/getting-started.md).
 
@@ -86,8 +86,9 @@ The full pipeline is automated and green on both supported dialects:
   real `titanPackage`/`titanVerifyInstall` outputs (no fixture strings, no placeholder
   metadata, no kernel reflection); deployment activation is gated on a passed install
   verification, and rollback scripts are discovered and surfaced.
-- **Serve the compiled demo from the database (opt-in)**: with `titan.graphql.execution.mode=sql`
-  (default `java`), the Quarkus `/graphql` endpoint answers every request by calling the
+- **Retain the historical database equivalence proof (opt-in)**: with
+  `titan.graphql.execution.mode=sql` (production default `compiled`), the Quarkus `/graphql`
+  endpoint answers every request by calling the
   DEPLOYED stored functions over the configured datasource instead of the Java kernel —
   the proof as a demonstrable runtime. Every response names its engine
   (`X-Titan-Execution-Mode`, plus the package fingerprint in SQL mode), execution
@@ -154,8 +155,8 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   `test` and dev), so durable-JDBC claims are scoped to jdbc mode. Two recorded routine-design
   gaps are known and non-blocking (adapter-side `activate_deployment` typed preconditions; the
   import routine's collapsed hash column).
-- **SQL serving mode is opt-in and bounded.** The default `/graphql` engine remains the Java
-  kernel; `titan.graphql.execution.mode=sql` (completion plan W5.1) serves the same demo
+- **SQL serving mode is opt-in and bounded.** The default `/graphql` engine is now the generic,
+  fail-closed `compiled` runtime; `titan.graphql.execution.mode=sql` serves the same demo
   schema and entry points from the deployed stored functions — no new GraphQL features, and
   the `/admin/graphql` management plane always executes in Java (only the application kernel
   is transpiled). Plan-level execution (`executeWithPlan`) stays a Java-mode surface.

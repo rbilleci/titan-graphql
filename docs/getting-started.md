@@ -65,7 +65,7 @@ The proof path is fully automated:
 > (`GraphqlSqlModeEquivalenceIT`) and MySQL (`GraphqlSqlModeEquivalenceMySqlIT`), zero
 > divergences. The dual-dialect status is fully clean.
 
-In its default Java mode the Quarkus runtime is a secondary smoke test; in SQL mode
+In the explicitly selected Java reference mode the Quarkus runtime is a secondary smoke test; in SQL mode
 (section 4) it is the live demonstration of the proof.
 
 ## Serve A Reviewed Schema Without Read Resolvers
@@ -394,7 +394,7 @@ Content-Type: application/graphql-response+json
 {"data":{"article":{"id":1,"title":"Titan GraphQL proof","author":{"id":10,"name":"Ada Lovelace"}}}}
 ```
 
-(In the default Java mode the same request answers with
+(In the explicitly selected Java reference mode the same request answers with
 `X-Titan-Execution-Mode: java` and no fingerprint header.)
 
 Execution telemetry lands in the serving database — the `titan_runtime.telemetry`

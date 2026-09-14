@@ -102,6 +102,9 @@ tasks.test {
         "titan.graphql.artifacts.dir",
         layout.projectDirectory.dir("src/test/resources/titan-artifacts").asFile.absolutePath
     )
+    // Most Docker-free transport tests intentionally exercise the in-JVM reference fixture.
+    // Production application.properties remains fail-closed compiled mode.
+    systemProperty("titan.graphql.execution.mode", "java")
 }
 
 tasks.register<Test>("integrationTest") {

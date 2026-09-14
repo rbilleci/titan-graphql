@@ -160,7 +160,7 @@ lowered/service rows.
 drafts, GAP-005 artifact refs, deployments, idempotency, audit, transaction
 framing, and deterministic Titan-neutral reads. This is durable core-store
 evidence, but it does not yet promote mutation runtime rows to `ACCEPTED`:
-the default Java-mode endpoint handler is still not migrated through the
+the optional Java-reference endpoint handler is still not migrated through the
 transactional execution path, generated mutation schema/conformance artifacts
 are still pending, and GraphQL-only wrapper records still need a consumer-side
 persistence decision.

@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Docker-free coverage for the W5.1 execution-mode plumbing: mode selection (default java),
+ * Docker-free coverage for the execution-mode plumbing: mode selection (default compiled),
  * the descriptive 503 failure path of SQL mode with an absent/unreachable datasource (never a
  * silent fallback to Java mode), the telemetry listener contract, and the mode surface
  * headers. The live SQL-mode serving path itself is proven by {@code GraphqlSqlModeHttpIT}.
@@ -46,19 +46,13 @@ class GraphqlExecutionModeTest {
     // --- mode selection -------------------------------------------------------------------
 
     @Test
-    void defaultModeIsJavaAndAnswersFromJavaKernel() {
-        GraphqlHttpResource resource = new GraphqlHttpResource();
-
-        GraphqlHttpResource.GraphqlHttpResult result =
-                resource.negotiatePost(Map.<String, Object>of("query", SIMPLE_QUERY), GraphqlHttpResource.GRAPHQL_RESPONSE_JSON);
-
-        assertEquals(200, result.status());
-        assertTrue(result.body().contains("\"data\""), result.body());
+    void emptyModeValueSelectsCompiledProductionDefault() {
+        assertEquals(GraphqlExecutionEngine.Mode.COMPILED, engine("").mode());
     }
 
     @Test
     void modeValuesParseLenientlyOnCaseAndWhitespaceOnly() {
-        assertEquals(GraphqlExecutionEngine.Mode.JAVA, engine("").mode());
+        assertEquals(GraphqlExecutionEngine.Mode.COMPILED, engine("").mode());
         assertEquals(GraphqlExecutionEngine.Mode.JAVA, engine(" Java ").mode());
         assertEquals(GraphqlExecutionEngine.Mode.JDBC, engine("JDBC").mode());
         assertEquals(GraphqlExecutionEngine.Mode.COMPILED, engine("COMPILED").mode());
@@ -77,11 +71,13 @@ class GraphqlExecutionModeTest {
     @Test
     void systemConfigEngineReadsTheModeProperty() {
         assertEquals(GraphqlExecutionEngine.Mode.JAVA, GraphqlExecutionEngine.fromSystemConfig().mode());
+        String previous = System.getProperty(GraphqlExecutionEngine.MODE_PROPERTY);
         System.setProperty(GraphqlExecutionEngine.MODE_PROPERTY, "sql");
         try {
             assertEquals(GraphqlExecutionEngine.Mode.SQL, GraphqlExecutionEngine.fromSystemConfig().mode());
         } finally {
-            System.clearProperty(GraphqlExecutionEngine.MODE_PROPERTY);
+            if (previous == null) System.clearProperty(GraphqlExecutionEngine.MODE_PROPERTY);
+            else System.setProperty(GraphqlExecutionEngine.MODE_PROPERTY, previous);
         }
     }
 
@@ -324,7 +320,8 @@ class GraphqlExecutionModeTest {
 
     @Test
     void javaModeResponsesNameTheEngineAndCarryNoFingerprint() {
-        Response response = new GraphqlHttpResource().postResponse(
+        Response response = new GraphqlHttpResource(new GraphqlExecutionEngine(
+                "java", () -> new FailingDataSource("unused"), "unused")).postResponse(
                 Map.<String, Object>of("query", SIMPLE_QUERY), GraphqlHttpResource.GRAPHQL_RESPONSE_JSON,
                 null, null, null, null, null, null, null, null, null, null);
 
