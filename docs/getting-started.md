@@ -323,8 +323,8 @@ matching, pagination, and exact counts inside the database. A single local `in` 
 at most 16 values; composed `and`/`or`/`not`, filter/order combinations, and reviewed one-hop
 to-one relation filters use a static 3-by-3 DNF carrier. Larger filter plans, multiple simultaneous
 order keys, nullable/to-many or multi-hop relation ordering, to-many or multi-hop filters,
-row-value policy expressions beyond named role gates/context filters, and deeper nested
-collection batching return explicit GraphQL errors; they never fall back to `jdbc`, `java`, or the
+and row-value policy expressions beyond named role gates/context filters return explicit GraphQL
+errors; they never fall back to `jdbc`, `java`, or the
 demo `sql` kernel.
 
 It is ordinary Quarkus/MicroProfile config, so `-Dtitan.graphql.execution.mode=sql`

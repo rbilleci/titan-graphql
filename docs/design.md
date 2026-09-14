@@ -248,7 +248,8 @@ For the current implementations:
 - direct relations beneath a point root are planned from declared local and target columns
 - compiled mode batches direct relations beneath collection roots through fixed arity 2–64
   carriers; a 100-parent page therefore needs at most two child calls, never one call per parent
-- deeper nested batching and relation-connection batching remain explicit rejections
+- compiled collection paths recursively batch one read per selected relation level; relation
+  connections still assemble each per-parent window from the ordered batch result in memory
 - the fixed demo Java/SQL equivalence kernel retains its existing bounded connection behavior
 - unsupported deep nesting should fail with an explicit max-depth error
 - tests should compare the number of planned read steps for representative nested queries

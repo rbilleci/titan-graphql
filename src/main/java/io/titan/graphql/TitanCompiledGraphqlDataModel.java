@@ -508,6 +508,8 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                         method,
                         relationParameters(selection, relation, List.of(localKey), context)
                 ));
+                prefetchDirectRelations(connection, relation.targetType(), relationPath,
+                        selection.selections(), children, context, observable, relationCache);
             }
             if (selection.relationConnectionSelection().selected()) {
                 result.put(selection.responseKey(), renderRelationConnection(
@@ -731,6 +733,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                 relationCache.put(new RelationCacheKey(relationPath, key), new ArrayList<>());
             }
             List<Object> values = new ArrayList<>(keys.values());
+            List<Row> descendants = new ArrayList<>();
             for (int offset = 0; offset < values.size(); offset += 64) {
                 List<Object> chunk = new ArrayList<>(values.subList(offset, Math.min(offset + 64, values.size())));
                 if (chunk.size() == 1) {
@@ -741,6 +744,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                             relationParameters(selection, relation, chunk, context)
                     ));
                     relationCache.put(new RelationCacheKey(relationPath, cacheKey(chunk.getFirst())), children);
+                    descendants.addAll(children);
                     observable.addReadStep(relationPath + ".batch", "TITAN PACKAGE " + method + "(?)");
                     continue;
                 }
@@ -762,9 +766,12 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                     }
                     grouped.add(child);
                 }
+                descendants.addAll(children);
                 observable.addReadStep(relationPath + ".batch",
                         "TITAN PACKAGE " + method + "(" + arity + " parameters)");
             }
+            prefetchDirectRelations(connection, relation.targetType(), relationPath,
+                    selection.selections(), descendants, context, observable, relationCache);
         }
     }
 
@@ -999,7 +1006,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             validateFields(relation.targetType(), selection.selections(),
                     collectionParent || relation.cardinality()
                             == TitanGraphqlRelationDocument.RelationDocumentCardinality.MANY,
-                    false);
+                    true);
         }
     }
 

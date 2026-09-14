@@ -57,8 +57,9 @@ of unsafe identifiers, protected field/relation SQL guards, and reuse for unrela
 commerce models.
 `GeneratedTitanGraphqlReadsIT` installs the package and proves both dialect shapes against live
 databases, including model attestation, point/page/relation reads, a computed field, protected-field
-masking and authorized access, observing a row update, and direct collection-relation grouping in a root-plus-batch
-two-step plan. `commerceIntegrationTest` repeats the complete generate-to-serve chain in an
+masking and authorized access, observing a row update, direct collection-relation grouping in a
+root-plus-batch two-step plan, and recursive `articles.comments.author` batching with one read per
+level. `commerceIntegrationTest` repeats the complete generate-to-serve chain in an
 isolated output tree for an unrelated customers/orders model. It asserts that every packaged
 entry point belongs to the generated carrier class and that no demo-blog or article routine is
 present, then proves integer, string, native UUID, and composite point keys; nested reads;
@@ -87,7 +88,6 @@ Before the carrier route can replace it, generation and generic runtime invocati
   custom order keys, and relation ordering beyond a non-null to-one hop;
 - row-value policy expressions beyond the reviewed named role gates and context filters;
 - to-many or multi-hop filter paths and SQL-side per-parent connection limiting;
-- nested multi-level relation batching;
 - portable null ordering and scalar/null value preservation;
 - generic mutation routing at the application boundary.
 

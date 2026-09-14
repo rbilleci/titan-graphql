@@ -129,15 +129,15 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   production package and from `compiledSchemaIntegrationTest`; `legacySqlIntegrationTest` owns a
   separate package/output tree. Generated carriers do not yet cover
   multiple simultaneous custom order keys, relation ordering beyond a reviewed non-null to-one
-  hop, row-value policy expressions beyond named gates/context filters, or nested multi-level
-  batching. Generated filters run in
+  hop, or row-value policy expressions beyond named gates/context filters. Generated filters run in
   static Titan carriers: one local predicate retains `in` arities through 16, while composed
   `and`/`or`/`not`, filter-plus-order, and reviewed to-one relation paths use a bounded 3-by-3 DNF
   plan. Expressions beyond that declared carrier budget fail closed.
   Relay relation connections support forward/backward windows, cursors, and exact counts under
   both point and collection roots. Direct relation and relation-connection reads immediately
   beneath collection roots use fixed generated batch arities and do not issue one query per
-  parent. The current relation connection window is assembled from the ordered compiled carrier
+  parent. Nested collection paths recursively batch once per selected relation level within the
+  configured selection-depth budget. The current relation connection window is assembled from the ordered compiled carrier
   result; reviewed local integer equality arguments are applied inside the carrier before counts
   and windows, while SQL-side per-parent limiting remains an optimization boundary. A separately packaged
   unrelated commerce model proves the same path independently of the demo package. The next

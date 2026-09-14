@@ -310,6 +310,20 @@ class GeneratedTitanGraphqlReadsIT {
             assertEquals(2, relationPageExecution.plan().readStepCount(),
                     "relation connections must retain one root plus one batched child read on " + target);
 
+            GraphqlExecution nestedBatchExecution = GraphqlEngine.execute(
+                    dataModel, new GraphqlJsonWriter(), GraphqlRequest.query("""
+                            { articles(first: 2) {
+                                edges { node { comments(first: 2) {
+                                    edges { node { id author { id name } } }
+                                } } }
+                            } }
+                            """), GraphqlRequestContext.legacy(10L, "reader"));
+            JsonNode nestedBatch = JSON.readTree(nestedBatchExecution.json());
+            assertEquals("Grace Hopper", nestedBatch.at(
+                    "/data/articles/edges/0/node/comments/edges/0/node/author/name").asText(), target.name());
+            assertEquals(3, nestedBatchExecution.plan().readStepCount(),
+                    "two relation levels must use one root plus one batch per level on " + target);
+
             String firstCommentCursor = relationPage.at(
                     "/data/articles/edges/0/node/comments/pageInfo/endCursor").asText();
             JsonNode relationContinuation = graphql(dataModel,
