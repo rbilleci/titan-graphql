@@ -110,6 +110,22 @@ class CommerceCompiledGraphqlIT {
                     GraphqlRequestContext.legacy(1L, "reader")).json());
             assertEquals(8, continued.at("/data/customers/edges/0/node/id").asInt(), target.name());
 
+            JsonNode relatedOrder = JSON.readTree(execute(runtime,
+                    "{ orders(first: 1, orderBy: [{ customerName: ASC }]) { "
+                            + "edges { cursor node { id reference } } pageInfo { hasNextPage } } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals(80, relatedOrder.at("/data/orders/edges/0/node/id").asInt(), target.name());
+            assertTrue(relatedOrder.at("/data/orders/pageInfo/hasNextPage").asBoolean(), target.name());
+            String customerNameCursor = relatedOrder.at("/data/orders/edges/0/cursor").asText();
+            JsonNode relatedOrderContinuation = JSON.readTree(execute(runtime,
+                    "{ orders(first: 2, after: \"" + customerNameCursor
+                            + "\", orderBy: [{ customerName: ASC }]) { edges { node { id } } } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals(70, relatedOrderContinuation.at(
+                    "/data/orders/edges/0/node/id").asInt(), target.name());
+            assertEquals(71, relatedOrderContinuation.at(
+                    "/data/orders/edges/1/node/id").asInt(), target.name());
+
             JsonNode ordered = JSON.readTree(execute(runtime,
                     "{ customers(first: 1, orderBy: [{ name: DESC }]) { "
                             + "edges { cursor node { id name } } pageInfo { hasNextPage } } }",

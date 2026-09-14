@@ -122,6 +122,17 @@ types:
         column: reference
         type: String
         nullable: false
+    relations:
+      customer:
+        target: Customer
+        cardinality: one
+        nullable: false
+        localColumn: customer_id
+        targetColumn: id
+        capabilities:
+          selectable: true
+          batchable: true
+          selectionHopBudget: 2
 
   Country:
     table: countries
@@ -237,6 +248,28 @@ roots:
       name:
         column: name
         path: name
+        direction: asc
+        nulls: last
+        tieBreaker: id
+
+  orders:
+    type: Order
+    operation: connection
+    pagination:
+      mode: relay
+      defaultPageSize: 10
+      maxPageSize: 100
+      totalCount: exact
+      cursor:
+        path: id
+        column: id
+        direction: asc
+        tieBreaker: id
+    sortPaths:
+      customerName:
+        column: customer_id
+        path: customer.name
+        hops: 1
         direction: asc
         nulls: last
         tieBreaker: id

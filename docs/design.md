@@ -198,8 +198,9 @@ For reviewed local root sort paths, code generation emits separate ascending and
 carriers. Cursor predicates compare the declared value and tie-breaker as a tuple-equivalent
 boolean expression, so continuation remains stable when sort values repeat. Runtime SQL never
 substitutes a client-provided identifier or direction; the validated plan only chooses among
-inventory-resolved generated entry points. Multiple custom order keys and relation-hop ordering
-remain explicit unsupported shapes.
+inventory-resolved generated entry points. A reviewed `relation.field` path may cross one
+non-null to-one relation and is compiled as a static qualified join. Multiple simultaneous custom
+order keys and nullable, to-many, or deeper relation ordering remain explicit unsupported shapes.
 
 The engine must stay model-agnostic: parsing, validation, policy application, and selection-tree construction cannot know about `Article`, `User`, or any future application type. Concrete data models provide descriptors and execution adapters. The current `DemoBlogGraphqlSchema` and demo executor are only the first adapter.
 

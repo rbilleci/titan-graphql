@@ -109,16 +109,24 @@ public final class TitanGraphqlRoutineSourceGenerator {
         emitPageCarriers(source, context, type, root, "",
                 cursor.column(), cursorTieBreaker, cursor.direction());
         for (TitanGraphqlRootDocument.RootDocumentSortPath sort : root.sortPaths()) {
-            if (sort.hops() != 0) {
-                continue;
-            }
             String tieBreaker = sort.tieBreaker().isBlank() ? sort.column() : sort.tieBreaker();
-            emitPageCarriers(source, context, type, root,
-                    "Order" + javaTypeName(sort.name()) + "Asc",
-                    sort.column(), tieBreaker, TitanGraphqlRootDocument.RootDocumentSortDirection.ASC);
-            emitPageCarriers(source, context, type, root,
-                    "Order" + javaTypeName(sort.name()) + "Desc",
-                    sort.column(), tieBreaker, TitanGraphqlRootDocument.RootDocumentSortDirection.DESC);
+            String methodSuffix = "Order" + javaTypeName(sort.name());
+            if (sort.hops() == 0) {
+                emitPageCarriers(source, context, type, root,
+                        methodSuffix + "Asc", sort.column(), tieBreaker,
+                        TitanGraphqlRootDocument.RootDocumentSortDirection.ASC);
+                emitPageCarriers(source, context, type, root,
+                        methodSuffix + "Desc", sort.column(), tieBreaker,
+                        TitanGraphqlRootDocument.RootDocumentSortDirection.DESC);
+            } else if (sort.hops() == 1) {
+                emitRelationHopPageCarriers(source, context, type, root, sort,
+                        methodSuffix + "Asc", TitanGraphqlRootDocument.RootDocumentSortDirection.ASC);
+                emitRelationHopPageCarriers(source, context, type, root, sort,
+                        methodSuffix + "Desc", TitanGraphqlRootDocument.RootDocumentSortDirection.DESC);
+            } else {
+                throw unsupported("root sort path '" + root.name() + "." + sort.name()
+                        + "' exceeds the generated relation-hop limit of 1");
+            }
         }
         if (pagination.totalCount() == TitanGraphqlRootDocument.TotalCountMode.EXACT) {
             PredicateContract countPredicate = rootPredicate(context, type, root, null);
@@ -157,10 +165,94 @@ public final class TitanGraphqlRoutineSourceGenerator {
             TitanGraphqlRootDocument.RootDocumentSortDirection direction
     ) {
         SortContract sort = sortContract(context, type, sortBinding, tieBreakerBinding, direction);
-        PredicateContract pagePredicate = rootPredicate(context, type, root, sort);
+        emitPageCarriers(source, context, type, root, methodSuffix, direction, sort,
+                selectList(context, type), "");
+    }
+
+    private static void emitRelationHopPageCarriers(
+            StringBuilder source,
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            TitanGraphqlRootDocument root,
+            TitanGraphqlRootDocument.RootDocumentSortPath modelSort,
+            String methodSuffix,
+            TitanGraphqlRootDocument.RootDocumentSortDirection direction
+    ) {
+        String[] path = modelSort.path().split("\\.", -1);
+        if (path.length != 2 || path[0].isBlank() || path[1].isBlank()) {
+            throw unsupported("one-hop root sort path '" + root.name() + "." + modelSort.name()
+                    + "' must use relation.field syntax");
+        }
+        TitanGraphqlRelationDocument relation = type.relations().stream()
+                .filter(candidate -> candidate.name().equals(path[0]))
+                .findFirst()
+                .orElseThrow(() -> unsupported("one-hop root sort path '" + root.name() + "."
+                        + modelSort.name() + "' references unknown relation '" + path[0] + "'"));
+        if (relation.cardinality() != TitanGraphqlRelationDocument.RelationDocumentCardinality.ONE
+                || relation.nullable()) {
+            throw unsupported("one-hop root sort path '" + root.name() + "." + modelSort.name()
+                    + "' requires a non-null to-one relation");
+        }
+        if (!modelSort.column().equals(relation.localColumn())) {
+            throw unsupported("one-hop root sort path '" + root.name() + "." + modelSort.name()
+                    + "' must bind column '" + relation.localColumn() + "' for relation '"
+                    + relation.name() + "'");
+        }
+        TitanGraphqlTypeDocument target = context.type(relation.targetType());
+        TitanGraphqlFieldDocument targetField = target.fields().stream()
+                .filter(field -> field.name().equals(path[1]))
+                .findFirst()
+                .orElseThrow(() -> unsupported("one-hop root sort path '" + root.name() + "."
+                        + modelSort.name() + "' references unknown scalar field '" + path[1] + "'"));
+        if (targetField.computed() != null || targetField.nullable()) {
+            throw unsupported("one-hop root sort path '" + root.name() + "." + modelSort.name()
+                    + "' requires a stored non-null scalar field");
+        }
+        String rootAlias = "tgql_root";
+        String targetAlias = "tgql_sort";
+        String sortExpression = columnExpression(targetAlias, targetField.column());
+        String tieBreaker = modelSort.tieBreaker().isBlank()
+                ? context.primaryKey(type) : modelSort.tieBreaker();
+        SortContract sort = new SortContract(
+                modelSort.name(),
+                sortExpression,
+                targetField.type(),
+                tieBreaker,
+                context.sortExpression(type, tieBreaker, rootAlias),
+                context.graphqlType(type, tieBreaker),
+                direction
+        );
+        String from = identifier(context.schema(type), "schema") + "."
+                + identifier(context.table(type), "table") + " " + rootAlias
+                + " JOIN " + identifier(context.schema(target), "relation schema") + "."
+                + identifier(context.table(target), "relation table") + " " + targetAlias
+                + " ON " + columnExpression(rootAlias, relation.localColumn())
+                + " = " + columnExpression(targetAlias, relation.targetColumn());
+        String select = selectList(
+                context,
+                type,
+                List.of(sortExpression + " AS " + sqlAlias(modelSort.name())),
+                rootAlias,
+                from
+        );
+        emitPageCarriers(source, context, type, root, methodSuffix, direction, sort, select, rootAlias);
+    }
+
+    private static void emitPageCarriers(
+            StringBuilder source,
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            TitanGraphqlRootDocument root,
+            String methodSuffix,
+            TitanGraphqlRootDocument.RootDocumentSortDirection direction,
+            SortContract sort,
+            String select,
+            String rootQualifier
+    ) {
+        PredicateContract pagePredicate = rootPredicate(context, type, root, sort, rootQualifier);
         List<Parameter> parameters = new ArrayList<>(pagePredicate.parameters());
         parameters.add(new Parameter("pageSize", "int", "setInt"));
-        String base = selectList(context, type) + pagePredicate.sql();
+        String base = select + pagePredicate.sql();
         String reverseDirection = direction == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
                 ? "DESC" : "ASC";
         String rootMethod = "readRoot" + javaTypeName(root.name()) + methodSuffix;
@@ -175,6 +267,16 @@ public final class TitanGraphqlRoutineSourceGenerator {
             TitanGraphqlTypeDocument type,
             TitanGraphqlRootDocument root,
             SortContract sort
+    ) {
+        return rootPredicate(context, type, root, sort, "");
+    }
+
+    private static PredicateContract rootPredicate(
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            TitanGraphqlRootDocument root,
+            SortContract sort,
+            String rootQualifier
     ) {
         List<Parameter> parameters = new ArrayList<>();
         List<String> clauses = new ArrayList<>();
@@ -205,7 +307,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
                     && argument.hops() == 0) {
                 parameters.add(new Parameter("has" + javaTypeName(argument.name()), "boolean", "setBoolean"));
                 parameters.add(context.parameter(argument.name(), argument.type(), argument.column(), type));
-                clauses.add("(? = FALSE OR " + identifier(argument.column(), "root argument column") + " = ?)");
+                clauses.add("(? = FALSE OR " + columnExpression(rootQualifier, argument.column()) + " = ?)");
             }
         }
         for (String contextFilterName : root.contextFilters()) {
@@ -216,7 +318,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
             String filterType = filter.operator() == TitanGraphqlContextFilterDocument.Operator.BOOLEAN_EQUALS
                     ? "Boolean" : context.graphqlType(type, filter.column());
             parameters.add(context.parameter(filter.contextKey(), filterType, filter.column(), type));
-            String column = identifier(filter.column(), "context filter column");
+            String column = columnExpression(rootQualifier, filter.column());
             clauses.add(filter.failClosed()
                     ? "(? = FALSE OR (? = TRUE AND " + column + " = ?))"
                     : "(? = FALSE OR ? = FALSE OR " + column + " = ?)");
@@ -363,22 +465,34 @@ public final class TitanGraphqlRoutineSourceGenerator {
             TitanGraphqlTypeDocument type,
             List<String> extraProjections
     ) {
+        String from = identifier(context.schema(type), "schema") + "."
+                + identifier(context.table(type), "table");
+        return selectList(context, type, extraProjections, "", from);
+    }
+
+    private static String selectList(
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            List<String> extraProjections,
+            String qualifier,
+            String from
+    ) {
         List<String> projections = new ArrayList<>();
         for (TitanGraphqlFieldDocument field : type.fields()) {
             if (!field.policies().isEmpty()) {
                 continue; // Protected scalars require a policy-specific generated routine.
             }
             if (field.computed() == null) {
-                projections.add(identifier(field.column(), "field column") + " AS "
+                projections.add(columnExpression(qualifier, field.column()) + " AS "
                         + sqlAlias(field.name()));
             } else if (field.computed().selectable()) {
-                projections.add(computedExpression(type, field) + " AS "
+                projections.add(computedExpression(type, field, qualifier) + " AS "
                         + sqlAlias(field.name()));
             }
         }
         for (TitanGraphqlRelationDocument relation : type.relations()) {
             if (relation.policies().isEmpty()) {
-                projections.add(identifier(relation.localColumn(), "relation local column") + " AS "
+                projections.add(columnExpression(qualifier, relation.localColumn()) + " AS "
                         + hiddenRelationAlias(relation.name()));
             }
         }
@@ -386,12 +500,18 @@ public final class TitanGraphqlRoutineSourceGenerator {
         if (projections.isEmpty()) {
             throw unsupported("type '" + type.name() + "' has no unprotected selectable scalar fields");
         }
-        return "SELECT " + String.join(", ", projections) + " FROM "
-                + identifier(context.schema(type), "schema") + "."
-                + identifier(context.table(type), "table");
+        return "SELECT " + String.join(", ", projections) + " FROM " + from;
     }
 
     private static String computedExpression(TitanGraphqlTypeDocument type, TitanGraphqlFieldDocument field) {
+        return computedExpression(type, field, "");
+    }
+
+    private static String computedExpression(
+            TitanGraphqlTypeDocument type,
+            TitanGraphqlFieldDocument field,
+            String qualifier
+    ) {
         String expression = field.computed().sqlTemplate();
         if (expression.isBlank() || expression.contains(";") || expression.contains("--")
                 || expression.contains("/*") || expression.contains("'") || expression.contains("\"")) {
@@ -405,13 +525,19 @@ public final class TitanGraphqlRoutineSourceGenerator {
                     .orElseThrow(() -> unsupported("computed field '" + type.name() + "." + field.name()
                             + "' references unknown required field '" + requiredName + "'"));
             expression = expression.replace("{" + requiredName + "}",
-                    identifier(required.column(), "computed required column"));
+                    columnExpression(qualifier, required.column()));
         }
         if (expression.contains("{") || !expression.matches("[A-Za-z0-9_().,+*/% -]+")) {
             throw unsupported("computed field '" + type.name() + "." + field.name()
                     + "' has an unsupported SQL template");
         }
         return expression;
+    }
+
+    private static String columnExpression(String qualifier, String column) {
+        String safeColumn = identifier(column, "column");
+        return qualifier == null || qualifier.isBlank()
+                ? safeColumn : identifier(qualifier, "table alias") + "." + safeColumn;
     }
 
     private static String orderBy(String expression, String direction, String tieBreakerExpression) {
@@ -601,6 +727,19 @@ public final class TitanGraphqlRoutineSourceGenerator {
             throw unsupported("type '" + type.name() + "' has no physical table binding");
         }
 
+        private String primaryKey(TitanGraphqlTypeDocument type) {
+            if (!type.primaryKey().isBlank()) {
+                return type.primaryKey();
+            }
+            return document.database().tables().stream()
+                    .filter(table -> table.name().equals(type.table()))
+                    .map(table -> table.primaryKey())
+                    .filter(primaryKey -> !primaryKey.isBlank())
+                    .findFirst()
+                    .orElseThrow(() -> unsupported("type '" + type.name()
+                            + "' has no primary key binding for stable ordering"));
+        }
+
         private String graphqlType(TitanGraphqlTypeDocument type, String column) {
             String typeName = graphqlTypeOrNull(type, column);
             if (typeName != null) {
@@ -620,13 +759,17 @@ public final class TitanGraphqlRoutineSourceGenerator {
         }
 
         private String sortExpression(TitanGraphqlTypeDocument type, String binding) {
+            return sortExpression(type, binding, "");
+        }
+
+        private String sortExpression(TitanGraphqlTypeDocument type, String binding, String qualifier) {
             for (TitanGraphqlFieldDocument field : type.fields()) {
                 if (!binding.equals(field.column()) && !binding.equals(field.name())) {
                     continue;
                 }
                 return field.computed() == null
-                        ? identifier(field.column(), "sort column")
-                        : computedExpression(type, field);
+                        ? columnExpression(qualifier, field.column())
+                        : computedExpression(type, field, qualifier);
             }
             throw unsupported("sort binding '" + binding + "' on type '" + type.name()
                     + "' has no scalar field binding");

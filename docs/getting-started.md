@@ -310,10 +310,12 @@ batched relations and relation connections beneath collection roots; and declare
 filters. Batch carriers use fixed arities through 64, so a 100-parent page takes at most two child
 calls instead of N calls. Relation connection windows are currently assembled from the ordered
 compiled carrier rows after any reviewed local integer equality arguments are applied in SQL;
-SQL-side per-parent limiting remains to be added.
-Unsupported generated filters/order, protected carrier branches, relation-hop filters, and
-deeper nested collection batching return explicit GraphQL errors; they never fall back to `jdbc`,
-`java`, or the demo `sql` kernel.
+SQL-side per-parent limiting remains to be added. Reviewed root order paths support local scalar
+or computed values and one non-null to-one relation hop, with stable cursor continuation in both
+directions. Arbitrary generated filters, multiple simultaneous order keys, nullable/to-many or
+multi-hop relation ordering, protected carrier branches, relation-hop filters, and deeper nested
+collection batching return explicit GraphQL errors; they never fall back to `jdbc`, `java`, or the
+demo `sql` kernel.
 
 It is ordinary Quarkus/MicroProfile config, so `-Dtitan.graphql.execution.mode=sql`
 and the `TITAN_GRAPHQL_EXECUTION_MODE` environment variable work too. The automated

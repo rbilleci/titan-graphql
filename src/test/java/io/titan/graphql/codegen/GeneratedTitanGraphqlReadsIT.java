@@ -148,6 +148,26 @@ class GeneratedTitanGraphqlReadsIT {
             assertEquals(1, backward.at("/data/articles/edges/0/node/id").asInt(), target.name());
             assertTrue(backward.at("/data/articles/pageInfo/hasNextPage").asBoolean(), target.name());
 
+            JsonNode relatedOrder = graphql(dataModel,
+                    "{ articles(first: 1, orderBy: [{ authorName: ASC }]) { "
+                            + "edges { cursor node { id } } pageInfo { hasNextPage } } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(1, relatedOrder.at("/data/articles/edges/0/node/id").asInt(), target.name());
+            assertTrue(relatedOrder.at("/data/articles/pageInfo/hasNextPage").asBoolean(), target.name());
+            String relatedOrderCursor = relatedOrder.at("/data/articles/edges/0/cursor").asText();
+            JsonNode relatedOrderContinuation = graphql(dataModel,
+                    "{ articles(first: 1, after: \"" + relatedOrderCursor
+                            + "\", orderBy: [{ authorName: ASC }]) { edges { node { id } } } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(2, relatedOrderContinuation.at(
+                    "/data/articles/edges/0/node/id").asInt(), target.name());
+
+            JsonNode relatedOrderDescending = graphql(dataModel,
+                    "{ articles(first: 1, orderBy: [{ authorName: DESC }]) { edges { node { id } } } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(2, relatedOrderDescending.at(
+                    "/data/articles/edges/0/node/id").asInt(), target.name());
+
             JsonNode visible = graphql(dataModel,
                     "{ articles(first: 10) { edges { node { id } } totalCount } }",
                     GraphqlRequestContext.articleVisibility(10L, "reader", true));

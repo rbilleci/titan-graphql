@@ -33,6 +33,11 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("WHERE id = ?"), source);
         assertTrue(source.contains("ORDER BY id ASC LIMIT ?"), source);
         assertTrue(source.contains("ORDER BY id DESC LIMIT ?"), source);
+        assertTrue(source.contains("readRootArticlesOrderAuthorNameAscForward"), source);
+        assertTrue(source.contains("JOIN public.users tgql_sort ON "
+                + "tgql_root.author_id = tgql_sort.id"), source);
+        assertTrue(source.contains("tgql_sort.name AS author_name"), source);
+        assertTrue(source.contains("ORDER BY tgql_sort.name ASC, tgql_root.id ASC LIMIT ?"), source);
         assertTrue(source.contains("author_id AS __titan_relation_author"), source);
         assertTrue(source.contains("id AS __titan_relation_comments"), source);
         assertTrue(source.contains("(? = FALSE OR (? = TRUE AND published = ?))"), source);
@@ -66,6 +71,10 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("readRootCustomersOrderNameDescForward("), source);
         assertTrue(source.contains("name < ? OR (name = ? AND id < ?)"), source);
         assertTrue(source.contains("ORDER BY name DESC, id DESC LIMIT ?"), source);
+        assertTrue(source.contains("readRootOrdersOrderCustomerNameAscForward"), source);
+        assertTrue(source.contains("JOIN commerce.customers tgql_sort ON "
+                + "tgql_root.customer_id = tgql_sort.id"), source);
+        assertTrue(source.contains("ORDER BY tgql_sort.name ASC, tgql_root.id ASC LIMIT ?"), source);
         assertTrue(source.contains("(? = FALSE OR (? = TRUE AND active = ?))"), source);
         assertFalse(source.contains("Article"), source);
         assertFalse(source.contains("articles"), source);

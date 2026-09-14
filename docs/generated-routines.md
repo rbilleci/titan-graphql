@@ -58,8 +58,9 @@ entry point belongs to the generated carrier class and that no demo-blog or arti
 present, then proves integer, string, native UUID, and composite point keys; nested reads;
 batching; root and relation counts; root and relation cursor continuation; relation backward
 windows; fail-closed context filtering; live mutations; and restart visibility on PostgreSQL and
-MySQL. Both schemas prove relation connections below collection roots with one generated batch
-read rather than one child read per parent.
+MySQL. Both schemas also prove stable one-hop root ordering through reviewed non-null to-one
+relations. Both schemas prove relation connections below collection roots with one generated
+batch read rather than one child read per parent.
 
 ## Deliberate Remaining Boundary
 
@@ -69,7 +70,8 @@ corpus remains useful while carrier coverage grows. Compiled mode has no fallbac
 
 Before the carrier route can replace it, generation and generic runtime invocation must cover:
 
-- all generated scalar filters, multi-column custom ordering, and relation-hop order paths;
+- all generated scalar filters, multiple simultaneous custom order keys, and relation ordering
+  beyond a non-null to-one hop;
 - exact visible counts for generated filters and policy-specific branches;
 - protected-field and protected-relation policy-specific branches;
 - relation-hop filter arguments and SQL-side per-parent connection limiting;

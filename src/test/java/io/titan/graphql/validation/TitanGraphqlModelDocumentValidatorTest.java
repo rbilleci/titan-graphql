@@ -175,6 +175,46 @@ final class TitanGraphqlModelDocumentValidatorTest {
         assertEquals(TitanGraphqlValidationIssueCode.MISSING_REQUIRED_FIELD, empty.issues().getFirst().code());
     }
 
+    @Test
+    void validatesOneHopRootSortBindingsBeforeDeployment() {
+        TitanGraphqlRelationDocument author = relation("author", "User", List.of());
+        TitanGraphqlRootDocument validRoot = articlesRoot(
+                "Article",
+                List.of(),
+                List.of(sortPath("authorName", "author_id", "author.name", 1)),
+                List.of()
+        );
+        TitanGraphqlValidationReport valid = TitanGraphqlModelDocumentValidator.validate(
+                relationSortDocument(validRoot, author, List.of(
+                        field("id", "Int", "id"),
+                        field("name", "String", "name")
+                ))
+        );
+        assertTrue(valid.valid());
+
+        TitanGraphqlRootDocument invalidRoot = articlesRoot(
+                "Article",
+                List.of(),
+                List.of(
+                        sortPath("authorName", "wrong_author_id", "author.missing", 1),
+                        sortPath("deepAuthorName", "author_id", "author.company.name", 2)
+                ),
+                List.of()
+        );
+        TitanGraphqlValidationReport invalid = TitanGraphqlModelDocumentValidator.validate(
+                relationSortDocument(invalidRoot, author, List.of(
+                        field("id", "Int", "id"),
+                        field("name", "String", "name")
+                ))
+        );
+        assertEquals(List.of(
+                TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                TitanGraphqlValidationIssueCode.UNKNOWN_REFERENCE,
+                TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY
+        ), invalid.issues().stream().map(TitanGraphqlValidationIssue::code).toList());
+        assertTrue(invalid.blocksDeployment());
+    }
+
     private static TitanGraphqlModelDocument validDocument() {
         return new TitanGraphqlModelDocument(
                 TitanGraphqlModelDocument.CURRENT_API_VERSION,
@@ -341,6 +381,33 @@ final class TitanGraphqlModelDocumentValidatorTest {
                 List.of(),
                 List.of(root),
                 List.of(type),
+                List.of(),
+                List.of(),
+                null,
+                null
+        );
+    }
+
+    private static TitanGraphqlModelDocument relationSortDocument(
+            TitanGraphqlRootDocument root,
+            TitanGraphqlRelationDocument relation,
+            List<TitanGraphqlFieldDocument> targetFields
+    ) {
+        return new TitanGraphqlModelDocument(
+                TitanGraphqlModelDocument.CURRENT_API_VERSION,
+                TitanGraphqlModelDocument.PROJECTION_MODEL_KIND,
+                new TitanGraphqlModelMetadata("relation-sort"),
+                null,
+                List.of(),
+                List.of(root),
+                List.of(
+                        articleType(List.of(
+                                field("id", "Int", "id"),
+                                field("title", "String", "title")
+                        ), List.of(relation)),
+                        new TitanGraphqlTypeDocument(
+                                "User", "users", "", "users", "id", targetFields, List.of())
+                ),
                 List.of(),
                 List.of(),
                 null,

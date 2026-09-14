@@ -253,7 +253,17 @@ public final class TitanGraphqlModelDocumentValidator {
         private void validateRootSortPaths(TitanGraphqlRootDocument root, TitanGraphqlTypeDocument type) {
             TypeIndex typeIndex = new TypeIndex(type);
             for (TitanGraphqlRootDocument.RootDocumentSortPath sortPath : root.sortPaths()) {
+                if (sortPath.hops() == 1) {
+                    validateOneHopRootSortPath(root, type, typeIndex, sortPath);
+                    continue;
+                }
                 if (sortPath.hops() != 0) {
+                    issue(
+                            TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                            "Root '" + root.name() + "' sort '" + sortPath.name()
+                                    + "' exceeds the supported one-hop relation limit.",
+                            path("roots", root.name(), "sortPaths", sortPath.name())
+                    );
                     continue;
                 }
                 TitanGraphqlFieldDocument field = typeIndex.field(sortPath.name(), sortPath.path(), sortPath.column());
@@ -274,6 +284,95 @@ public final class TitanGraphqlModelDocumentValidator {
                             path("roots", root.name(), "sortPaths", sortPath.name())
                     );
                 }
+            }
+        }
+
+        private void validateOneHopRootSortPath(
+                TitanGraphqlRootDocument root,
+                TitanGraphqlTypeDocument owner,
+                TypeIndex ownerIndex,
+                TitanGraphqlRootDocument.RootDocumentSortPath sortPath
+        ) {
+            TitanGraphqlModelPath modelPath = path("roots", root.name(), "sortPaths", sortPath.name());
+            String[] segments = sortPath.path().split("\\.", -1);
+            if (segments.length != 2 || segments[0].isBlank() || segments[1].isBlank()) {
+                issue(
+                        TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                        "Root '" + root.name() + "' one-hop sort '" + sortPath.name()
+                                + "' must use relation.field syntax.",
+                        modelPath
+                );
+                return;
+            }
+            TitanGraphqlRelationDocument relation = owner.relations().stream()
+                    .filter(candidate -> candidate.name().equals(segments[0]))
+                    .findFirst()
+                    .orElse(null);
+            if (relation == null) {
+                issue(
+                        TitanGraphqlValidationIssueCode.UNKNOWN_REFERENCE,
+                        "Root '" + root.name() + "' one-hop sort '" + sortPath.name()
+                                + "' references unknown relation '" + segments[0] + "'.",
+                        modelPath
+                );
+                return;
+            }
+            if (!sortPath.column().equals(relation.localColumn())) {
+                issue(
+                        TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                        "Root '" + root.name() + "' one-hop sort '" + sortPath.name()
+                                + "' column must match relation '" + relation.name() + "' local column '"
+                                + relation.localColumn() + "'.",
+                        modelPath
+                );
+            }
+            if (relation.cardinality() != TitanGraphqlRelationDocument.RelationDocumentCardinality.ONE
+                    || relation.nullable()) {
+                issue(
+                        TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                        "Root '" + root.name() + "' one-hop sort '" + sortPath.name()
+                                + "' requires a non-null to-one relation.",
+                        modelPath
+                );
+            }
+            TitanGraphqlTypeDocument target = types.get(relation.targetType());
+            if (target == null) {
+                issue(
+                        TitanGraphqlValidationIssueCode.UNKNOWN_REFERENCE,
+                        "Root '" + root.name() + "' one-hop sort '" + sortPath.name()
+                                + "' relation target '" + relation.targetType() + "' is unknown.",
+                        modelPath
+                );
+                return;
+            }
+            TypeIndex targetIndex = new TypeIndex(target);
+            TitanGraphqlFieldDocument targetField = targetIndex.byName(segments[1]);
+            if (targetField == null) {
+                issue(
+                        TitanGraphqlValidationIssueCode.UNKNOWN_REFERENCE,
+                        "Root '" + root.name() + "' one-hop sort '" + sortPath.name()
+                                + "' references unknown scalar field '" + relation.targetType() + "."
+                                + segments[1] + "'.",
+                        modelPath
+                );
+            } else if (targetField.computed() != null || targetField.nullable()) {
+                issue(
+                        TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                        "Root '" + root.name() + "' one-hop sort '" + sortPath.name()
+                                + "' requires a stored non-null target scalar field.",
+                        modelPath
+                );
+            }
+            String tieBreaker = sortPath.tieBreaker().isBlank()
+                    ? effectivePrimaryKey(owner) : sortPath.tieBreaker();
+            if (ownerIndex.field(tieBreaker, tieBreaker, tieBreaker) == null) {
+                issue(
+                        TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                        "Root '" + root.name() + "' one-hop sort '" + sortPath.name()
+                                + "' tie breaker '" + tieBreaker
+                                + "' does not bind to a scalar field on type '" + owner.name() + "'.",
+                        modelPath
+                );
             }
         }
 
@@ -412,6 +511,10 @@ public final class TitanGraphqlModelDocumentValidator {
 
         TitanGraphqlFieldDocument byColumn(String column) {
             return fieldsByColumn.get(column);
+        }
+
+        TitanGraphqlFieldDocument byName(String name) {
+            return fieldsByName.get(name);
         }
 
         private TitanGraphqlFieldDocument byNameOrColumn(String nameOrColumn) {

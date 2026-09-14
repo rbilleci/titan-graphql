@@ -263,6 +263,12 @@ Sort path fields:
 | `nulls` | no | `first` or `last`. |
 | `tieBreaker` | yes | Stable tie-breaker column, usually `id`. |
 
+The compiled carrier path supports local stored or reviewed computed sort values and one-hop
+`relation.field` paths. A one-hop path must name a non-null to-one relation and a stored, non-null
+target scalar; `column` must equal that relation's `localColumn`. The generator emits a static,
+qualified join and uses the root scalar `tieBreaker` for deterministic cursors. Nullable, to-many,
+and multi-hop sort paths are rejected before deployment.
+
 ## Types
 
 Types map GraphQL object types to table bindings, fields, and relations.

@@ -228,10 +228,12 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                     ? root.pagination().cursor().tieBreaker() : order.tieBreakerColumnName();
             if (tieBreakerBinding == null || tieBreakerBinding.isBlank()) tieBreakerBinding = cursorBinding;
             addCursorParameters(parameters, read.cursorWindow().afterCursor(),
-                    scalarType(root.type(), cursorBinding), tieBreakerBinding,
+                    order == null ? scalarType(root.type(), cursorBinding) : rootOrderScalarType(root, order),
+                    tieBreakerBinding,
                     scalarType(root.type(), tieBreakerBinding), cursorBinding);
             addCursorParameters(parameters, read.cursorWindow().beforeCursor(),
-                    scalarType(root.type(), cursorBinding), tieBreakerBinding,
+                    order == null ? scalarType(root.type(), cursorBinding) : rootOrderScalarType(root, order),
+                    tieBreakerBinding,
                     scalarType(root.type(), tieBreakerBinding), cursorBinding);
         }
         for (TitanGraphqlRootDocument.RootDocumentArgument argument : root.arguments()) {
@@ -676,8 +678,8 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             throw unsupported("multiple custom root order paths");
         }
         if (!selection.rootOrderBy().isEmpty()
-                && selection.rootOrderBy().getFirst().sortHopCount() != 0) {
-            throw unsupported("relation-hop root ordering '"
+                && selection.rootOrderBy().getFirst().sortHopCount() > 1) {
+            throw unsupported("root ordering beyond one relation hop '"
                     + selection.rootOrderBy().getFirst().name() + "'");
         }
         boolean collection = selection.rootCardinality() == GraphqlRootField.ResultCardinality.MANY;
@@ -759,6 +761,30 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         TitanGraphqlFieldDocument field = requireType(typeName).fields().stream()
                 .filter(candidate -> column.equals(candidate.column()) || column.equals(candidate.name()))
                 .findFirst().orElseThrow(() -> unsupported("unmapped scalar column '" + typeName + "." + column + "'"));
+        return field.type();
+    }
+
+    private String rootOrderScalarType(
+            TitanGraphqlRootDocument root,
+            GraphqlSelection.RootOrder order
+    ) {
+        if (order.sortHopCount() == 0) {
+            return scalarType(root.type(), order.columnName());
+        }
+        if (order.sortHopCount() != 1) {
+            throw unsupported("root ordering '" + order.name() + "' beyond one relation hop");
+        }
+        String[] path = order.sortPath().split("\\.", -1);
+        if (path.length != 2) {
+            throw unsupported("one-hop root ordering '" + order.name() + "' without relation.field metadata");
+        }
+        TitanGraphqlTypeDocument owner = requireType(root.type());
+        TitanGraphqlRelationDocument relation = relation(owner, path[0]);
+        TitanGraphqlFieldDocument field = field(requireType(relation.targetType()), path[1]);
+        if (field == null) {
+            throw unsupported("one-hop root ordering '" + order.name() + "' with unknown field '"
+                    + order.sortPath() + "'");
+        }
         return field.type();
     }
 
