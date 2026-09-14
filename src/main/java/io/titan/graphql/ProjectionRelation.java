@@ -238,6 +238,7 @@ public final class ProjectionRelation {
     private final String targetColumnName;
     private final ProjectionRelationCardinality cardinality;
     private final boolean nullable;
+    private final GraphqlFieldPolicy policy;
     private final ProjectionRelationCapabilities capabilities;
     private final Retrievals retrievals;
     private final List<ProjectionRelationArgument> arguments;
@@ -250,6 +251,7 @@ public final class ProjectionRelation {
             String targetColumnName,
             ProjectionRelationCardinality cardinality,
             boolean nullable,
+            GraphqlFieldPolicy policy,
             ProjectionRelationCapabilities capabilities,
             Retrievals retrievals,
             List<ProjectionRelationArgument> arguments,
@@ -261,6 +263,7 @@ public final class ProjectionRelation {
         this.targetColumnName = targetColumnName;
         this.cardinality = cardinality;
         this.nullable = nullable;
+        this.policy = policy;
         this.capabilities = capabilities;
         this.retrievals = retrievals;
         this.arguments = List.copyOf(arguments);
@@ -292,6 +295,7 @@ public final class ProjectionRelation {
                 targetColumnName,
                 ProjectionRelationCardinality.ONE,
                 nullable,
+                GraphqlFieldPolicy.ALLOW,
                 capabilities,
                 Retrievals.currentDefault(name),
                 List.of(),
@@ -315,6 +319,7 @@ public final class ProjectionRelation {
                 targetColumnName,
                 ProjectionRelationCardinality.ONE,
                 nullable,
+                GraphqlFieldPolicy.ALLOW,
                 capabilities,
                 Retrievals.currentDefault(name),
                 arguments,
@@ -339,6 +344,7 @@ public final class ProjectionRelation {
                 targetColumnName,
                 ProjectionRelationCardinality.ONE,
                 nullable,
+                GraphqlFieldPolicy.ALLOW,
                 capabilities,
                 Retrievals.currentDefault(name),
                 arguments,
@@ -371,6 +377,7 @@ public final class ProjectionRelation {
                 targetColumnName,
                 ProjectionRelationCardinality.MANY,
                 nullable,
+                GraphqlFieldPolicy.ALLOW,
                 capabilities,
                 Retrievals.currentDefault(name),
                 List.of(),
@@ -394,6 +401,7 @@ public final class ProjectionRelation {
                 targetColumnName,
                 ProjectionRelationCardinality.MANY,
                 nullable,
+                GraphqlFieldPolicy.ALLOW,
                 capabilities,
                 Retrievals.currentDefault(name),
                 arguments,
@@ -418,6 +426,7 @@ public final class ProjectionRelation {
                 targetColumnName,
                 ProjectionRelationCardinality.MANY,
                 nullable,
+                GraphqlFieldPolicy.ALLOW,
                 capabilities,
                 Retrievals.currentDefault(name),
                 arguments,
@@ -447,6 +456,15 @@ public final class ProjectionRelation {
 
     public boolean nullable() {
         return nullable;
+    }
+
+    public GraphqlFieldPolicy policy() {
+        return policy;
+    }
+
+    public ProjectionRelation withPolicy(GraphqlFieldPolicy value) {
+        return new ProjectionRelation(name, targetTypeName, localColumnName, targetColumnName,
+                cardinality, nullable, value, capabilities, retrievals, arguments, sortPaths);
     }
 
     public ProjectionRelationCapabilities capabilities() {

@@ -170,8 +170,10 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   multi-column composite keys. The compiled commerce proof exercises string, native PostgreSQL
   UUID/MySQL `CHAR(36)`, and composite point lookups. Inference preserves composite-key discovery
   but still requires an author to review and declare the public key arguments instead of silently
-  choosing one component. The projection adapter currently enforces the named `adminOnly`
-  field policy and rejects relation policies it cannot enforce before reading.
+  choosing one component. The projection adapter compiles the reviewed named-policy subset
+  (`adminOnly`, `authenticated`, `allowAll`, `denyAll`, `roleEquals:<role>`, and
+  `roleIn:<role,...>`) for fields and relations, conjoining multiple attached rules. Generated
+  policy-specific database carriers remain a release blocker.
 
 ## Documentation Map
 

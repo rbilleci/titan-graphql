@@ -305,15 +305,8 @@ final class TitanGraphqlProjectionModelAdapter {
             TitanGraphqlRelationDocument relation,
             AdapterContext context
     ) {
-        if (!relation.policies().isEmpty()) {
-            for (String policyName : relation.policies()) {
-                context.policy(policyName);
-            }
-            throw unsupported("UNSUPPORTED_RELATION_POLICY",
-                    "relation '" + relation.name() + "' has policies that the projection adapter cannot "
-                            + "enforce before reading; remove the relation from public exposure or implement "
-                            + "an enforceable relation policy");
-        }
+        GraphqlFieldPolicy policy = TitanGraphqlPolicyCompiler.compile(
+                relation.policies(), context::policy);
         ProjectionRelation.ProjectionRelationCapabilities capabilities = relationCapabilities(relation);
         List<ProjectionRelation.ProjectionRelationArgument> arguments = relationArguments(relation);
         List<ProjectionRelation.ProjectionRelationSortPath> sortPaths = relationSortPaths(relation);
@@ -327,7 +320,7 @@ final class TitanGraphqlProjectionModelAdapter {
                     capabilities,
                     arguments,
                     sortPaths
-            );
+            ).withPolicy(policy);
         }
         return ProjectionRelation.one(
                 relation.name(),
@@ -338,7 +331,7 @@ final class TitanGraphqlProjectionModelAdapter {
                 capabilities,
                 arguments,
                 sortPaths
-        );
+        ).withPolicy(policy);
     }
 
     private static ProjectionRelation.ProjectionRelationCapabilities relationCapabilities(TitanGraphqlRelationDocument relation) {
@@ -415,19 +408,7 @@ final class TitanGraphqlProjectionModelAdapter {
     }
 
     private static GraphqlFieldPolicy fieldPolicy(TitanGraphqlFieldDocument field, AdapterContext context) {
-        if (field.policies().isEmpty()) {
-            return GraphqlFieldPolicy.ALLOW;
-        }
-        if (field.policies().size() > 1) {
-            throw unsupported("UNSUPPORTED_POLICY", "field '" + field.name() + "' has multiple policies");
-        }
-        TitanGraphqlPolicyDocument policy = context.policy(field.policies().getFirst());
-        if (policy.effect() != TitanGraphqlPolicyDocument.Effect.DENY
-                || !"adminOnly".equals(policy.expression())) {
-            throw unsupported("UNSUPPORTED_POLICY",
-                    "policy '" + policy.name() + "' is not supported by the projection adapter");
-        }
-        return context.policy()::canReadUserEmail;
+        return TitanGraphqlPolicyCompiler.compile(field.policies(), context::policy);
     }
 
     private static ProjectionField.FilterCapabilities filterCapabilities(

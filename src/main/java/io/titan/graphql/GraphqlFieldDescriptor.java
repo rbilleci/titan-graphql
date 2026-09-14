@@ -537,6 +537,7 @@ public final class GraphqlFieldDescriptor {
             String targetColumnName,
             RelationCardinality relationCardinality,
             boolean nullable,
+            GraphqlFieldPolicy policy,
             RelationCapabilities relationCapabilities,
             RelationRetrievals relationRetrievals,
             List<GraphqlRelationArgumentDescriptor> relationArguments
@@ -551,7 +552,7 @@ public final class GraphqlFieldDescriptor {
                 targetColumnName,
                 relationCardinality,
                 nullable,
-                GraphqlFieldPolicy.ALLOW,
+                policy,
                 relationCapabilities,
                 relationRetrievals,
                 relationArguments,
@@ -560,6 +561,27 @@ public final class GraphqlFieldDescriptor {
                 ScalarSortCapabilities.none(),
                 FieldComputedExpression.none()
         );
+    }
+
+    static GraphqlFieldDescriptor relation(
+            String name,
+            String targetTypeName,
+            String localColumnName,
+            String targetColumnName,
+            RelationCardinality relationCardinality,
+            boolean nullable,
+            GraphqlFieldPolicy policy,
+            RelationCapabilities relationCapabilities,
+            RelationRetrievals relationRetrievals,
+            List<GraphqlRelationArgumentDescriptor> relationArguments,
+            List<RelationSortPath> relationSortPaths
+    ) {
+        return new GraphqlFieldDescriptor(
+                name, FieldKind.RELATION, "", "", targetTypeName, localColumnName,
+                targetColumnName, relationCardinality, nullable, policy, relationCapabilities,
+                relationRetrievals, relationArguments, relationSortPaths,
+                ScalarFilterCapabilities.none(), ScalarSortCapabilities.none(),
+                FieldComputedExpression.none());
     }
 
     static GraphqlFieldDescriptor relation(

@@ -504,9 +504,10 @@ Fields:
 | `input` | no | Required request-context keys and types. |
 | `mode` | yes | `reject`, `mask`, or `filter`. Current field-policy behavior uses `reject`. |
 | `expression.kind` | yes | `named` in v1alpha1. |
-| `expression.name` | yes | Runtime policy hook name. |
+| `expression.name` | yes | Reviewed named expression: `adminOnly`, `authenticated`, `allowAll`, `denyAll`, `roleEquals:<role>`, or `roleIn:<role,...>`. Multiple attached policies are ANDed. |
 
-Reserved for later: arbitrary expression languages, user-defined Java snippets,
+The same compiler is used for field and relation authorization and unknown expressions fail
+closed while adapting the model. Reserved for later: arbitrary expression languages, user-defined Java snippets,
 nested write policies, and actor-shaped schema generation.
 
 ## Context Filters

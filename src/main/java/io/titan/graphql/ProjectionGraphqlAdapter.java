@@ -92,6 +92,7 @@ public final class ProjectionGraphqlAdapter {
                     relation.targetColumnName(),
                     adaptCardinality(relation.cardinality()),
                     relation.nullable(),
+                    relation.policy(),
                     adaptCapabilities(relation.capabilities()),
                     adaptRetrievals(relation.retrievals()),
                     adaptRelationArguments(relation.arguments()),
