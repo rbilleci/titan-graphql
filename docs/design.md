@@ -173,6 +173,11 @@ The current metamodel layer stores:
 This keeps the API schema decoupled from physical table names. The generic JDBC path consumes the
 model now. The constrained SQL kernel still mirrors a fixed demo; generating its static,
 Titan-transpilable accessors from the reviewed model is the remaining database-resident step.
+The compiled package is nevertheless bound exactly: `titanGraphqlBindPackage` links the canonical
+model semantic hash to Titan's artifact, manifest, and source-input hashes. SQL startup verifies
+that sidecar before opening the datasource and resolves the dialect-specific routine identity from
+Titan's object inventory. This prevents serving a stale or unrelated kernel while generation is
+being generalized; it is an integrity boundary, not a claim that the demo kernel is portable.
 
 The engine must stay model-agnostic: parsing, validation, policy application, and selection-tree construction cannot know about `Article`, `User`, or any future application type. Concrete data models provide descriptors and execution adapters. The current `DemoBlogGraphqlSchema` and demo executor are only the first adapter.
 

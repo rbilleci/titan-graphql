@@ -28,6 +28,10 @@ import java.sql.SQLException;
  */
 public final class GraphqlSqlEntryPointDispatch {
 
+    private static final String DEFAULT_SCHEMA = "public";
+    private static final String SQL_IDENTIFIER = "[A-Za-z_][A-Za-z0-9_]*";
+    private static final String QUALIFIED_ROUTINE = SQL_IDENTIFIER + "\\." + SQL_IDENTIFIER;
+
     private GraphqlSqlEntryPointDispatch() {
     }
 
@@ -93,23 +97,60 @@ public final class GraphqlSqlEntryPointDispatch {
 
     /** Returns the placeholder SQL ({@code ?} parameters, never bound values) for an invocation. */
     public static String placeholderSql(Invocation invocation) {
-        return switch (invocation) {
-            case Invocation.Execute ignored -> "SELECT public.execute_graphql(?, ?, ?)";
-            case Invocation.Request ignored -> "SELECT public.execute_graphql_request(?, ?, ?, ?)";
-            case Invocation.RequestWithVariables ignored ->
-                    "SELECT public.execute_graphql_request_with_variables(?, ?, ?, ?, ?, ?)";
-            case Invocation.WithContext ignored -> "SELECT public.execute_graphql_with_context(?, ?, ?, ?, ?, ?)";
-            case Invocation.WithIntrospection ignored ->
-                    "SELECT public.execute_graphql_with_introspection(?, ?, ?, ?)";
-            case Invocation.CompactContext ignored ->
-                    "SELECT public.execute_graphql_request_with_compact_context("
-                            + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        return placeholderSql(invocation, DEFAULT_SCHEMA + "." + routineName(invocation));
+    }
+
+    /** Uses an integrity-checked routine identity obtained from the Titan package inventory. */
+    public static String placeholderSql(Invocation invocation, String qualifiedRoutine) {
+        if (qualifiedRoutine == null || !qualifiedRoutine.matches(QUALIFIED_ROUTINE)) {
+            throw new IllegalArgumentException("invalid Titan package routine identity '" + qualifiedRoutine + "'");
+        }
+        String arguments = switch (invocation) {
+            case Invocation.Execute ignored -> "?, ?, ?";
+            case Invocation.Request ignored -> "?, ?, ?, ?";
+            case Invocation.RequestWithVariables ignored -> "?, ?, ?, ?, ?, ?";
+            case Invocation.WithContext ignored -> "?, ?, ?, ?, ?, ?";
+            case Invocation.WithIntrospection ignored -> "?, ?, ?, ?";
+            case Invocation.CompactContext ignored -> "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?";
         };
+        return "SELECT " + qualifiedRoutine + "(" + arguments + ")";
+    }
+
+    /** Logical Java entry-point method represented by one invocation shape. */
+    public static String methodName(Invocation invocation) {
+        return switch (invocation) {
+            case Invocation.Execute ignored -> "executeGraphql";
+            case Invocation.Request ignored -> "executeGraphqlRequest";
+            case Invocation.RequestWithVariables ignored -> "executeGraphqlRequestWithVariables";
+            case Invocation.WithContext ignored -> "executeGraphqlWithContext";
+            case Invocation.WithIntrospection ignored -> "executeGraphqlWithIntrospection";
+            case Invocation.CompactContext ignored -> "executeGraphqlRequestWithCompactContext";
+        };
+    }
+
+    private static String routineName(Invocation invocation) {
+        String method = methodName(invocation);
+        StringBuilder name = new StringBuilder();
+        for (int index = 0; index < method.length(); index++) {
+            char current = method.charAt(index);
+            if (Character.isUpperCase(current)) {
+                name.append('_').append(Character.toLowerCase(current));
+            } else {
+                name.append(current);
+            }
+        }
+        return name.toString();
     }
 
     /** Dispatches one invocation as {@code SELECT public.<function>(...)} against the deployed routines. */
     public static String execute(Connection connection, Invocation invocation) throws SQLException {
-        String sql = placeholderSql(invocation);
+        return execute(connection, invocation, DEFAULT_SCHEMA + "." + routineName(invocation));
+    }
+
+    /** Dispatches using the schema-qualified routine recorded in the verified Titan inventory. */
+    public static String execute(Connection connection, Invocation invocation, String qualifiedRoutine)
+            throws SQLException {
+        String sql = placeholderSql(invocation, qualifiedRoutine);
         return switch (invocation) {
             case Invocation.Execute c -> selectText(connection, sql,
                     c.query(), c.actorId(), c.actorRole());

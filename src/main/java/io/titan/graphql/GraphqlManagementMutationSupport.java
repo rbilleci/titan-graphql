@@ -5,6 +5,7 @@ import io.titan.graphql.artifact.TitanGraphqlArtifactsDirectory;
 import io.titan.graphql.artifact.TitanGraphqlGap005ArtifactMetadata;
 import io.titan.graphql.artifact.TitanGraphqlGeneratedArtifactSet;
 import io.titan.graphql.artifact.TitanGraphqlIntrospectionArtifactPolicy;
+import io.titan.graphql.artifact.TitanGraphqlPackageBinding;
 import io.titan.graphql.management.TitanGraphqlArtifactSetRef;
 import io.titan.graphql.management.TitanGraphqlDurableManagementStore;
 import io.titan.graphql.management.TitanGraphqlInMemoryManagementStore;
@@ -233,6 +234,9 @@ final class GraphqlManagementMutationSupport {
         TitanGraphqlGap005ArtifactMetadata gap005Metadata = document.artifacts().generateSql()
                 ? TitanGraphqlArtifactsDirectory.readGap005Metadata()
                 : null;
+        TitanGraphqlPackageBinding packageBinding = document.artifacts().generateSql()
+                ? TitanGraphqlPackageBinding.read(TitanGraphqlArtifactsDirectory.configuredDirectory())
+                : null;
         TitanGraphqlGeneratedArtifactSet generated = TitanGraphqlGeneratedArtifactWorkflow.generateFromModelDocument(
                 artifactSetId,
                 draftId,
@@ -242,7 +246,8 @@ final class GraphqlManagementMutationSupport {
                         : TitanGraphqlIntrospectionArtifactPolicy.DISABLED,
                 generationProfile,
                 "",
-                gap005Metadata
+                gap005Metadata,
+                packageBinding
         );
         TitanGraphqlArtifactSet manifest = generated.manifest();
         TitanGraphqlArtifactSetRef ref = new TitanGraphqlArtifactSetRef(

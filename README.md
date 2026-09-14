@@ -39,6 +39,11 @@ The full pipeline is automated and green on both supported dialects:
   per dialect (`R__titan_010_runtime.sql` + `R__titan_020_routines.sql`) plus
   manifest/inventory/install-plan/verification JSON and rollback scripts, with zero
   duplicate identities.
+- **Bind the reviewed model exactly**: `titanGraphqlBindPackage` validates the selected model,
+  runs package/install verification, and writes the deterministic
+  `titan-graphql-package.json` sidecar. It binds the normalized model semantic hash to Titan's
+  artifact id, manifest hash, and source-input hash; SQL serving rejects a missing, stale, or
+  mismatched binding before opening the datasource.
 - **Verify (both dialects)**: `titanVerifyInstall` installs the package into scratch
   PostgreSQL and MySQL containers and verifies objects, routine signatures, and drift with
   zero diagnostics.
@@ -75,6 +80,7 @@ The full pipeline is automated and green on both supported dialects:
 ./gradlew test               # Docker-free tests (Java-mode reference + doc guards)
 ./gradlew titanPackage       # transpile + package migration artifacts (postgresql + mysql)
 ./gradlew titanVerifyInstall # install + verify against scratch PG + MySQL containers (Docker)
+./gradlew titanGraphqlBindPackage # verify and bind package to the reviewed model (Docker)
 ./gradlew integrationTest    # Java-vs-SQL equivalence on both dialects + live SQL-mode HTTP serving (Docker)
 ```
 
@@ -92,8 +98,8 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   strong Titan compiler proof, but its application rows are embedded in the bounded blog kernel.
   It does not yet prove that an arbitrary projection document becomes a database-resident GraphQL
   routine. Model-driven kernel generation remains required before `sql` mode is schema-portable.
-  Artifact generation refuses to attach that demo package to a differently named/shaped model;
-  a future package contract must bind the reviewed model's semantic hash directly.
+  Artifact generation and SQL serving now require an exact semantic model/package binding, but
+  binding correctly identifies the current demo kernel; it does not make that kernel generic.
 - **Management storage: durable JDBC store available (opt-in `jdbc` mode); file-backed by
   default.** Core dogfooded the management store — it transpiles the management mutation
   routines in-tree and ships a durable JDBC-backed transactional store over them

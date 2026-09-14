@@ -28,6 +28,8 @@ The proof path is fully automated:
   `R__titan_020_routines.sql`, plus manifest/inventory/plan/rollback JSON and SQL).
 - `titanVerifyInstall` installs the packaged SQL into scratch containers (postgres:16
   and mysql:8.4) and verifies objects, signatures, and drift.
+- `titanGraphqlBindPackage` validates the reviewed model and writes a reproducible sidecar that
+  binds its normalized semantic hash to the verified Titan package hashes.
 - `integrationTest` deploys the same packaged migrations onto a Testcontainers
   PostgreSQL, applies the demo DDL (`ddl/postgres/titan_graphql_postgres.sql`) and fixture rows,
   executes the conformance corpus through the deployed `public.execute_graphql*` stored
@@ -135,15 +137,17 @@ Use this repository's checked-in Gradle wrapper:
 
 If the build cannot find `vendor/titan` or `vendor/titan-dsl`, initialize the submodules above.
 
-## 1. Transpile And Package The GraphQL Engine
+## 1. Transpile, Verify, And Bind The GraphQL Engine
 
 From the `titan-graphql` repository:
 
 ```bash
-./gradlew titanPackage
+./gradlew titanGraphqlBindPackage
 ```
 
-`titanPackage` runs `titanTranspile` first, then packages the generated SQL into
+`titanGraphqlBindPackage` runs compilation, `titanPackage`, and `titanVerifyInstall`, then binds
+the package to `src/test/resources/graphql/demo-blog.titan.graphql.yaml`. Select another reviewed
+model with `-PtitanGraphqlModel=/path/to/titan.graphql.yaml`. The package artifacts are written to
 deterministic migration artifacts under:
 
 ```text
@@ -153,6 +157,8 @@ build/generated/migrations/titan/
   titan-artifact.json                    # artifact manifest
   titan-object-inventory.json            # generated object inventory
   titan-install-plan.json                # install plan
+  titan-install-verification.json        # live install verification
+  titan-graphql-package.json             # exact reviewed-model/package binding
   titan-rollback.postgresql.sql          # rollback script
 ```
 
@@ -179,15 +185,20 @@ public.execute_graphql_request_with_compact_context(
 )
 ```
 
-## 2. Verify The Install
+## 2. Verify The Install Separately
 
 ```bash
 ./gradlew titanVerifyInstall
 ```
 
 This installs the packaged SQL into a scratch PostgreSQL container and verifies the
-generated objects, routine signatures, and drift, writing
+generated objects, routine signatures, and drift on all configured dialects, writing
 `build/generated/migrations/titan/titan-install-verification.json`.
+
+SQL serving additionally requires `titan.graphql.model.path`. At startup the runtime parses and
+validates that model, compares it with `titan-graphql-package.json` and Titan's GAP-005 metadata,
+and only then resolves the dialect-specific schema-qualified entry point from the package
+inventory. The `X-Titan-Deployment-Fingerprint` header identifies this combined binding.
 
 ## 3. Run The Automated SQL-Mode Proof
 
@@ -316,12 +327,12 @@ curl -si -X POST http://localhost:8080/graphql \
 
 The mode surface proves which engine answered: every response carries
 `X-Titan-Execution-Mode`, and SQL-mode responses add the deployment fingerprint
-(the `artifactId` from the package manifest written by `titanPackage`):
+(the SHA-256 identity of `titan-graphql-package.json`, which binds model and package):
 
 ```text
 HTTP/1.1 200 OK
 X-Titan-Execution-Mode: sql
-X-Titan-Deployment-Fingerprint: titan.generated-sql.6445fa32348fbb45
+X-Titan-Deployment-Fingerprint: 4663407dfa99f9541be1cced40e3556af180bf920057f07cb6e33cc5357398a1
 Content-Type: application/graphql-response+json
 
 {"data":{"article":{"id":1,"title":"Titan GraphQL proof","author":{"id":10,"name":"Ada Lovelace"}}}}

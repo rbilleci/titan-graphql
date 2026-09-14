@@ -9,10 +9,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import io.titan.graphql.artifact.TitanGraphqlArtifactsDirectory;
 import io.titan.graphql.demo.blog.DemoBlogGraphqlRuntime;
 import io.titan.graphql.sqlmode.GraphqlSqlModeRuntime;
+import io.titan.graphql.sqlmode.GraphqlSqlEntryPointDispatch;
 import io.titan.graphql.sqlmode.GraphqlSqlModeUnavailableException;
 import io.titan.runtime.jdbc.TitanExecutionListener;
 import jakarta.ws.rs.core.Response;
 import java.io.PrintWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.Duration;
@@ -22,6 +26,7 @@ import java.util.Map;
 import java.util.logging.Logger;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Docker-free coverage for the W5.1 execution-mode plumbing: mode selection (default java),
@@ -32,6 +37,11 @@ import org.junit.jupiter.api.Test;
 class GraphqlExecutionModeTest {
 
     private static final String SIMPLE_QUERY = "{ article(id: 1) { id title } }";
+    private static final String DEMO_MODEL_PATH =
+            "src/test/resources/graphql/demo-blog.titan.graphql.yaml";
+
+    @TempDir
+    Path temporaryDirectory;
 
     // --- mode selection -------------------------------------------------------------------
 
@@ -127,13 +137,82 @@ class GraphqlExecutionModeTest {
     // --- failure honesty (SQL mode, absent/unreachable datasource) -------------------------
 
     @Test
+    void sqlModeRequiresAnExactlyBoundReviewedModelBeforeResolvingTheDataSource() {
+        GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
+                "sql",
+                () -> {
+                    throw new AssertionError("missing model must fail before datasource resolution");
+                },
+                "must-not-be-used",
+                "");
+
+        GraphqlExecutionModeUnavailableException failure = assertThrows(
+                GraphqlExecutionModeUnavailableException.class, engine::runtime);
+
+        assertTrue(failure.getMessage().contains(GraphqlExecutionEngine.MODEL_PATH_PROPERTY), failure.getMessage());
+        assertTrue(failure.getMessage().contains("titanGraphqlBindPackage"), failure.getMessage());
+    }
+
+    @Test
+    void sqlModeRejectsSemanticModelDriftBeforeResolvingTheDataSource() throws IOException {
+        Path fixturePackage = Path.of("src/test/resources/titan-artifacts");
+        for (String file : List.of(
+                "titan-artifact.json",
+                "titan-object-inventory.json",
+                "titan-install-plan.json",
+                "titan-install-verification.json",
+                "titan-rollback.postgresql.sql",
+                "titan-graphql-package.json")) {
+            Files.copy(fixturePackage.resolve(file), temporaryDirectory.resolve(file));
+        }
+        Path changedModel = temporaryDirectory.resolve("changed-model.yaml");
+        Files.writeString(changedModel, Files.readString(Path.of(DEMO_MODEL_PATH)).replace(
+                "description: Bounded demo blog model used to prove Titan GraphQL.",
+                "description: Changed after package generation."));
+        String previousArtifactsDirectory = System.getProperty(TitanGraphqlArtifactsDirectory.SYSTEM_PROPERTY);
+        System.setProperty(TitanGraphqlArtifactsDirectory.SYSTEM_PROPERTY, temporaryDirectory.toString());
+        try {
+            GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
+                    "sql",
+                    () -> {
+                        throw new AssertionError("model drift must fail before datasource resolution");
+                    },
+                    "must-not-be-used",
+                    changedModel.toString());
+
+            GraphqlExecutionModeUnavailableException failure = assertThrows(
+                    GraphqlExecutionModeUnavailableException.class, engine::runtime);
+
+            assertTrue(failure.getMessage().contains("model semantic hash mismatch"), failure.getMessage());
+        } finally {
+            if (previousArtifactsDirectory == null) {
+                System.clearProperty(TitanGraphqlArtifactsDirectory.SYSTEM_PROPERTY);
+            } else {
+                System.setProperty(TitanGraphqlArtifactsDirectory.SYSTEM_PROPERTY, previousArtifactsDirectory);
+            }
+        }
+    }
+
+    @Test
+    void packageRoutineIdentityIsStrictlyValidatedBeforeSqlConstruction() {
+        GraphqlSqlEntryPointDispatch.Invocation invocation =
+                new GraphqlSqlEntryPointDispatch.Invocation.Execute("{ article(id: 1) { id } }", 1L, "reader");
+
+        assertEquals("SELECT tenant_api.graphql_execute(?, ?, ?)",
+                GraphqlSqlEntryPointDispatch.placeholderSql(invocation, "tenant_api.graphql_execute"));
+        assertThrows(IllegalArgumentException.class,
+                () -> GraphqlSqlEntryPointDispatch.placeholderSql(invocation, "public.fn; DROP TABLE users"));
+    }
+
+    @Test
     void sqlModeWithoutAnyDataSourceAnswersDescriptive503InsteadOfFallingBack() {
         GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
                 "sql",
                 () -> {
                     throw new IllegalStateException("no datasource is configured");
                 },
-                "test datasource (jdbc url unset)");
+                "test datasource (jdbc url unset)",
+                DEMO_MODEL_PATH);
         GraphqlHttpResource resource = new GraphqlHttpResource(engine);
 
         GraphqlHttpResource.GraphqlHttpResult result =
@@ -156,7 +235,8 @@ class GraphqlExecutionModeTest {
         GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
                 "sql",
                 () -> new FailingDataSource("connection refused: db.example.test:5432"),
-                GraphqlExecutionEngine.QUARKUS_DATASOURCE_DESCRIPTION);
+                GraphqlExecutionEngine.QUARKUS_DATASOURCE_DESCRIPTION,
+                DEMO_MODEL_PATH);
         GraphqlHttpResource resource = new GraphqlHttpResource(engine);
 
         GraphqlHttpResource.GraphqlHttpResult post =
@@ -226,7 +306,7 @@ class GraphqlExecutionModeTest {
     @Test
     void sqlModeResponsesNameTheEngineAndTheDeployedArtifact() {
         GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
-                "sql", () -> new FailingDataSource("unreachable"), "stub datasource");
+                "sql", () -> new FailingDataSource("unreachable"), "stub datasource", DEMO_MODEL_PATH);
 
         Response response = new GraphqlHttpResource(engine).postResponse(
                 Map.<String, Object>of("query", SIMPLE_QUERY), GraphqlHttpResource.GRAPHQL_RESPONSE_JSON,
@@ -234,10 +314,11 @@ class GraphqlExecutionModeTest {
 
         assertEquals(503, response.getStatus());
         assertEquals("sql", response.getHeaderString(GraphqlHttpResource.EXECUTION_MODE_HEADER));
-        // The fingerprint is the package manifest artifactId from the configured artifacts
-        // directory (the checked-in fixture package under plain `test`).
+        // The fingerprint binds the exact reviewed model to the checked-in fixture package.
         assertEquals(
-                TitanGraphqlArtifactsDirectory.readGap005Metadata().artifactId(),
+                io.titan.graphql.artifact.TitanGraphqlPackageBinding
+                        .read(TitanGraphqlArtifactsDirectory.configuredDirectory())
+                        .deploymentFingerprint(),
                 response.getHeaderString(GraphqlHttpResource.DEPLOYMENT_FINGERPRINT_HEADER));
     }
 

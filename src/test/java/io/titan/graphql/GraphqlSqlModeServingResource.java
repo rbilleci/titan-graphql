@@ -4,6 +4,7 @@ import io.quarkus.test.common.QuarkusTestResourceLifecycleManager;
 import io.titan.graphql.conformance.DemoBlogSqlDeployment;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.nio.file.Path;
 import java.util.Map;
 import org.testcontainers.containers.PostgreSQLContainer;
 
@@ -33,6 +34,8 @@ public class GraphqlSqlModeServingResource implements QuarkusTestResourceLifecyc
         }
         return Map.of(
                 GraphqlExecutionEngine.MODE_PROPERTY, "sql",
+                GraphqlExecutionEngine.MODEL_PATH_PROPERTY,
+                Path.of("src/test/resources/graphql/demo-blog.titan.graphql.yaml").toAbsolutePath().toString(),
                 "quarkus.datasource.jdbc.url", container.getJdbcUrl(),
                 "quarkus.datasource.username", container.getUsername(),
                 "quarkus.datasource.password", container.getPassword());

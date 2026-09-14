@@ -14,6 +14,7 @@ import io.titan.graphql.artifact.TitanGraphqlGap005ArtifactMetadata;
 import io.titan.graphql.artifact.TitanGraphqlGeneratedArtifact;
 import io.titan.graphql.artifact.TitanGraphqlGeneratedArtifactSet;
 import io.titan.graphql.artifact.TitanGraphqlIntrospectionArtifactPolicy;
+import io.titan.graphql.artifact.TitanGraphqlPackageBinding;
 import io.titan.graphql.artifact.TitanGraphqlRollbackScriptRef;
 import io.titan.graphql.artifact.TitanGraphqlSqlRoutineRef;
 import io.titan.graphql.model.TitanGraphqlArtifactOptions;
@@ -108,7 +109,8 @@ final class TitanGraphqlGeneratedArtifactWorkflowTest {
                 TitanGraphqlIntrospectionArtifactPolicy.ENABLED,
                 "postgres-demo",
                 "2026-06-01T11:31:00Z",
-                gap005
+                gap005,
+                TitanGraphqlPackageBinding.create(document, gap005)
         );
 
         assertNull(generated.artifact(TitanGraphqlArtifactKind.GENERATED_SQL));
@@ -201,9 +203,10 @@ final class TitanGraphqlGeneratedArtifactWorkflowTest {
                         TitanGraphqlIntrospectionArtifactPolicy.DISABLED,
                         "postgres-demo",
                         "2026-06-01T11:31:00Z",
-                        gap005Metadata()));
+                        gap005Metadata(),
+                        TitanGraphqlPackageBinding.create(demo, gap005Metadata())));
 
-        assertTrue(error.getMessage().contains("fixed demo-blog kernel"), error.getMessage());
+        assertTrue(error.getMessage().contains("model name mismatch"), error.getMessage());
         assertTrue(error.getMessage().contains("commerce"), error.getMessage());
     }
 

@@ -110,13 +110,9 @@ tasks.register<Test>("integrationTest") {
     useJUnitPlatform {
         includeTags("docker")
     }
-    // The SQL-mode equivalence IT deploys the packaged migrations emitted by titanPackage
-    // (R__titan_010_runtime.sql + R__titan_020_routines.sql).
-    dependsOn("titanPackage")
-    // The real-artifact pipeline IT (W3) additionally needs the install verification rewritten
-    // to 'passed' by titanVerifyInstall (which itself depends on titanPackage and uses a
-    // scratch container — Docker is already a given for this task).
-    dependsOn("titanVerifyInstall")
+    // The SQL-mode tests consume only a package that is install-verified and exactly bound to
+    // the reviewed model. titanGraphqlBindPackage owns that complete dependency chain.
+    dependsOn("titanGraphqlBindPackage")
     systemProperty(
         "titan.graphql.migrations.dir",
         layout.buildDirectory.dir("generated/migrations/titan/postgresql").get().asFile.absolutePath
@@ -173,4 +169,25 @@ tasks.named<TitanTranspileTask>("titanTranspile") {
             "src/main/java/io/titan/graphql/demo/blog/DemoBlogTitanGraphqlFunctions.java"
         )
     )
+}
+
+val titanGraphqlModelFile = providers.gradleProperty("titanGraphqlModel")
+    .orElse("src/test/resources/graphql/demo-blog.titan.graphql.yaml")
+val titanGraphqlPackageDirectory = layout.buildDirectory.dir("generated/migrations/titan")
+
+tasks.register<JavaExec>("titanGraphqlBindPackage") {
+    description = "Binds an install-verified Titan package to the exact reviewed GraphQL model."
+    group = "titan"
+    dependsOn("classes", "titanVerifyInstall")
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("io.titan.graphql.artifact.TitanGraphqlPackageBindingCli")
+    args(titanGraphqlModelFile.get(), titanGraphqlPackageDirectory.get().asFile.absolutePath)
+    inputs.file(layout.projectDirectory.file(titanGraphqlModelFile.get()))
+    inputs.files(
+        titanGraphqlPackageDirectory.map { it.file("titan-artifact.json") },
+        titanGraphqlPackageDirectory.map { it.file("titan-object-inventory.json") },
+        titanGraphqlPackageDirectory.map { it.file("titan-install-plan.json") },
+        titanGraphqlPackageDirectory.map { it.file("titan-install-verification.json") }
+    )
+    outputs.file(titanGraphqlPackageDirectory.map { it.file("titan-graphql-package.json") })
 }

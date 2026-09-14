@@ -12,6 +12,7 @@ import io.quarkus.test.junit.QuarkusTest;
 import io.restassured.response.Response;
 import io.restassured.specification.RequestSpecification;
 import io.titan.graphql.artifact.TitanGraphqlArtifactsDirectory;
+import io.titan.graphql.artifact.TitanGraphqlPackageBinding;
 import io.titan.graphql.conformance.GraphqlSqlModeConformanceCorpus;
 import io.titan.graphql.sqlmode.GraphqlSqlEntryPointDispatch.Invocation;
 import jakarta.ws.rs.core.MediaType;
@@ -34,8 +35,7 @@ import org.junit.jupiter.api.Test;
  * <p>Asserts, over HTTP: a representative corpus subset (spanning all six kernel entry-point
  * shapes) answers identically to the Java kernel; telemetry rows land in
  * {@code titan_runtime.telemetry} of the serving database; and the mode surface headers
- * report {@code sql} plus the deployment fingerprint (the package manifest
- * {@code artifactId}).</p>
+ * report {@code sql} plus the exact reviewed-model/package deployment fingerprint.</p>
  *
  * <p>Booting Quarkus for real (rather than invoking the resource class directly) was chosen
  * deliberately: the demo claim is that the configured mode, the CDI datasource wiring, and
@@ -117,9 +117,10 @@ class GraphqlSqlModeHttpIT {
 
     @Test
     void modeSurfaceReportsSqlAndTheDeployedArtifactFingerprint() {
-        // integrationTest points titan.graphql.artifacts.dir at the real titanPackage output,
-        // so the expected fingerprint is the real manifest artifactId.
-        String expectedArtifactId = TitanGraphqlArtifactsDirectory.readGap005Metadata().artifactId();
+        // integrationTest creates the exact reviewed-model/package sidecar after installation.
+        String expectedFingerprint = TitanGraphqlPackageBinding
+                .read(TitanGraphqlArtifactsDirectory.configuredDirectory())
+                .deploymentFingerprint();
 
         Response response = given()
                 .contentType(MediaType.APPLICATION_JSON)
@@ -129,7 +130,7 @@ class GraphqlSqlModeHttpIT {
 
         assertEquals(200, response.statusCode());
         assertEquals("sql", response.header(GraphqlHttpResource.EXECUTION_MODE_HEADER));
-        assertEquals(expectedArtifactId, response.header(GraphqlHttpResource.DEPLOYMENT_FINGERPRINT_HEADER));
+        assertEquals(expectedFingerprint, response.header(GraphqlHttpResource.DEPLOYMENT_FINGERPRINT_HEADER));
         assertNotEquals("unavailable", response.header(GraphqlHttpResource.DEPLOYMENT_FINGERPRINT_HEADER));
     }
 

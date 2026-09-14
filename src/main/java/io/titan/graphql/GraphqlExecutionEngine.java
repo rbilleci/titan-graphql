@@ -1,14 +1,22 @@
 package io.titan.graphql;
 
 import io.titan.graphql.artifact.TitanGraphqlArtifactsDirectory;
+import io.titan.graphql.artifact.TitanGraphqlGap005ArtifactMetadata;
+import io.titan.graphql.artifact.TitanGraphqlPackageBinding;
+import io.titan.graphql.model.TitanGraphqlModelDocument;
+import io.titan.graphql.model.TitanGraphqlModelDocumentYaml;
 import io.titan.graphql.sqlmode.GraphqlSqlModeRuntime;
 import io.titan.graphql.sqlmode.GraphqlSqlModeUnavailableException;
+import io.titan.graphql.validation.TitanGraphqlModelDocumentValidator;
+import io.titan.graphql.validation.TitanGraphqlValidationReport;
 import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import javax.sql.DataSource;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
@@ -25,8 +33,9 @@ import java.util.function.Supplier;
  * fast and descriptively; there is no silent defaulting on bad input.</p>
  *
  * <p>In SQL mode requests route over the Quarkus default datasource (Agroal,
- * {@code quarkus.datasource.*}); the deployment fingerprint surfaced next to the mode is the
- * package manifest's {@code artifactId} read via {@link TitanGraphqlArtifactsDirectory}.
+ * {@code quarkus.datasource.*}); SQL mode also requires the reviewed model path and the exact
+ * model/package binding emitted by {@code titanGraphqlBindPackage}. The surfaced deployment
+ * fingerprint identifies that combined binding, not merely an unbound SQL artifact.
  * The admin/management plane ({@code /admin/graphql}) is not affected — only the application
  * kernel is transpiled and deployable.</p>
  */
@@ -66,6 +75,8 @@ public class GraphqlExecutionEngine {
 
     private volatile GraphqlSqlModeRuntime sqlRuntime;
     private volatile GenericJdbcGraphqlRuntime genericJdbcRuntime;
+    private volatile TitanGraphqlPackageBinding packageBinding;
+    private volatile TitanGraphqlGap005ArtifactMetadata packageMetadata;
     private volatile String fingerprint;
 
     /** CDI wiring: mode from MicroProfile config, datasource from the Agroal default bean. */
@@ -162,7 +173,9 @@ public class GraphqlExecutionEngine {
         if (runtime == null) {
             synchronized (this) {
                 if (sqlRuntime == null) {
-                    sqlRuntime = new GraphqlSqlModeRuntime(dataSourceSupplier, dataSourceDescription);
+                    verifiedPackageBinding();
+                    sqlRuntime = new GraphqlSqlModeRuntime(
+                            dataSourceSupplier, dataSourceDescription, packageMetadata);
                 }
                 runtime = sqlRuntime;
             }
@@ -171,11 +184,9 @@ public class GraphqlExecutionEngine {
     }
 
     /**
-     * Deployment fingerprint for the mode surface: in SQL mode, the package manifest's
-     * {@code artifactId} (the identity {@code titanPackage} stamped across every metadata
-     * file); empty in Java mode. An unreadable artifacts directory yields the literal
-     * {@code unavailable} — the serving database still answers, the surface just cannot name
-     * the package.
+     * Deployment fingerprint for the mode surface: in SQL mode, a stable hash over the exact
+     * reviewed model and Titan package binding; empty in Java/JDBC mode. An unreadable or
+     * mismatched binding yields {@code unavailable}; runtime execution still refuses the package.
      */
     public String fingerprint() {
         if (mode != Mode.SQL) {
@@ -185,7 +196,11 @@ public class GraphqlExecutionEngine {
         if (value == null) {
             synchronized (this) {
                 if (fingerprint == null) {
-                    fingerprint = readFingerprint();
+                    try {
+                        fingerprint = verifiedPackageBinding().deploymentFingerprint();
+                    } catch (RuntimeException unreadable) {
+                        fingerprint = FINGERPRINT_UNAVAILABLE;
+                    }
                 }
                 value = fingerprint;
             }
@@ -213,12 +228,47 @@ public class GraphqlExecutionEngine {
                 : new GraphqlExecutionModeUnavailableException(message, failure);
     }
 
-    private static String readFingerprint() {
-        try {
-            return TitanGraphqlArtifactsDirectory.readGap005Metadata().artifactId();
-        } catch (RuntimeException unreadable) {
-            return FINGERPRINT_UNAVAILABLE;
+    private TitanGraphqlPackageBinding verifiedPackageBinding() {
+        TitanGraphqlPackageBinding binding = packageBinding;
+        if (binding != null) {
+            return binding;
         }
+        synchronized (this) {
+            if (packageBinding == null) {
+                if (modelPath.isBlank()) {
+                    throw sqlUnavailable("no reviewed model path is configured", null);
+                }
+                try {
+                    Path path = Path.of(modelPath);
+                    TitanGraphqlModelDocument document = TitanGraphqlModelDocumentYaml.parse(Files.readString(path));
+                    TitanGraphqlValidationReport report = TitanGraphqlModelDocumentValidator.validate(document);
+                    if (report.blocksDeployment()) {
+                        throw new IllegalStateException("the reviewed model has " + report.errorCount()
+                                + " deployment-blocking validation error(s)");
+                    }
+                    TitanGraphqlGap005ArtifactMetadata metadata = TitanGraphqlArtifactsDirectory.readGap005Metadata();
+                    TitanGraphqlPackageBinding candidate = TitanGraphqlPackageBinding.read(
+                            TitanGraphqlArtifactsDirectory.configuredDirectory());
+                    candidate.verify(document, metadata);
+                    packageMetadata = metadata;
+                    packageBinding = candidate;
+                } catch (GraphqlExecutionModeUnavailableException ex) {
+                    throw ex;
+                } catch (IOException | RuntimeException ex) {
+                    throw sqlUnavailable("the reviewed model/package binding could not be verified ("
+                            + ex.getMessage() + ")", ex);
+                }
+            }
+            return packageBinding;
+        }
+    }
+
+    private GraphqlSqlModeUnavailableException sqlUnavailable(String cause, Throwable failure) {
+        String detail = cause + " [model: " + (modelPath.isBlank() ? "not configured" : modelPath)
+                + "; package: " + TitanGraphqlArtifactsDirectory.configuredDirectory() + "]. "
+                + "Set " + MODEL_PATH_PROPERTY + " (or " + MODEL_PATH_ENVIRONMENT_VARIABLE
+                + ") and run titanGraphqlBindPackage for that reviewed model before enabling SQL mode.";
+        return GraphqlSqlModeUnavailableException.describe(dataSourceDescription, detail, failure);
     }
 
     private static Supplier<DataSource> quarkusDataSourceSupplier(Instance<DataSource> dataSources) {

@@ -182,7 +182,7 @@ public final class GraphqlHttpResource {
     /**
      * Builds the JAX-RS response with the mode surface headers: every response names the
      * engine that answered it, and SQL-mode responses additionally carry the deployment
-     * fingerprint (the package manifest {@code artifactId}).
+     * fingerprint for the exact reviewed-model/Titan-package binding.
      */
     private Response withModeSurface(GraphqlHttpResult result) {
         Response.ResponseBuilder response = Response

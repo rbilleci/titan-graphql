@@ -5,6 +5,7 @@ import io.titan.graphql.GraphqlModelRuntime;
 import io.titan.graphql.GraphqlRequest;
 import io.titan.graphql.GraphqlRequestContext;
 import io.titan.graphql.GraphqlRuntimeRequest;
+import io.titan.graphql.artifact.TitanGraphqlGap005ArtifactMetadata;
 import io.titan.runtime.jdbc.JdbcTelemetrySink;
 import io.titan.runtime.jdbc.TitanExecutionListener;
 
@@ -46,13 +47,18 @@ public final class GraphqlSqlModeRuntime implements GraphqlModelRuntime {
     private final Supplier<DataSource> dataSourceSupplier;
     private final String dataSourceDescription;
     private final Function<DataSource, TitanExecutionListener> listenerFactory;
+    private final GraphqlSqlPackageEntryPoints packageEntryPoints;
 
     private volatile DataSource resolvedDataSource;
     private volatile TitanExecutionListener resolvedListener;
 
-    /** Production wiring: telemetry through core's JDBC sink on the same serving datasource. */
-    public GraphqlSqlModeRuntime(Supplier<DataSource> dataSourceSupplier, String dataSourceDescription) {
-        this(dataSourceSupplier, dataSourceDescription, JdbcTelemetrySink::new);
+    /** Production wiring with entry-point identities sourced from the verified Titan package. */
+    public GraphqlSqlModeRuntime(
+            Supplier<DataSource> dataSourceSupplier,
+            String dataSourceDescription,
+            TitanGraphqlGap005ArtifactMetadata packageMetadata
+    ) {
+        this(dataSourceSupplier, dataSourceDescription, JdbcTelemetrySink::new, packageMetadata);
     }
 
     /** Test seam: a fixed listener instead of the datasource-bound telemetry sink. */
@@ -61,18 +67,20 @@ public final class GraphqlSqlModeRuntime implements GraphqlModelRuntime {
             String dataSourceDescription,
             TitanExecutionListener listener
     ) {
-        this(dataSourceSupplier, dataSourceDescription, ignored -> listener);
+        this(dataSourceSupplier, dataSourceDescription, ignored -> listener, null);
         Objects.requireNonNull(listener, "listener");
     }
 
     private GraphqlSqlModeRuntime(
             Supplier<DataSource> dataSourceSupplier,
             String dataSourceDescription,
-            Function<DataSource, TitanExecutionListener> listenerFactory
+            Function<DataSource, TitanExecutionListener> listenerFactory,
+            TitanGraphqlGap005ArtifactMetadata packageMetadata
     ) {
         this.dataSourceSupplier = Objects.requireNonNull(dataSourceSupplier, "dataSourceSupplier");
         this.dataSourceDescription = Objects.requireNonNull(dataSourceDescription, "dataSourceDescription");
         this.listenerFactory = Objects.requireNonNull(listenerFactory, "listenerFactory");
+        this.packageEntryPoints = packageMetadata == null ? null : new GraphqlSqlPackageEntryPoints(packageMetadata);
     }
 
     @Override
@@ -128,7 +136,13 @@ public final class GraphqlSqlModeRuntime implements GraphqlModelRuntime {
         long startNanos = System.nanoTime();
         String responseJson;
         try (Connection connection = dataSource.getConnection()) {
-            responseJson = GraphqlSqlEntryPointDispatch.execute(connection, invocation);
+            if (packageEntryPoints == null) {
+                responseJson = GraphqlSqlEntryPointDispatch.execute(connection, invocation);
+            } else {
+                String qualifiedRoutine = packageEntryPoints.resolve(connection, invocation);
+                placeholderSql = GraphqlSqlEntryPointDispatch.placeholderSql(invocation, qualifiedRoutine);
+                responseJson = GraphqlSqlEntryPointDispatch.execute(connection, invocation, qualifiedRoutine);
+            }
         } catch (SQLException ex) {
             GraphqlSqlModeUnavailableException failure = GraphqlSqlModeUnavailableException.describe(
                     dataSourceDescription,
