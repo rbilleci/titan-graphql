@@ -107,9 +107,120 @@ public final class TitanGraphqlModelDocumentValidator {
                         );
                     }
                 }
+                validatePointRoot(root, type);
                 validateRootFilterPaths(root, type);
                 validateRootSortPaths(root, type);
             }
+        }
+
+        private void validatePointRoot(TitanGraphqlRootDocument root, TitanGraphqlTypeDocument type) {
+            if (root.operation() != TitanGraphqlRootDocument.RootDocumentOperation.POINT) {
+                return;
+            }
+            TitanGraphqlModelPath rootPath = path("roots", root.name());
+            if (root.argument() != null && !root.arguments().isEmpty()) {
+                issue(
+                        TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                        "Point root '" + root.name() + "' cannot declare both argument and arguments.",
+                        rootPath
+                );
+                return;
+            }
+            List<TitanGraphqlRootDocument.RootDocumentArgument> arguments = root.argument() == null
+                    ? root.arguments() : List.of(root.argument());
+            if (arguments.isEmpty()) {
+                issue(
+                        TitanGraphqlValidationIssueCode.MISSING_REQUIRED_FIELD,
+                        "Point root '" + root.name() + "' requires one or more key arguments.",
+                        rootPath
+                );
+                return;
+            }
+
+            String primaryKey = effectivePrimaryKey(type);
+            if (arguments.size() == 1 && !primaryKey.isBlank()
+                    && !primaryKey.equals(arguments.getFirst().column())) {
+                issue(
+                        TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                        "Point root '" + root.name() + "' key column '" + arguments.getFirst().column()
+                                + "' does not match the scalar primary key column '" + primaryKey + "'.",
+                        rootPath
+                );
+            }
+
+            TypeIndex typeIndex = new TypeIndex(type);
+            Set<String> names = new LinkedHashSet<>();
+            Set<String> columns = new LinkedHashSet<>();
+            for (TitanGraphqlRootDocument.RootDocumentArgument argument : arguments) {
+                TitanGraphqlModelPath argumentPath = path("roots", root.name(), "arguments", argument.name());
+                if (!names.add(argument.name())) {
+                    issue(
+                            TitanGraphqlValidationIssueCode.DUPLICATE_NAME,
+                            "Point root '" + root.name() + "' has duplicate key argument name '"
+                                    + argument.name() + "'.",
+                            argumentPath
+                    );
+                }
+                if (argument.column().isBlank() || !columns.add(argument.column())) {
+                    issue(
+                            TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                            "Point root '" + root.name() + "' has a missing or duplicate key column '"
+                                    + argument.column() + "'.",
+                            argumentPath
+                    );
+                }
+                if (argument.kind() != TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS
+                        || argument.hops() != 0) {
+                    issue(
+                            TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                            "Point root '" + root.name() + "' key argument '" + argument.name()
+                                    + "' must be a local equality binding.",
+                            argumentPath
+                    );
+                }
+                String argumentType = normalizeType(argument.type());
+                if (!Set.of("Int", "Long", "String", "ID", "UUID").contains(argumentType)) {
+                    issue(
+                            TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                            "Point root '" + root.name() + "' key argument '" + argument.name()
+                                    + "' must use Int, Long, String, ID, or UUID.",
+                            argumentPath
+                    );
+                    continue;
+                }
+                TitanGraphqlFieldDocument field = typeIndex.byColumn(argument.column());
+                if (field == null || field.computed() != null) {
+                    issue(
+                            TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                            "Point root '" + root.name() + "' key column '" + argument.column()
+                                    + "' does not bind to a stored scalar field on type '" + type.name() + "'.",
+                            argumentPath
+                    );
+                } else if (!normalizeType(field.type()).equals(argumentType)) {
+                    issue(
+                            TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                            "Point root '" + root.name() + "' key argument '" + argument.name()
+                                    + "' type '" + argument.type() + "' does not match field type '"
+                                    + field.type() + "'.",
+                            argumentPath
+                    );
+                }
+            }
+        }
+
+        private String normalizeType(String type) {
+            return type == null ? "" : type.replace("!", "").trim();
+        }
+
+        private String effectivePrimaryKey(TitanGraphqlTypeDocument type) {
+            if (!type.primaryKey().isBlank()) {
+                return type.primaryKey();
+            }
+            return document.database().tables().stream()
+                    .filter(table -> table.name().equals(type.table()))
+                    .map(table -> table.primaryKey())
+                    .findFirst()
+                    .orElse("");
         }
 
         private void validateRootFilterPaths(TitanGraphqlRootDocument root, TitanGraphqlTypeDocument type) {
@@ -297,6 +408,10 @@ public final class TitanGraphqlModelDocumentValidator {
 
         boolean binds(String nameOrColumn) {
             return bindings.contains(nameOrColumn);
+        }
+
+        TitanGraphqlFieldDocument byColumn(String column) {
+            return fieldsByColumn.get(column);
         }
 
         private TitanGraphqlFieldDocument byNameOrColumn(String nameOrColumn) {

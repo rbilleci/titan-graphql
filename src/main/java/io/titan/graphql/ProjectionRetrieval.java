@@ -165,6 +165,10 @@ public final class ProjectionRetrieval {
         }
     }
 
+    /** Reviewed scalar component of a point lookup key. */
+    public record RetrievalKeyArgument(String name, String graphqlType, String columnName) {
+    }
+
     private final String name;
     private final String typeName;
     private final String requiredIdArgumentName;
@@ -180,6 +184,7 @@ public final class ProjectionRetrieval {
     private final List<RetrievalFilterPath> filterPaths;
     private final List<RetrievalSortPath> sortPaths;
     private final List<RetrievalContextFilter> contextFilters;
+    private final List<RetrievalKeyArgument> keyArguments;
 
     private ProjectionRetrieval(
             String name,
@@ -196,7 +201,8 @@ public final class ProjectionRetrieval {
             RetrievalCursorOrdering cursorOrdering,
             List<RetrievalFilterPath> filterPaths,
             List<RetrievalSortPath> sortPaths,
-            List<RetrievalContextFilter> contextFilters
+            List<RetrievalContextFilter> contextFilters,
+            List<RetrievalKeyArgument> keyArguments
     ) {
         this.name = name;
         this.typeName = typeName;
@@ -213,6 +219,7 @@ public final class ProjectionRetrieval {
         this.filterPaths = List.copyOf(filterPaths);
         this.sortPaths = List.copyOf(sortPaths);
         this.contextFilters = List.copyOf(contextFilters);
+        this.keyArguments = List.copyOf(keyArguments);
     }
 
     public static ProjectionRetrieval point(String name, String typeName, String requiredIdArgumentName) {
@@ -240,7 +247,36 @@ public final class ProjectionRetrieval {
                 RetrievalCursorOrdering.ascending("id", "id", "id"),
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                List.of(new RetrievalKeyArgument(requiredIdArgumentName, "Int", ""))
+        );
+    }
+
+    public static ProjectionRetrieval point(
+            String name,
+            String typeName,
+            List<RetrievalKeyArgument> keyArguments
+    ) {
+        if (keyArguments == null || keyArguments.isEmpty()) {
+            throw new IllegalArgumentException("point retrieval requires at least one key argument");
+        }
+        return new ProjectionRetrieval(
+                name,
+                typeName,
+                keyArguments.getFirst().name(),
+                "",
+                OperationShape.POINT_LOOKUP,
+                RetrievalPaginationMode.NONE,
+                RetrievalCardinality.ONE,
+                1,
+                1,
+                List.of(),
+                ProjectionRetrievalCapabilities.pointRoot(),
+                RetrievalCursorOrdering.ascending("id", "id", "id"),
+                List.of(),
+                List.of(),
+                List.of(),
+                keyArguments
         );
     }
 
@@ -508,7 +544,8 @@ public final class ProjectionRetrieval {
                 cursorOrdering,
                 filterPaths,
                 sortPaths,
-                contextFilters
+                contextFilters,
+                List.of()
         );
     }
 
@@ -570,5 +607,9 @@ public final class ProjectionRetrieval {
 
     public List<RetrievalContextFilter> contextFilters() {
         return contextFilters;
+    }
+
+    public List<RetrievalKeyArgument> keyArguments() {
+        return keyArguments;
     }
 }

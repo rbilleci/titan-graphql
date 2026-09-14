@@ -178,8 +178,8 @@ The current metamodel layer stores:
 
 This keeps the API schema decoupled from physical table names. The generic JDBC path consumes the
 model now. `titanGraphqlGenerateRoutines` also generates a static database read boundary from that
-same model: point roots, forward/backward page carriers, direct relations, safe row-local computed
-expressions, and a semantic-hash attestation routine. Titan compiles those carriers to JSONB
+same model: typed and composite point roots, forward/backward page carriers, direct relations,
+safe row-local computed expressions, and a semantic-hash attestation routine. Titan compiles those carriers to JSONB
 functions on PostgreSQL and open-result-set procedures on MySQL. The generated carriers are now
 packaged and live-tested. The opt-in `compiled` runtime executes the supported generic plan subset
 through them. The older `sql` runtime still dispatches a whole request to the fixed demo kernel.
@@ -342,7 +342,6 @@ The project has proven the initial end-to-end loop:
   SQL package can be cryptographically bound to its model?
 - What generated static accessor shape best turns arbitrary reviewed models into a transpilable
   kernel without dynamic SQL?
-- How should composite and non-integer keys be represented in point-root arguments and cursors?
 - What batching strategy should execute relations beneath generic collection roots?
 - Which computed-expression and policy expression subsets can be safely lowered across both
   PostgreSQL and MySQL?

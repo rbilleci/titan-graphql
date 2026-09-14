@@ -18,6 +18,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -104,7 +105,19 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         List<Object> parameters;
         if (root.operation() == TitanGraphqlRootDocument.RootDocumentOperation.POINT) {
             method = "readRoot" + suffix;
-            parameters = List.of(coerce(selection.rootId(), root.argument().type()));
+            parameters = new ArrayList<>();
+            List<TitanGraphqlRootDocument.RootDocumentArgument> keys = pointKeyArguments(root);
+            for (TitanGraphqlRootDocument.RootDocumentArgument key : keys) {
+                Object value = selection.rootKeyValues().get(key.name());
+                if (value == null && keys.size() == 1 && selection.rootKeyValues().isEmpty()) {
+                    value = selection.rootId();
+                }
+                if (value == null) {
+                    throw new GraphqlException("missing point key argument '" + key.name() + "'");
+                }
+                parameters.add(coerce(value, key.type()));
+            }
+            parameters = List.copyOf(parameters);
         } else {
             boolean backward = read.cursorWindow().direction()
                     == GraphqlReadPlan.RootCursorWindowDirection.BACKWARD;
@@ -118,6 +131,21 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         }
         observable.addReadStep(read.stepName(), "TITAN PACKAGE " + method + "(?)");
         return rows(invoker.read(connection, method, parameters));
+    }
+
+    private static List<TitanGraphqlRootDocument.RootDocumentArgument> pointKeyArguments(
+            TitanGraphqlRootDocument root
+    ) {
+        if (root.argument() != null && !root.arguments().isEmpty()) {
+            throw unsupported("point root '" + root.name()
+                    + "' declaring both argument and arguments");
+        }
+        List<TitanGraphqlRootDocument.RootDocumentArgument> keys = root.argument() == null
+                ? root.arguments() : List.of(root.argument());
+        if (keys.isEmpty()) throw unsupported("point root '" + root.name() + "' without key arguments");
+        return keys.stream()
+                .sorted(Comparator.comparing(TitanGraphqlRootDocument.RootDocumentArgument::name))
+                .toList();
     }
 
     private Object renderConnection(
@@ -504,7 +532,9 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             case "Long" -> value instanceof Number number ? number.longValue() : Long.valueOf(value.toString());
             case "Float" -> value instanceof Number number ? number.doubleValue() : Double.valueOf(value.toString());
             case "Boolean" -> value instanceof Boolean bool ? bool : Boolean.valueOf(value.toString());
-            case "String", "ID", "UUID", "Date", "DateTime", "Timestamp" -> value.toString();
+            case "UUID" -> value instanceof java.util.UUID uuid
+                    ? uuid : java.util.UUID.fromString(value.toString());
+            case "String", "ID", "Date", "DateTime", "Timestamp" -> value.toString();
             default -> throw unsupported("GraphQL parameter type '" + graphqlType + "'");
         };
     }
@@ -516,7 +546,8 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             case "Long" -> 0L;
             case "Float" -> 0D;
             case "Boolean" -> false;
-            case "String", "ID", "UUID", "Date", "DateTime", "Timestamp" -> "";
+            case "UUID" -> new java.util.UUID(0L, 0L);
+            case "String", "ID", "Date", "DateTime", "Timestamp" -> "";
             default -> throw unsupported("GraphQL parameter type '" + graphqlType + "'");
         };
     }

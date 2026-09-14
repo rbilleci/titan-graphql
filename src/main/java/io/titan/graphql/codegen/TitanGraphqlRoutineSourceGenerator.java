@@ -83,15 +83,20 @@ public final class TitanGraphqlRoutineSourceGenerator {
     ) {
         TitanGraphqlTypeDocument type = context.type(root.type());
         if (root.operation() == TitanGraphqlRootDocument.RootDocumentOperation.POINT) {
-            if (root.argument() == null || root.argument().kind()
-                    != TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS) {
-                throw unsupported("point root '" + root.name() + "' requires an equals argument");
+            List<TitanGraphqlRootDocument.RootDocumentArgument> keys = pointKeyArguments(root);
+            List<Parameter> parameters = new ArrayList<>();
+            List<String> predicates = new ArrayList<>();
+            for (TitanGraphqlRootDocument.RootDocumentArgument key : keys) {
+                if (key.kind() != TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS
+                        || key.hops() != 0) {
+                    throw unsupported("point root '" + root.name()
+                            + "' requires local equals key arguments");
+                }
+                parameters.add(context.parameter(key.name(), key.type(), key.column(), type));
+                predicates.add(identifier(key.column(), "root key column") + " = ?");
             }
-            Parameter key = context.parameter(root.argument().name(), root.argument().type(),
-                    root.argument().column(), type);
-            String sql = selectList(context, type) + " WHERE " + identifier(root.argument().column(), "root column")
-                    + " = ?";
-            emitCarrier(source, "readRoot" + javaTypeName(root.name()), List.of(key), sql);
+            String sql = selectList(context, type) + " WHERE " + String.join(" AND ", predicates);
+            emitCarrier(source, "readRoot" + javaTypeName(root.name()), parameters, sql);
             return;
         }
 
@@ -122,6 +127,23 @@ public final class TitanGraphqlRoutineSourceGenerator {
                             + identifier(context.schema(type), "schema") + "."
                             + identifier(context.table(type), "table") + countPredicate.sql());
         }
+    }
+
+    private static List<TitanGraphqlRootDocument.RootDocumentArgument> pointKeyArguments(
+            TitanGraphqlRootDocument root
+    ) {
+        if (root.argument() != null && !root.arguments().isEmpty()) {
+            throw unsupported("point root '" + root.name()
+                    + "' cannot declare both argument and arguments");
+        }
+        List<TitanGraphqlRootDocument.RootDocumentArgument> keys = root.argument() == null
+                ? root.arguments() : List.of(root.argument());
+        if (keys.isEmpty()) {
+            throw unsupported("point root '" + root.name() + "' requires one or more key arguments");
+        }
+        return keys.stream()
+                .sorted(Comparator.comparing(TitanGraphqlRootDocument.RootDocumentArgument::name))
+                .toList();
     }
 
     private static void emitPageCarriers(
@@ -585,7 +607,8 @@ public final class TitanGraphqlRoutineSourceGenerator {
                 case "Long" -> new Parameter(name, "long", "setLong");
                 case "Boolean" -> new Parameter(name, "boolean", "setBoolean");
                 case "Float" -> new Parameter(name, "double", "setDouble");
-                case "String", "ID", "UUID", "Date", "DateTime", "Timestamp" ->
+                case "UUID" -> new Parameter(name, "UUID", "setObject");
+                case "String", "ID", "Date", "DateTime", "Timestamp" ->
                         new Parameter(name, "String", "setString");
                 default -> throw unsupported("column '" + column + "' on type '" + type.name()
                         + "' uses unsupported GraphQL parameter type '" + graphqlType + "'");

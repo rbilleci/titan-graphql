@@ -259,7 +259,7 @@ final class GraphqlVariableCoercer {
     private static GraphqlAst.Value coerceJsonValue(GraphqlAst.VariableDefinition definition, Object value) {
         return switch (namedType(definition.typeName())) {
             case "ID" -> coerceJsonId(definition, value);
-            case "String" -> coerceJsonString(definition, value);
+            case "String", "UUID", "Date", "DateTime", "Timestamp" -> coerceJsonString(definition, value);
             case "Int" -> coerceJsonInt(definition, value);
             case "Float" -> coerceJsonFloat(definition, value);
             case "Boolean" -> coerceJsonBoolean(definition, value);
@@ -287,7 +287,7 @@ final class GraphqlVariableCoercer {
                 }
                 throw incompatibleDefault(definition);
             }
-            case "String" -> {
+            case "String", "UUID", "Date", "DateTime", "Timestamp" -> {
                 if (value instanceof GraphqlAst.StringValue) {
                     yield value;
                 }
@@ -502,7 +502,11 @@ final class GraphqlVariableCoercer {
                 || typeName.equals("String")
                 || typeName.equals("Int")
                 || typeName.equals("Float")
-                || typeName.equals("Boolean");
+                || typeName.equals("Boolean")
+                || typeName.equals("UUID")
+                || typeName.equals("Date")
+                || typeName.equals("DateTime")
+                || typeName.equals("Timestamp");
     }
 
     private static String namedType(String typeName) {

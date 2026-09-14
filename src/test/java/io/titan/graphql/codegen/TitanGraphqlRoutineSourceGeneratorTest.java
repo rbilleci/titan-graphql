@@ -48,6 +48,11 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         String source = TitanGraphqlRoutineSourceGenerator.generate(model("commerce.titan.graphql.yaml"));
 
         assertTrue(source.contains("readRootCustomer(Connection connection, int id)"), source);
+        assertTrue(source.contains("readRootCountry(Connection connection, String code)"), source);
+        assertTrue(source.contains("readRootApiClient(Connection connection, UUID id)"), source);
+        assertTrue(source.contains(
+                "readRootInventoryItem(Connection connection, String sku, String warehouse)"), source);
+        assertTrue(source.contains("WHERE sku = ? AND warehouse_code = ?"), source);
         assertTrue(source.contains("readRootCustomersForward("), source);
         assertTrue(source.contains("readRelationCustomerOrders(Connection connection, int localKey)"), source);
         assertTrue(source.contains("readRelationCustomerOrdersBatch64(Connection connection"), source);

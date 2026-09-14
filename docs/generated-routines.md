@@ -54,8 +54,9 @@ omission, observing a row update, and direct collection-relation grouping in a r
 two-step plan. `commerceIntegrationTest` repeats the complete generate-to-serve chain in an
 isolated output tree for an unrelated customers/orders model. It asserts that every packaged
 entry point belongs to the generated carrier class and that no demo-blog or article routine is
-present, then proves nested reads, batching, counts, cursor continuation, fail-closed context
-filtering, live mutations, and restart visibility on PostgreSQL and MySQL.
+present, then proves integer, string, native UUID, and composite point keys; nested reads;
+batching; counts; cursor continuation; fail-closed context filtering; live mutations; and restart
+visibility on PostgreSQL and MySQL.
 
 ## Deliberate Remaining Boundary
 
@@ -67,7 +68,6 @@ Before the carrier route can replace it, generation and generic runtime invocati
 
 - all generated scalar filters, multi-column custom ordering, and relation-hop order paths;
 - exact visible counts;
-- composite and non-integer point keys;
 - protected-field and protected-relation policy-specific branches;
 - relation arguments, relation connections, cursors, and counts;
 - nested multi-level relation batching and relation-connection batching without N+1;

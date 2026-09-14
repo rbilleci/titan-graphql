@@ -44,9 +44,13 @@ public final class GraphqlValidator {
         if (rootField.retrievalCapabilities().directRoot() == false) {
             throw new GraphqlException("root field '" + root.name() + "' is not available for direct queries");
         }
-        long rootId = rootField.resultCardinality() == GraphqlRootField.ResultCardinality.ONE
-                ? requireLongArgument(root.arguments(), rootField, root.name())
-                : -1L;
+        Map<String, Object> rootKeyValues = rootField.resultCardinality()
+                == GraphqlRootField.ResultCardinality.ONE
+                ? requirePointKeyArguments(root.arguments(), rootField, root.name())
+                : Map.of();
+        Object firstRootKey = rootField.pointKeyArguments().isEmpty()
+                ? null : rootKeyValues.get(rootField.pointKeyArguments().getFirst().name());
+        long rootId = firstRootKey instanceof Number number ? number.longValue() : -1L;
         if (root.arguments().containsKey(rootField.limitArgumentName())
                 && rootField.retrievalCapabilities().supportsLimitArgument() == false) {
             throw new GraphqlException("root field '" + root.name() + "' does not support limit arguments");
@@ -97,7 +101,8 @@ public final class GraphqlValidator {
                 rootArgumentPlan.filters(),
                 rootField.contextFilters(),
                 rootArgumentPlan.generatedFilters(),
-                rootArgumentPlan.orderBy()
+                rootArgumentPlan.orderBy(),
+                rootKeyValues
         );
         for (GraphqlSelection.FieldSelection field : rootSelection.nodeSelections()) {
             builder.add(field);
@@ -766,26 +771,62 @@ public final class GraphqlValidator {
         }
     }
 
-    private static long requireLongArgument(
+    private static Map<String, Object> requirePointKeyArguments(
             Map<String, GraphqlAst.Value> arguments,
             GraphqlRootField rootField,
             String fieldName
     ) {
-        String name = rootField.requiredIdArgumentName();
         if (rootField.retrievalCapabilities().supportsKeyArgument() == false) {
             throw new GraphqlException("root field '" + fieldName + "' does not support key arguments");
         }
-        GraphqlAst.Value value = arguments.get(name);
-        if (value == null) {
-            throw new GraphqlException("required argument '" + name + "' is missing");
+        List<GraphqlRootField.PointKeyArgument> keyArguments = rootField.pointKeyArguments();
+        if (keyArguments.isEmpty()) {
+            throw new GraphqlException("root field '" + fieldName + "' has no point-key metadata");
         }
-        if (arguments.size() != 1) {
-            throw new GraphqlException("unsupported argument on " + fieldName + "; only '" + name + "' is allowed");
+        Map<String, Object> values = new LinkedHashMap<>();
+        for (GraphqlRootField.PointKeyArgument key : keyArguments) {
+            GraphqlAst.Value value = arguments.get(key.name());
+            if (value == null) {
+                throw new GraphqlException("required argument '" + key.name() + "' is missing");
+            }
+            values.put(key.name(), pointKeyValue(key, value));
         }
-        if (value instanceof GraphqlAst.IntValue intValue) {
-            return intValue.value();
+        if (arguments.size() != keyArguments.size()) {
+            throw new GraphqlException("unsupported argument on " + fieldName
+                    + "; point key requires exactly "
+                    + keyArguments.stream().map(GraphqlRootField.PointKeyArgument::name).toList());
         }
-        throw new GraphqlException("argument '" + name + "' must be an integer");
+        return Map.copyOf(values);
+    }
+
+    private static Object pointKeyValue(
+            GraphqlRootField.PointKeyArgument key,
+            GraphqlAst.Value value
+    ) {
+        String type = key.graphqlType().replace("!", "").trim();
+        if (type.equals("Int") || type.equals("Long")) {
+            if (value instanceof GraphqlAst.IntValue intValue) return intValue.value();
+            throw new GraphqlException("argument '" + key.name() + "' must be an integer");
+        }
+        if (type.equals("ID") && value instanceof GraphqlAst.IntValue intValue) {
+            return Long.toString(intValue.value());
+        }
+        if ((type.equals("String") || type.equals("ID") || type.equals("UUID"))
+                && value instanceof GraphqlAst.StringValue stringValue) {
+            if (type.equals("UUID")) {
+                if (!stringValue.value().matches(
+                        "(?i)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+                    throw new GraphqlException("argument '" + key.name() + "' must be a UUID");
+                }
+                try {
+                    return java.util.UUID.fromString(stringValue.value());
+                } catch (IllegalArgumentException exception) {
+                    throw new GraphqlException("argument '" + key.name() + "' must be a UUID");
+                }
+            }
+            return stringValue.value();
+        }
+        throw new GraphqlException("argument '" + key.name() + "' must be a " + type);
     }
 
     private static int optionalLimitArgument(

@@ -2,7 +2,9 @@ package io.titan.graphql;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class GraphqlSelection {
 
@@ -14,6 +16,7 @@ public final class GraphqlSelection {
     private final GraphqlRootField.RootCursorOrdering rootCursorOrdering;
     private final String rootTypeName;
     private final long rootId;
+    private final Map<String, Object> rootKeyValues;
     private final int rootLimit;
     private final RootPagination rootPagination;
     private final RootConnectionSelection rootConnectionSelection;
@@ -102,6 +105,34 @@ public final class GraphqlSelection {
             List<RootOrder> rootOrderBy,
             List<FieldSelection> fields
     ) {
+        this(
+                rootFieldName, rootResponseKey, rootRetrievalName, rootRetrievalShape,
+                rootRetrievalCapabilities, rootCursorOrdering, rootTypeName, rootId, rootLimit,
+                rootPagination, rootConnectionSelection, rootCardinality, rootFilters,
+                rootContextFilters, generatedRootFilters, rootOrderBy, fields, Map.of()
+        );
+    }
+
+    public GraphqlSelection(
+            String rootFieldName,
+            String rootResponseKey,
+            String rootRetrievalName,
+            GraphqlRootField.RootRetrievalShape rootRetrievalShape,
+            GraphqlRootField.RetrievalCapabilities rootRetrievalCapabilities,
+            GraphqlRootField.RootCursorOrdering rootCursorOrdering,
+            String rootTypeName,
+            long rootId,
+            int rootLimit,
+            RootPagination rootPagination,
+            RootConnectionSelection rootConnectionSelection,
+            GraphqlRootField.ResultCardinality rootCardinality,
+            List<RootFilter> rootFilters,
+            List<GraphqlRootField.RootContextFilter> rootContextFilters,
+            List<GeneratedRootFilter> generatedRootFilters,
+            List<RootOrder> rootOrderBy,
+            List<FieldSelection> fields,
+            Map<String, Object> rootKeyValues
+    ) {
         this.rootFieldName = rootFieldName;
         this.rootResponseKey = rootResponseKey;
         this.rootRetrievalName = rootRetrievalName;
@@ -110,6 +141,7 @@ public final class GraphqlSelection {
         this.rootCursorOrdering = rootCursorOrdering;
         this.rootTypeName = rootTypeName;
         this.rootId = rootId;
+        this.rootKeyValues = Collections.unmodifiableMap(new LinkedHashMap<>(rootKeyValues));
         this.rootLimit = rootLimit;
         this.rootPagination = rootPagination;
         this.rootConnectionSelection = rootConnectionSelection;
@@ -151,6 +183,10 @@ public final class GraphqlSelection {
 
     public long rootId() {
         return rootId;
+    }
+
+    public Map<String, Object> rootKeyValues() {
+        return rootKeyValues;
     }
 
     public int rootLimit() {
@@ -238,7 +274,8 @@ public final class GraphqlSelection {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                Map.of()
         );
     }
 
@@ -265,7 +302,8 @@ public final class GraphqlSelection {
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                Map.of()
         );
     }
 
@@ -300,7 +338,8 @@ public final class GraphqlSelection {
                 rootFilters,
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                Map.of()
         );
     }
 
@@ -322,6 +361,33 @@ public final class GraphqlSelection {
             List<GeneratedRootFilter> generatedRootFilters,
             List<RootOrder> rootOrderBy
     ) {
+        return builder(
+                rootFieldName, rootResponseKey, rootRetrievalName, rootRetrievalShape,
+                rootRetrievalCapabilities, rootCursorOrdering, rootTypeName, rootId, rootLimit,
+                rootPagination, rootConnectionSelection, rootCardinality, rootFilters,
+                rootContextFilters, generatedRootFilters, rootOrderBy, Map.of()
+        );
+    }
+
+    static Builder builder(
+            String rootFieldName,
+            String rootResponseKey,
+            String rootRetrievalName,
+            GraphqlRootField.RootRetrievalShape rootRetrievalShape,
+            GraphqlRootField.RetrievalCapabilities rootRetrievalCapabilities,
+            GraphqlRootField.RootCursorOrdering rootCursorOrdering,
+            String rootTypeName,
+            long rootId,
+            int rootLimit,
+            RootPagination rootPagination,
+            RootConnectionSelection rootConnectionSelection,
+            GraphqlRootField.ResultCardinality rootCardinality,
+            List<RootFilter> rootFilters,
+            List<GraphqlRootField.RootContextFilter> rootContextFilters,
+            List<GeneratedRootFilter> generatedRootFilters,
+            List<RootOrder> rootOrderBy,
+            Map<String, Object> rootKeyValues
+    ) {
         return new Builder(
                 rootFieldName,
                 rootResponseKey,
@@ -338,7 +404,8 @@ public final class GraphqlSelection {
                 rootFilters,
                 rootContextFilters,
                 generatedRootFilters,
-                rootOrderBy
+                rootOrderBy,
+                rootKeyValues
         );
     }
 
@@ -567,6 +634,7 @@ public final class GraphqlSelection {
         private final GraphqlRootField.RootCursorOrdering rootCursorOrdering;
         private final String rootTypeName;
         private final long rootId;
+        private final Map<String, Object> rootKeyValues;
         private final int rootLimit;
         private final RootPagination rootPagination;
         private final RootConnectionSelection rootConnectionSelection;
@@ -593,7 +661,8 @@ public final class GraphqlSelection {
                 List<RootFilter> rootFilters,
                 List<GraphqlRootField.RootContextFilter> rootContextFilters,
                 List<GeneratedRootFilter> generatedRootFilters,
-                List<RootOrder> rootOrderBy
+                List<RootOrder> rootOrderBy,
+                Map<String, Object> rootKeyValues
         ) {
             this.rootFieldName = rootFieldName;
             this.rootResponseKey = rootResponseKey == null || rootResponseKey.isBlank()
@@ -605,6 +674,7 @@ public final class GraphqlSelection {
             this.rootCursorOrdering = rootCursorOrdering;
             this.rootTypeName = rootTypeName;
             this.rootId = rootId;
+            this.rootKeyValues = Collections.unmodifiableMap(new LinkedHashMap<>(rootKeyValues));
             this.rootLimit = rootLimit;
             this.rootPagination = rootPagination;
             this.rootConnectionSelection = rootConnectionSelection;
@@ -637,7 +707,8 @@ public final class GraphqlSelection {
                     rootContextFilters,
                     generatedRootFilters,
                     rootOrderBy,
-                    fields
+                    fields,
+                    rootKeyValues
             );
         }
     }

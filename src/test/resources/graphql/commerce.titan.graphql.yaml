@@ -18,6 +18,18 @@ database:
       physicalName: orders
       schema: commerce
       primaryKey: id
+    countries:
+      physicalName: countries
+      schema: commerce
+      primaryKey: code
+    api_clients:
+      physicalName: api_clients
+      schema: commerce
+      primaryKey: id
+    inventory_items:
+      physicalName: inventory_items
+      schema: commerce
+      primaryKey: warehouse_code
 
 contextFilters:
   activeCustomers:
@@ -75,6 +87,55 @@ types:
         type: String
         nullable: false
 
+  Country:
+    table: countries
+    schema: commerce
+    physicalTable: countries
+    primaryKey: code
+    fields:
+      code:
+        column: code
+        type: String
+        nullable: false
+      name:
+        column: name
+        type: String
+        nullable: false
+
+  ApiClient:
+    table: api_clients
+    schema: commerce
+    physicalTable: api_clients
+    primaryKey: id
+    fields:
+      id:
+        column: id
+        type: UUID
+        nullable: false
+      label:
+        column: label
+        type: String
+        nullable: false
+
+  InventoryItem:
+    table: inventory_items
+    schema: commerce
+    physicalTable: inventory_items
+    primaryKey: warehouse_code
+    fields:
+      warehouse:
+        column: warehouse_code
+        type: String
+        nullable: false
+      sku:
+        column: sku
+        type: String
+        nullable: false
+      quantity:
+        column: quantity
+        type: Int
+        nullable: false
+
 roots:
   customer:
     type: Customer
@@ -85,6 +146,41 @@ roots:
       kind: equals
       column: id
       path: id
+
+  country:
+    type: Country
+    operation: point
+    argument:
+      name: code
+      type: String
+      kind: equals
+      column: code
+      path: code
+
+  apiClient:
+    type: ApiClient
+    operation: point
+    argument:
+      name: id
+      type: UUID
+      kind: equals
+      column: id
+      path: id
+
+  inventoryItem:
+    type: InventoryItem
+    operation: point
+    arguments:
+      warehouse:
+        type: String
+        kind: equals
+        column: warehouse_code
+        path: warehouse
+      sku:
+        type: String
+        kind: equals
+        column: sku
+        path: sku
 
   customers:
     type: Customer

@@ -37,6 +37,7 @@ class CommerceCompiledGraphqlIT {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final String MODEL = "src/test/resources/graphql/commerce.titan.graphql.yaml";
+    private static final String CLIENT_ID = "11111111-2222-3333-4444-555555555555";
 
     @Test
     void independentlyGeneratedPackageServesMutableCommerceModelOnBothDialects(
@@ -64,6 +65,32 @@ class CommerceCompiledGraphqlIT {
             JsonNode pointJson = JSON.readTree(point.json());
             assertEquals("Northwind", pointJson.at("/data/customer/name").asText(), target.name());
             assertEquals("NW-001", pointJson.at("/data/customer/orders/0/reference").asText(), target.name());
+
+            JsonNode stringKey = JSON.readTree(execute(runtime,
+                    "{ country(code: \"NL\") { code name } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals("Netherlands", stringKey.at("/data/country/name").asText(), target.name());
+
+            JsonNode uuidKey = JSON.readTree(execute(runtime,
+                    "{ apiClient(id: \"" + CLIENT_ID + "\") { id label } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals(CLIENT_ID, uuidKey.at("/data/apiClient/id").asText(), target.name());
+
+            JsonNode compositeKey = JSON.readTree(execute(runtime,
+                    "{ inventoryItem(warehouse: \"AMS\", sku: \"TG-42\") { warehouse sku quantity } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals(17, compositeKey.at("/data/inventoryItem/quantity").asInt(), target.name());
+
+            JsonNode invalidUuid = JSON.readTree(execute(runtime,
+                    "{ apiClient(id: \"not-a-uuid\") { id } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertTrue(invalidUuid.at("/errors/0/message").asText().contains("must be a UUID"), target.name());
+
+            JsonNode incompleteCompositeKey = JSON.readTree(execute(runtime,
+                    "{ inventoryItem(warehouse: \"AMS\") { quantity } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertTrue(incompleteCompositeKey.at("/errors/0/message").asText()
+                    .contains("required argument 'sku' is missing"), target.name());
 
             GraphqlExecution collection = execute(runtime,
                     "{ customers(first: 2) { edges { cursor node { id name orders { id reference } } } "
@@ -167,11 +194,22 @@ class CommerceCompiledGraphqlIT {
             }
             statement.execute("DROP TABLE IF EXISTS commerce.orders");
             statement.execute("DROP TABLE IF EXISTS commerce.customers");
+            statement.execute("DROP TABLE IF EXISTS commerce.inventory_items");
+            statement.execute("DROP TABLE IF EXISTS commerce.api_clients");
+            statement.execute("DROP TABLE IF EXISTS commerce.countries");
             statement.execute("CREATE TABLE commerce.customers (id BIGINT PRIMARY KEY, "
                     + "name VARCHAR(120) NOT NULL, active BOOLEAN NOT NULL)");
             statement.execute("CREATE TABLE commerce.orders (id BIGINT PRIMARY KEY, "
                     + "customer_id BIGINT NOT NULL, reference VARCHAR(120) NOT NULL, "
                     + "FOREIGN KEY (customer_id) REFERENCES commerce.customers(id))");
+            statement.execute("CREATE TABLE commerce.countries (code VARCHAR(8) PRIMARY KEY, "
+                    + "name VARCHAR(120) NOT NULL)");
+            statement.execute("CREATE TABLE commerce.api_clients (id "
+                    + (target == DatabaseTarget.POSTGRESQL ? "UUID" : "CHAR(36)")
+                    + " PRIMARY KEY, label VARCHAR(120) NOT NULL)");
+            statement.execute("CREATE TABLE commerce.inventory_items (warehouse_code VARCHAR(16) NOT NULL, "
+                    + "sku VARCHAR(40) NOT NULL, quantity INTEGER NOT NULL, "
+                    + "PRIMARY KEY (warehouse_code, sku))");
         }
         Path migrations = Path.of(System.getProperty(target == DatabaseTarget.POSTGRESQL
                 ? "titan.graphql.migrations.dir.commerce"
@@ -183,6 +221,12 @@ class CommerceCompiledGraphqlIT {
                     + "(7, 'Northwind', true), (8, 'Adventure Works', false), (9, 'Northwind', true)");
             statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference) VALUES "
                     + "(70, 7, 'NW-001'), (71, 7, 'NW-002'), (80, 8, 'AW-001')");
+            statement.executeUpdate("INSERT INTO commerce.countries (code, name) VALUES "
+                    + "('NL', 'Netherlands')");
+            statement.executeUpdate("INSERT INTO commerce.api_clients (id, label) VALUES ('"
+                    + CLIENT_ID + "', 'public-client')");
+            statement.executeUpdate("INSERT INTO commerce.inventory_items "
+                    + "(warehouse_code, sku, quantity) VALUES ('AMS', 'TG-42', 17)");
         }
     }
 

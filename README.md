@@ -155,9 +155,11 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   divergences** — after core closed `TG-BLK-011` (identifier overflow, titan 5649ebb) and
   `TG-BLK-012` (MySQL boolean→JSON rendering, titan f9e3b43). The dual-dialect status is
   fully clean; no consumer-side workaround remains for either entry.
-- Point roots currently require a single integer key. Inference preserves composite-key discovery
-  but emits explicit primary- and foreign-key diagnostics rather than pretending the first
-  component is sufficient. The projection adapter currently enforces the named `adminOnly`
+- Reviewed point roots support `Int`, `Long`, `String`, `ID`, and `UUID` keys plus explicit
+  multi-column composite keys. The compiled commerce proof exercises string, native PostgreSQL
+  UUID/MySQL `CHAR(36)`, and composite point lookups. Inference preserves composite-key discovery
+  but still requires an author to review and declare the public key arguments instead of silently
+  choosing one component. The projection adapter currently enforces the named `adminOnly`
   field policy and rejects relation policies it cannot enforce before reading.
 
 ## Documentation Map

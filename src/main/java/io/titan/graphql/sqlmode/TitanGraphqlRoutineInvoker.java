@@ -14,6 +14,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 
 /** Executes inventory-resolved model-generated Titan carriers on either supported dialect. */
 public final class TitanGraphqlRoutineInvoker {
@@ -38,7 +39,9 @@ public final class TitanGraphqlRoutineInvoker {
         String sql = GraphqlSqlEntryPointDispatch.carrierSql(routine, values.size(), mysql);
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (int index = 0; index < values.size(); index++) {
-                statement.setObject(index + 1, values.get(index));
+                Object value = values.get(index);
+                statement.setObject(index + 1, mysql && value instanceof UUID uuid
+                        ? uuid.toString() : value);
             }
             return mysql ? mysqlRows(statement, methodName) : postgresqlRows(statement, methodName);
         }

@@ -112,6 +112,17 @@ public final class GraphqlRootField {
         }
     }
 
+    /** One required, equality-bound component of a point-root key. */
+    public record PointKeyArgument(String name, String graphqlType, String columnName) {
+        public PointKeyArgument {
+            if (name == null || name.isBlank()) throw new IllegalArgumentException("point key name is required");
+            if (graphqlType == null || graphqlType.isBlank()) {
+                throw new IllegalArgumentException("point key GraphQL type is required");
+            }
+            if (columnName == null) columnName = "";
+        }
+    }
+
     public record RetrievalCapabilities(
             boolean directRoot,
             boolean supportsKeyArgument,
@@ -146,6 +157,7 @@ public final class GraphqlRootField {
     private final List<RootFieldFilterPath> filterPaths;
     private final List<RootFieldSortPath> sortPaths;
     private final List<RootContextFilter> contextFilters;
+    private final List<PointKeyArgument> pointKeyArguments;
 
     public GraphqlRootField(String name, String typeName, String requiredIdArgumentName) {
         this(name, typeName, requiredIdArgumentName, "", ResultCardinality.ONE, 1);
@@ -223,6 +235,36 @@ public final class GraphqlRootField {
             List<RootFieldSortPath> sortPaths,
             List<RootContextFilter> contextFilters
     ) {
+        this(
+                name, retrievalName, typeName, requiredIdArgumentName, limitArgumentName,
+                retrievalShape, rootPaginationMode, resultCardinality, defaultLimit, maxLimit,
+                filterArguments, retrievalCapabilities, cursorOrdering, filterPaths, sortPaths,
+                contextFilters,
+                resultCardinality == ResultCardinality.ONE && requiredIdArgumentName != null
+                        && !requiredIdArgumentName.isBlank()
+                        ? List.of(new PointKeyArgument(requiredIdArgumentName, "Int", "")) : List.of()
+        );
+    }
+
+    public GraphqlRootField(
+            String name,
+            String retrievalName,
+            String typeName,
+            String requiredIdArgumentName,
+            String limitArgumentName,
+            RootRetrievalShape retrievalShape,
+            RootPaginationMode rootPaginationMode,
+            ResultCardinality resultCardinality,
+            int defaultLimit,
+            int maxLimit,
+            List<GraphqlRootArgumentDescriptor> filterArguments,
+            RetrievalCapabilities retrievalCapabilities,
+            RootCursorOrdering cursorOrdering,
+            List<RootFieldFilterPath> filterPaths,
+            List<RootFieldSortPath> sortPaths,
+            List<RootContextFilter> contextFilters,
+            List<PointKeyArgument> pointKeyArguments
+    ) {
         this.name = name;
         this.retrievalName = retrievalName;
         this.typeName = typeName;
@@ -239,6 +281,7 @@ public final class GraphqlRootField {
         this.filterPaths = List.copyOf(filterPaths);
         this.sortPaths = List.copyOf(sortPaths);
         this.contextFilters = List.copyOf(contextFilters);
+        this.pointKeyArguments = List.copyOf(pointKeyArguments);
     }
 
     public GraphqlRootField(
@@ -388,6 +431,14 @@ public final class GraphqlRootField {
 
     public List<RootContextFilter> contextFilters() {
         return contextFilters;
+    }
+
+    public List<PointKeyArgument> pointKeyArguments() {
+        return pointKeyArguments;
+    }
+
+    public String requiredIdArgumentType() {
+        return pointKeyArguments.isEmpty() ? "Int" : pointKeyArguments.getFirst().graphqlType();
     }
 
     public RootFieldFilterPath filterPath(String name) {

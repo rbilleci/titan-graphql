@@ -88,7 +88,7 @@ roots and policies you intend to serve. Then configure the datasource and run:
 
 The JDBC runtime validates that document once, builds the generic projection schema, plans each
 request, renders parameterized SQL through Titan DSL, and executes it with Titan's JDBC runtime.
-The verified portable slice currently includes integer point roots, direct relations, scalar and
+The verified portable slice currently includes typed point roots, direct relations, scalar and
 fail-closed context filters, and first-page root connections on PostgreSQL and MySQL. Unsupported
 computed fields, cursor continuation, backward pages, relation connections, and collection
 relation batching fail with an explicit GraphQL error.
@@ -303,7 +303,8 @@ titan.graphql.execution.mode=sql    # transitional deployed demo whole-request f
 ```
 
 `compiled` is the schema-driven database-resident route under active expansion. It currently
-supports integer point roots, default-order forward pages and continuation, exact root counts,
+supports integer, string, UUID, and explicit composite point roots; default-order forward pages
+and continuation; exact root counts,
 row-local computed scalars, direct relations below point roots, direct batched relations beneath
 collection roots, and declared context filters. Batch carriers use fixed arities through 64, so a
 100-parent page takes at most two child calls instead of N calls.

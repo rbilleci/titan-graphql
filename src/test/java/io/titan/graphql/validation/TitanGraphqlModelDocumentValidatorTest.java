@@ -74,6 +74,107 @@ final class TitanGraphqlModelDocumentValidatorTest {
         assertThrows(IllegalArgumentException.class, () -> TitanGraphqlModelDocumentValidator.validate(null));
     }
 
+    @Test
+    void validatesTypedAndCompositePointKeyBindingsBeforeDeployment() {
+        TitanGraphqlRootDocument.RootDocumentArgument warehouse = pointArgument(
+                "warehouse", "String", "warehouse_code", 0);
+        TitanGraphqlRootDocument.RootDocumentArgument sku = pointArgument("sku", "String", "sku", 0);
+        TitanGraphqlRootDocument validRoot = new TitanGraphqlRootDocument(
+                "inventoryItem",
+                "InventoryItem",
+                TitanGraphqlRootDocument.RootDocumentOperation.POINT,
+                null,
+                null,
+                List.of(warehouse, sku),
+                List.of(),
+                List.of(),
+                List.of()
+        );
+        TitanGraphqlTypeDocument type = new TitanGraphqlTypeDocument(
+                "InventoryItem",
+                "inventory_items",
+                "",
+                "inventory_items",
+                "warehouse_code",
+                List.of(
+                        field("warehouse", "String", "warehouse_code"),
+                        field("sku", "String", "sku")
+                ),
+                List.of()
+        );
+
+        assertTrue(TitanGraphqlModelDocumentValidator.validate(pointDocument(validRoot, type)).valid());
+
+        TitanGraphqlRootDocument invalidRoot = new TitanGraphqlRootDocument(
+                "inventoryItem",
+                "InventoryItem",
+                TitanGraphqlRootDocument.RootDocumentOperation.POINT,
+                pointArgument("warehouse", "String", "warehouse_code", 0),
+                null,
+                List.of(pointArgument("warehouse", "Float", "missing", 1)),
+                List.of(),
+                List.of(),
+                List.of()
+        );
+        TitanGraphqlValidationReport invalid = TitanGraphqlModelDocumentValidator.validate(
+                pointDocument(invalidRoot, type));
+        assertEquals(1, invalid.errorCount());
+        assertEquals(TitanGraphqlValidationIssueCode.INVALID_BINDING, invalid.issues().getFirst().code());
+        assertTrue(invalid.blocksDeployment());
+    }
+
+    @Test
+    void rejectsIncompleteDuplicateAndMismatchedPointKeys() {
+        TitanGraphqlTypeDocument type = new TitanGraphqlTypeDocument(
+                "ApiClient",
+                "api_clients",
+                "",
+                "api_clients",
+                "id",
+                List.of(field("id", "UUID", "id"), field("label", "String", "label")),
+                List.of()
+        );
+        TitanGraphqlRootDocument invalidRoot = new TitanGraphqlRootDocument(
+                "apiClient",
+                "ApiClient",
+                TitanGraphqlRootDocument.RootDocumentOperation.POINT,
+                null,
+                null,
+                List.of(
+                        pointArgument("id", "String", "id", 0),
+                        pointArgument("id", "Float", "id", 1)
+                ),
+                List.of(),
+                List.of(),
+                List.of()
+        );
+
+        TitanGraphqlValidationReport report = TitanGraphqlModelDocumentValidator.validate(
+                pointDocument(invalidRoot, type));
+        assertEquals(List.of(
+                TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                TitanGraphqlValidationIssueCode.DUPLICATE_NAME,
+                TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY
+        ), report.issues().stream().map(TitanGraphqlValidationIssue::code).toList());
+
+        TitanGraphqlRootDocument emptyRoot = new TitanGraphqlRootDocument(
+                "apiClient",
+                "ApiClient",
+                TitanGraphqlRootDocument.RootDocumentOperation.POINT,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of()
+        );
+        TitanGraphqlValidationReport empty = TitanGraphqlModelDocumentValidator.validate(
+                pointDocument(emptyRoot, type));
+        assertEquals(TitanGraphqlValidationIssueCode.MISSING_REQUIRED_FIELD, empty.issues().getFirst().code());
+    }
+
     private static TitanGraphqlModelDocument validDocument() {
         return new TitanGraphqlModelDocument(
                 TitanGraphqlModelDocument.CURRENT_API_VERSION,
@@ -226,6 +327,41 @@ final class TitanGraphqlModelDocumentValidatorTest {
             List<TitanGraphqlRelationDocument> relations
     ) {
         return new TitanGraphqlTypeDocument("Article", "articles", "", "articles", "id", fields, relations);
+    }
+
+    private static TitanGraphqlModelDocument pointDocument(
+            TitanGraphqlRootDocument root,
+            TitanGraphqlTypeDocument type
+    ) {
+        return new TitanGraphqlModelDocument(
+                TitanGraphqlModelDocument.CURRENT_API_VERSION,
+                TitanGraphqlModelDocument.PROJECTION_MODEL_KIND,
+                new TitanGraphqlModelMetadata("point-keys"),
+                null,
+                List.of(),
+                List.of(root),
+                List.of(type),
+                List.of(),
+                List.of(),
+                null,
+                null
+        );
+    }
+
+    private static TitanGraphqlRootDocument.RootDocumentArgument pointArgument(
+            String name,
+            String type,
+            String column,
+            int hops
+    ) {
+        return new TitanGraphqlRootDocument.RootDocumentArgument(
+                name,
+                type,
+                TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS,
+                column,
+                column,
+                hops
+        );
     }
 
     private static TitanGraphqlFieldDocument field(String name, String type, String column) {

@@ -150,16 +150,37 @@ roots:
       column: id
 ```
 
+For a composite key, use `arguments` and bind every physical key component explicitly:
+
+```yaml
+roots:
+  inventoryItem:
+    type: InventoryItem
+    operation: point
+    arguments:
+      warehouse:
+        type: String
+        kind: equals
+        column: warehouse_code
+      sku:
+        type: String
+        kind: equals
+        column: sku
+```
+
 Fields:
 
 | Field | Required | Description |
 | --- | --- | --- |
 | `type` | yes | Projection type returned by the root. |
 | `operation` | yes | `point` or `connection`. |
-| `argument` | yes for `point` | Required key argument for point lookup. |
+| `argument` | yes for a scalar-key `point` | Single required key argument for point lookup. Mutually exclusive with `arguments`. |
+| `arguments` | yes for a composite-key `point` | One or more required key arguments. Mutually exclusive with `argument`. |
 | `argument.name` | yes | Public GraphQL argument name. |
-| `argument.type` | yes | GraphQL scalar type. |
+| `argument.type` | yes | `Int`, `Long`, `String`, `ID`, or `UUID`; it must match the bound scalar field type. |
 | `argument.column` | yes | Bound database column. |
+| `argument.kind` | no | Defaults to `equals`; point-key arguments must use `equals`. |
+| `argument.hops` | no | Must be `0`; point keys cannot traverse a relation. |
 
 ### Relay Connection Root
 
@@ -860,9 +881,10 @@ v1alpha1 source vocabulary. It exists to prove that the demo-blog fixture can be
 adapted into the existing Java `ProjectionModel` without changing runtime model
 loading or application endpoint behavior.
 
-The adapter accepts the current demo-blog-shaped subset:
+The adapter accepts the currently compiled subset:
 
-- point roots with an `Int` equality argument
+- point roots with local equality arguments typed as `Int`, `Long`, `String`, `ID`, or `UUID`,
+  including explicitly declared composite keys
 - Relay connection roots with exact `totalCount`, cursor metadata, equality
   `Int` arguments, declared filter paths, sort paths, and boolean fail-closed
   context filters

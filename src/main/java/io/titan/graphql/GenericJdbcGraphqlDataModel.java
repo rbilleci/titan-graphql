@@ -191,7 +191,15 @@ public final class GenericJdbcGraphqlDataModel implements GraphqlDataModel {
     ) {
         Condition condition = null;
         if (read.cardinality() == GraphqlRootField.ResultCardinality.ONE) {
-            condition = table.column(read.keyColumnName(), SQLType.BIGINT).eq(read.keyValue());
+            if (read.keyValues().isEmpty()) {
+                condition = table.column(read.keyColumnName(), SQLType.BIGINT).eq(read.keyValue());
+            } else {
+                for (GraphqlRootField.PointKeyArgument key : read.pointKeyArguments()) {
+                    String column = key.columnName().isBlank() ? read.keyColumnName() : key.columnName();
+                    condition = and(condition, table.column(column, pointKeySqlType(key.graphqlType()))
+                            .eq(read.keyValues().get(key.name())));
+                }
+            }
         }
         for (GraphqlSelection.RootFilter filter : read.filters()) {
             condition = and(condition, table.column(filter.columnName(), SQLType.BIGINT).eq(filter.value()));
@@ -211,6 +219,15 @@ public final class GenericJdbcGraphqlDataModel implements GraphqlDataModel {
             condition = and(condition, generatedCondition(table, filter));
         }
         return condition;
+    }
+
+    private static SQLType pointKeySqlType(String graphqlType) {
+        return switch (graphqlType.replace("!", "").trim()) {
+            case "Int", "Long" -> SQLType.BIGINT;
+            case "UUID" -> SQLType.UUID;
+            case "String", "ID" -> SQLType.VARCHAR;
+            default -> throw unsupported("point key type '" + graphqlType + "'");
+        };
     }
 
     private Map<String, Object> renderObject(

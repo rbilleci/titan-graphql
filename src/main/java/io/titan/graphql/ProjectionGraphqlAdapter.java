@@ -50,7 +50,9 @@ public final class ProjectionGraphqlAdapter {
                 adaptCursorOrdering(retrieval.cursorOrdering()),
                 adaptRootFilterPaths(retrieval.filterPaths()),
                 adaptRootSortPaths(retrieval.sortPaths()),
-                adaptRootContextFilters(retrieval.contextFilters())
+                adaptRootContextFilters(retrieval.contextFilters()),
+                retrieval.keyArguments().stream().map(argument -> new GraphqlRootField.PointKeyArgument(
+                        argument.name(), argument.graphqlType(), argument.columnName())).toList()
         );
     }
 

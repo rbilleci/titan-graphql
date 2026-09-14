@@ -24,6 +24,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 @Tag("docker")
 class GenericJdbcGraphqlDataModelIT {
 
+    private static final String CLIENT_ID = "11111111-2222-3333-4444-555555555555";
     private static PostgreSQLContainer<?> postgres;
     private static MySQLContainer<?> mysql;
 
@@ -70,6 +71,22 @@ class GenericJdbcGraphqlDataModelIT {
         assertEquals(2, first.plan().readStepCount());
         assertTrue(first.plan().readSteps().stream().allMatch(step -> step.sql().contains("?")),
                 "Titan DSL must retain bind placeholders in the observable plan");
+
+        GraphqlExecution stringKey = runtime.executeWithPlan(
+                GraphqlRequest.query("{ country(code: \"NL\") { code name } }"),
+                GraphqlRequestContext.legacy(1L, "reader"));
+        assertTrue(stringKey.json().contains("\"name\":\"Netherlands\""), stringKey.json());
+
+        GraphqlExecution uuidKey = runtime.executeWithPlan(
+                GraphqlRequest.query("{ apiClient(id: \"" + CLIENT_ID + "\") { id label } }"),
+                GraphqlRequestContext.legacy(1L, "reader"));
+        assertTrue(uuidKey.json().contains("\"id\":\"" + CLIENT_ID + "\""), uuidKey.json());
+
+        GraphqlExecution compositeKey = runtime.executeWithPlan(
+                GraphqlRequest.query("{ inventoryItem(warehouse: \"AMS\", sku: \"TG-42\") "
+                        + "{ warehouse sku quantity } }"),
+                GraphqlRequestContext.legacy(1L, "reader"));
+        assertTrue(compositeKey.json().contains("\"quantity\":17"), compositeKey.json());
 
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.executeUpdate("UPDATE commerce.customers SET name = 'Contoso' WHERE id = 7");
@@ -122,14 +139,30 @@ class GenericJdbcGraphqlDataModelIT {
             if (target == Target.POSTGRESQL) statement.execute("CREATE SCHEMA IF NOT EXISTS commerce");
             statement.execute("DROP TABLE IF EXISTS commerce.orders");
             statement.execute("DROP TABLE IF EXISTS commerce.customers");
+            statement.execute("DROP TABLE IF EXISTS commerce.inventory_items");
+            statement.execute("DROP TABLE IF EXISTS commerce.api_clients");
+            statement.execute("DROP TABLE IF EXISTS commerce.countries");
             statement.execute("CREATE TABLE commerce.customers (id BIGINT PRIMARY KEY, name VARCHAR(120) NOT NULL, "
                     + "active BOOLEAN NOT NULL)");
             statement.execute("CREATE TABLE commerce.orders (id BIGINT PRIMARY KEY, customer_id BIGINT NOT NULL, "
                     + "reference VARCHAR(120) NOT NULL, FOREIGN KEY (customer_id) REFERENCES commerce.customers(id))");
+            statement.execute("CREATE TABLE commerce.countries (code VARCHAR(8) PRIMARY KEY, "
+                    + "name VARCHAR(120) NOT NULL)");
+            statement.execute("CREATE TABLE commerce.api_clients (id "
+                    + (target == Target.POSTGRESQL ? "UUID" : "CHAR(36)")
+                    + " PRIMARY KEY, label VARCHAR(120) NOT NULL)");
+            statement.execute("CREATE TABLE commerce.inventory_items (warehouse_code VARCHAR(16) NOT NULL, "
+                    + "sku VARCHAR(40) NOT NULL, quantity INTEGER NOT NULL, "
+                    + "PRIMARY KEY (warehouse_code, sku))");
             statement.executeUpdate("INSERT INTO commerce.customers (id, name, active) "
                     + "VALUES (7, 'Northwind', true), (8, 'Adventure Works', false)");
             statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference) VALUES "
                     + "(70, 7, 'NW-001'), (71, 7, 'NW-002')");
+            statement.executeUpdate("INSERT INTO commerce.countries (code, name) VALUES ('NL', 'Netherlands')");
+            statement.executeUpdate("INSERT INTO commerce.api_clients (id, label) VALUES ('"
+                    + CLIENT_ID + "', 'public-client')");
+            statement.executeUpdate("INSERT INTO commerce.inventory_items "
+                    + "(warehouse_code, sku, quantity) VALUES ('AMS', 'TG-42', 17)");
         }
     }
 

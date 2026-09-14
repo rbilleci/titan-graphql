@@ -9,6 +9,10 @@ public final class GraphqlReadPlanner {
     }
 
     public static GraphqlReadPlan plan(GraphqlSchema schema, GraphqlSelection selection) {
+        GraphqlRootField rootField = schema.rootField(selection.rootFieldName());
+        if (rootField == null) {
+            throw new GraphqlException("unknown root field '" + selection.rootFieldName() + "'");
+        }
         GraphqlObjectType rootType = requireType(schema, selection.rootTypeName());
         GraphqlTableDescriptor rootTable = requireTable(schema, rootType);
         GraphqlReadPlan.RootRead rootRead = new GraphqlReadPlan.RootRead(
@@ -23,6 +27,8 @@ public final class GraphqlReadPlanner {
                 selection.rootCardinality(),
                 rootTable.primaryKeyColumnName(),
                 selection.rootId(),
+                rootField.pointKeyArguments(),
+                selection.rootKeyValues(),
                 selection.rootLimit(),
                 selection.rootPagination(),
                 rootCursorWindow(selection),

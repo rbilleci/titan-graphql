@@ -14,6 +14,9 @@ public final class GraphqlSchemaPrinter {
 
     static String print(GraphqlSchema schema) {
         StringBuilder builder = new StringBuilder();
+        for (String scalar : customScalarTypes(schema)) {
+            builder.append("scalar ").append(scalar).append("\n\n");
+        }
         if (hasRelationSortPaths(schema)) {
             builder.append("directive @relationSortPath(name: String!, column: String!, path: String!, hops: Int!, direction: String!, tieBreaker: String!) repeatable on FIELD_DEFINITION\n\n");
         }
@@ -168,6 +171,34 @@ public final class GraphqlSchemaPrinter {
         return builder.toString();
     }
 
+    private static Set<String> customScalarTypes(GraphqlSchema schema) {
+        Set<String> types = new java.util.TreeSet<>();
+        for (GraphqlObjectType objectType : schema.types()) {
+            for (GraphqlFieldDescriptor field : objectType.fields()) {
+                if (field.kind() == GraphqlFieldDescriptor.FieldKind.SCALAR) {
+                    addCustomScalar(types, field.graphqlType());
+                }
+            }
+        }
+        for (GraphqlRootField root : schema.rootFields()) {
+            for (GraphqlRootField.PointKeyArgument key : root.pointKeyArguments()) {
+                addCustomScalar(types, key.graphqlType());
+            }
+        }
+        for (GraphqlMutationDescriptor mutation : schema.mutations()) {
+            mutation.input().fields().forEach(field -> addCustomScalar(types, field.graphqlType()));
+            mutation.payload().fields().forEach(field -> addCustomScalar(types, field.graphqlType()));
+        }
+        return types;
+    }
+
+    private static void addCustomScalar(Set<String> types, String graphqlType) {
+        String type = graphqlType.replace("!", "").replace("[", "").replace("]", "").trim();
+        if (!Set.of("Boolean", "Float", "ID", "Int", "String").contains(type)) {
+            types.add(type);
+        }
+    }
+
     private static String requiredType(String graphqlType, boolean required) {
         if (required && graphqlType.endsWith("!") == false) {
             return graphqlType + "!";
@@ -240,7 +271,9 @@ public final class GraphqlSchemaPrinter {
         }
         if (rootField.resultCardinality() == GraphqlRootField.ResultCardinality.ONE
                 && rootField.requiredIdArgumentName().isEmpty() == false) {
-            args.add(rootField.requiredIdArgumentName() + ": Int!");
+            for (GraphqlRootField.PointKeyArgument key : rootField.pointKeyArguments()) {
+                args.add(key.name() + ": " + key.graphqlType().replace("!", "") + "!");
+            }
         }
         if (rootField.rootPaginationMode() != GraphqlRootField.RootPaginationMode.RELAY_CONNECTION
                 && rootField.resultCardinality() == GraphqlRootField.ResultCardinality.MANY

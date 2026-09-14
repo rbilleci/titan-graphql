@@ -640,10 +640,13 @@ final class GraphqlIntrospection {
     private static List<IntrospectionArgument> rootArguments(GraphqlRootField rootField) {
         List<IntrospectionArgument> arguments = new ArrayList<>();
         if (rootField.requiredIdArgumentName().isBlank() == false) {
-            arguments.add(new IntrospectionArgument(
-                    rootField.requiredIdArgumentName(),
-                    IntrospectionTypeRef.nonNull(IntrospectionTypeRef.named("Int", "SCALAR"))
-            ));
+            for (GraphqlRootField.PointKeyArgument key : rootField.pointKeyArguments()) {
+                arguments.add(new IntrospectionArgument(
+                        key.name(),
+                        IntrospectionTypeRef.nonNull(IntrospectionTypeRef.named(
+                                key.graphqlType().replace("!", ""), "SCALAR"))
+                ));
+            }
         }
         if (rootField.rootPaginationMode() == GraphqlRootField.RootPaginationMode.RELAY_CONNECTION) {
             arguments.add(new IntrospectionArgument("first", IntrospectionTypeRef.named("Int", "SCALAR")));

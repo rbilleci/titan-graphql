@@ -46,20 +46,68 @@ final class TitanGraphqlProjectionModelAdapter {
     }
 
     private static ProjectionRetrieval pointRoot(TitanGraphqlRootDocument root, AdapterContext context) {
-        TitanGraphqlRootDocument.RootDocumentArgument argument = root.argument();
-        if (argument == null) {
-            throw unsupported("UNSUPPORTED_ROOT_ARGUMENT", "point root '" + root.name() + "' requires an argument");
+        if (root.argument() != null && !root.arguments().isEmpty()) {
+            throw unsupported("UNSUPPORTED_ROOT_ARGUMENT", "point root '" + root.name()
+                    + "' cannot declare both argument and arguments");
         }
-        requireRootArgumentKind(argument, TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS, root.name());
-        requireType(argument.type(), "Int", "point root '" + root.name() + "' argument");
+        List<TitanGraphqlRootDocument.RootDocumentArgument> modelArguments = root.argument() == null
+                ? root.arguments() : List.of(root.argument());
+        if (modelArguments.isEmpty()) {
+            throw unsupported("UNSUPPORTED_ROOT_ARGUMENT", "point root '" + root.name()
+                    + "' requires one or more key arguments");
+        }
         String primaryKey = context.primaryKeyForType(root.type());
-        if (!primaryKey.equals(argument.column())) {
+        if (modelArguments.size() == 1 && !primaryKey.equals(modelArguments.getFirst().column())) {
             throw unsupported("UNSUPPORTED_POINT_ROOT_KEY",
-                    "point root '" + root.name() + "' maps argument '" + argument.name()
-                            + "' to column '" + argument.column() + "' but the current point planner requires "
-                            + "the single primary key column '" + primaryKey + "'");
+                    "point root '" + root.name() + "' maps argument '" + modelArguments.getFirst().name()
+                            + "' to column '" + modelArguments.getFirst().column()
+                            + "' but a scalar point key requires the single primary key column '"
+                            + primaryKey + "'");
         }
-        return ProjectionRetrieval.point(root.name(), root.type(), argument.name());
+        List<ProjectionRetrieval.RetrievalKeyArgument> keyArguments = new ArrayList<>();
+        Map<String, Boolean> names = new LinkedHashMap<>();
+        Map<String, Boolean> columns = new LinkedHashMap<>();
+        TitanGraphqlTypeDocument type = context.type(root.type());
+        for (TitanGraphqlRootDocument.RootDocumentArgument argument : modelArguments.stream()
+                .sorted(java.util.Comparator.comparing(
+                        TitanGraphqlRootDocument.RootDocumentArgument::name)).toList()) {
+            requireRootArgumentKind(argument, TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS, root.name());
+            if (argument.hops() != 0) {
+                throw unsupported("UNSUPPORTED_POINT_ROOT_KEY", "point root '" + root.name()
+                        + "' key argument '" + argument.name() + "' cannot traverse relations");
+            }
+            requirePointKeyType(argument.type(), "point root '" + root.name()
+                    + "' argument '" + argument.name() + "'");
+            TitanGraphqlFieldDocument field = type.fields().stream()
+                    .filter(candidate -> argument.column().equals(candidate.column()))
+                    .findFirst()
+                    .orElseThrow(() -> unsupported("UNSUPPORTED_POINT_ROOT_KEY", "point root '"
+                            + root.name() + "' key column '" + argument.column()
+                            + "' is not a scalar field on type '" + root.type() + "'"));
+            if (!normalizeType(field.type()).equals(normalizeType(argument.type()))) {
+                throw unsupported("UNSUPPORTED_ARGUMENT_TYPE", "point root '" + root.name()
+                        + "' argument '" + argument.name() + "' type '" + argument.type()
+                        + "' does not match field type '" + field.type() + "'");
+            }
+            if (names.put(argument.name(), true) != null || columns.put(argument.column(), true) != null) {
+                throw unsupported("UNSUPPORTED_POINT_ROOT_KEY", "point root '" + root.name()
+                        + "' has duplicate key argument names or columns");
+            }
+            keyArguments.add(new ProjectionRetrieval.RetrievalKeyArgument(
+                    argument.name(), normalizeType(argument.type()), argument.column()));
+        }
+        return ProjectionRetrieval.point(root.name(), root.type(), keyArguments);
+    }
+
+    private static void requirePointKeyType(String type, String context) {
+        if (!List.of("Int", "Long", "String", "ID", "UUID").contains(normalizeType(type))) {
+            throw unsupported("UNSUPPORTED_ARGUMENT_TYPE", context
+                    + " must be Int, Long, String, ID, or UUID");
+        }
+    }
+
+    private static String normalizeType(String type) {
+        return type == null ? "" : type.replace("!", "").trim();
     }
 
     private static ProjectionRetrieval connectionRoot(TitanGraphqlRootDocument root, AdapterContext context) {
@@ -488,6 +536,7 @@ final class TitanGraphqlProjectionModelAdapter {
         private final Map<String, String> typePrimaryKeys;
         private final Map<String, TitanGraphqlPolicyDocument> policies;
         private final Map<String, TitanGraphqlContextFilterDocument> contextFilters;
+        private final Map<String, TitanGraphqlTypeDocument> types;
 
         AdapterContext(TitanGraphqlModelDocument document, GraphqlPolicy policy) {
             this.policy = policy;
@@ -501,6 +550,8 @@ final class TitanGraphqlProjectionModelAdapter {
             document.policies().forEach(policyDocument -> policies.put(policyDocument.name(), policyDocument));
             this.contextFilters = new LinkedHashMap<>();
             document.contextFilters().forEach(filter -> contextFilters.put(filter.name(), filter));
+            this.types = new LinkedHashMap<>();
+            document.types().forEach(type -> types.put(type.name(), type));
         }
 
         GraphqlPolicy policy() {
@@ -521,6 +572,14 @@ final class TitanGraphqlProjectionModelAdapter {
                 throw unsupported("UNKNOWN_ROOT_TYPE", "unknown root type '" + typeName + "'");
             }
             return primaryKey;
+        }
+
+        TitanGraphqlTypeDocument type(String typeName) {
+            TitanGraphqlTypeDocument type = types.get(typeName);
+            if (type == null) {
+                throw unsupported("UNKNOWN_ROOT_TYPE", "unknown root type '" + typeName + "'");
+            }
+            return type;
         }
 
         TitanGraphqlPolicyDocument policy(String name) {

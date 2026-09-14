@@ -1,6 +1,7 @@
 package io.titan.graphql;
 
 import java.util.List;
+import java.util.Map;
 
 public final class GraphqlReadPlan {
 
@@ -41,6 +42,8 @@ public final class GraphqlReadPlan {
             GraphqlRootField.ResultCardinality cardinality,
             String keyColumnName,
             long keyValue,
+            List<GraphqlRootField.PointKeyArgument> pointKeyArguments,
+            Map<String, Object> keyValues,
             int limit,
             GraphqlSelection.RootPagination pagination,
             RootCursorWindow cursorWindow,
@@ -57,6 +60,8 @@ public final class GraphqlReadPlan {
             filters = List.copyOf(filters);
             generatedFilters = List.copyOf(generatedFilters);
             orderBy = List.copyOf(orderBy);
+            pointKeyArguments = List.copyOf(pointKeyArguments);
+            keyValues = Map.copyOf(keyValues);
         }
     }
 
