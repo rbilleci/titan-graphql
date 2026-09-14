@@ -46,7 +46,8 @@ The proof path is fully automated:
   directly, verifies the model hash, computed projection, policy omission, relation/page reads,
   and confirms that changing a database row changes the carrier result on both dialects.
   It also runs the generic GraphQL parser/validator/planner over those carriers for a point root,
-  relation, computed scalar, forward cursor, exact count, aliases, and fail-closed visibility.
+  relation, computed scalar, forward/backward cursors, exact count, aliases, fail-closed
+  visibility, and a direct collection relation with a two-step root-plus-batch plan.
 - `titan.graphql.execution.mode=sql` turns the proof into a live runtime: the Quarkus
   `/graphql` endpoint answers from the deployed stored functions (section 4;
   automated by `GraphqlSqlModeHttpIT` under `integrationTest`).
@@ -288,9 +289,11 @@ titan.graphql.execution.mode=sql    # transitional deployed demo whole-request f
 
 `compiled` is the schema-driven database-resident route under active expansion. It currently
 supports integer point roots, default-order forward pages and continuation, exact root counts,
-row-local computed scalars, direct relations below point roots, and declared context filters.
+row-local computed scalars, direct relations below point roots, direct batched relations beneath
+collection roots, and declared context filters. Batch carriers use fixed arities through 64, so a
+100-parent page takes at most two child calls instead of N calls.
 Unsupported generated filters/order, protected carrier branches, relation connections, and
-collection relation batching return explicit GraphQL errors; they never fall back to `jdbc`,
+deeper nested collection batching return explicit GraphQL errors; they never fall back to `jdbc`,
 `java`, or the demo `sql` kernel.
 
 It is ordinary Quarkus/MicroProfile config, so `-Dtitan.graphql.execution.mode=sql`

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.titan.graphql.GraphqlEngine;
+import io.titan.graphql.GraphqlExecution;
 import io.titan.graphql.GraphqlExecutionEngine;
 import io.titan.graphql.GraphqlJsonWriter;
 import io.titan.graphql.GraphqlRequest;
@@ -153,6 +154,20 @@ class GeneratedTitanGraphqlReadsIT {
             assertEquals(1, visible.at("/data/articles/edges").size(), target.name());
             assertEquals(1, visible.at("/data/articles/totalCount").asInt(), target.name());
 
+            GraphqlExecution batchedExecution = GraphqlEngine.execute(
+                    dataModel, new GraphqlJsonWriter(), GraphqlRequest.query("""
+                            { articles(first: 2) {
+                                edges { node { id author { id name } } }
+                            } }
+                            """), GraphqlRequestContext.legacy(10L, "reader"));
+            JsonNode batched = JSON.readTree(batchedExecution.json());
+            assertEquals("Ada Lovelace", batched.at("/data/articles/edges/0/node/author/name").asText(),
+                    target.name());
+            assertEquals("Grace Hopper", batched.at("/data/articles/edges/1/node/author/name").asText(),
+                    target.name());
+            assertEquals(2, batchedExecution.plan().readStepCount(),
+                    "two parents must use one root read plus one relation batch on " + target);
+
             JsonNode protectedField = graphql(dataModel,
                     "{ article(id: 1) { author { email } } }",
                     GraphqlRequestContext.legacy(10L, "admin"));
@@ -165,11 +180,11 @@ class GeneratedTitanGraphqlReadsIT {
             assertTrue(missingContext.at("/errors/0/message").asText().contains("required request context"),
                     missingContext.toString());
 
-            JsonNode nPlusOne = graphql(dataModel,
-                    "{ articles(first: 1) { edges { node { author { id } } } } }",
+            JsonNode unsupportedRelationPage = graphql(dataModel,
+                    "{ articles(first: 1) { edges { node { comments(first: 1) { edges { node { id } } } } } } }",
                     GraphqlRequestContext.legacy(10L, "reader"));
-            assertTrue(nPlusOne.at("/errors/0/message").asText().contains("batched carrier"),
-                    nPlusOne.toString());
+            assertTrue(unsupportedRelationPage.at("/errors/0/message").asText().contains("relation connection"),
+                    unsupportedRelationPage.toString());
         }
     }
 

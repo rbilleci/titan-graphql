@@ -235,8 +235,9 @@ For the current implementations:
 - scalar root lookups can use direct point queries
 - list root lookups use a single capability-bounded retrieval
 - direct relations beneath a point root are planned from declared local and target columns
-- the generic JDBC executor rejects relations beneath collection roots instead of issuing N+1
-  queries; descriptor-driven batched relation reads are a required next increment
+- compiled mode batches direct relations beneath collection roots through fixed arity 2–64
+  carriers; a 100-parent page therefore needs at most two child calls, never one call per parent
+- deeper nested batching and relation-connection batching remain explicit rejections
 - the fixed demo Java/SQL equivalence kernel retains its existing bounded connection behavior
 - unsupported deep nesting should fail with an explicit max-depth error
 - tests should compare the number of planned read steps for representative nested queries

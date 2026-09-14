@@ -27,6 +27,8 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("public static List<Map<String,Object>> countRootArticles("), source);
         assertTrue(source.contains("readRelationArticleAuthor(Connection connection, int localKey)"), source);
         assertTrue(source.contains("readRelationArticleComments(Connection connection, int localKey)"), source);
+        assertTrue(source.contains("readRelationArticleAuthorBatch64(Connection connection"), source);
+        assertTrue(source.contains("id AS __titan_parent_key FROM public.users WHERE id IN ("), source);
         assertTrue(source.contains("length(title) AS title_length"), source);
         assertTrue(source.contains("WHERE id = ?"), source);
         assertTrue(source.contains("ORDER BY id ASC LIMIT ?"), source);
@@ -48,6 +50,8 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("readRootCustomer(Connection connection, int id)"), source);
         assertTrue(source.contains("readRootCustomersForward("), source);
         assertTrue(source.contains("readRelationCustomerOrders(Connection connection, int localKey)"), source);
+        assertTrue(source.contains("readRelationCustomerOrdersBatch64(Connection connection"), source);
+        assertTrue(source.contains("customer_id AS __titan_parent_key FROM commerce.orders"), source);
         assertTrue(source.contains("FROM commerce.customers"), source);
         assertTrue(source.contains("FROM commerce.orders WHERE customer_id = ?"), source);
         assertTrue(source.contains("public static List<Map<String,Object>> countRootCustomers("), source);

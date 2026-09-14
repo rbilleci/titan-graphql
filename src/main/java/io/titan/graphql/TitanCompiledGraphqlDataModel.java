@@ -71,12 +71,14 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         try (Connection connection = dataSource.getConnection()) {
             invoker.attest(connection, semanticHash);
             List<Row> roots = readRoot(connection, selection, plan.rootRead(), context, observable);
+            Map<RelationCacheKey, List<Row>> relationCache = new LinkedHashMap<>();
             Object result;
             if (selection.rootCardinality() == GraphqlRootField.ResultCardinality.ONE) {
                 result = roots.isEmpty() ? null : renderObject(connection, selection.rootTypeName(),
-                        selection.rootFieldName(), selection.fields(), roots.getFirst(), observable);
+                        selection.rootFieldName(), selection.fields(), roots.getFirst(), observable, relationCache);
             } else {
-                result = renderConnection(connection, selection, roots, plan, context, observable);
+                result = renderConnection(
+                        connection, selection, roots, plan, context, observable, relationCache);
             }
             Map<String, Object> data = new LinkedHashMap<>();
             data.put(selection.rootResponseKey(), result);
@@ -119,7 +121,8 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             List<Row> fetched,
             GraphqlReadPlan plan,
             GraphqlRequestContext context,
-            GraphqlPlan observable
+            GraphqlPlan observable,
+            Map<RelationCacheKey, List<Row>> relationCache
     ) throws SQLException {
         GraphqlReadPlan.RootRead read = plan.rootRead();
         int requested = read.cursorWindow().requestedRowCount();
@@ -128,6 +131,8 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         boolean backward = read.cursorWindow().direction()
                 == GraphqlReadPlan.RootCursorWindowDirection.BACKWARD;
         if (backward) Collections.reverse(page);
+        prefetchDirectRelations(connection, selection.rootTypeName(), selection.rootFieldName(),
+                selection.fields(), page, observable, relationCache);
 
         boolean hasNextPage = backward ? read.cursorWindow().beforeCursor() != null : overflow;
         boolean hasPreviousPage = backward ? overflow : read.cursorWindow().afterCursor() != null;
@@ -140,7 +145,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                 if (connectionSelection.edgeCursor()) edge.put("cursor", rootCursor(read, row));
                 if (connectionSelection.edgeNode()) edge.put("node", renderObject(
                         connection, selection.rootTypeName(), selection.rootFieldName(), selection.fields(),
-                        row, observable));
+                        row, observable, relationCache));
                 edges.add(edge);
             }
             value.put("edges", edges);
@@ -225,7 +230,8 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             String path,
             List<GraphqlSelection.FieldSelection> selections,
             Row row,
-            GraphqlPlan observable
+            GraphqlPlan observable,
+            Map<RelationCacheKey, List<Row>> relationCache
     ) throws SQLException {
         TitanGraphqlTypeDocument type = requireType(typeName);
         Map<String, Object> result = new LinkedHashMap<>();
@@ -249,22 +255,98 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             }
             String method = "readRelation" + TitanGraphqlRoutineSourceGenerator.javaTypeName(type.name())
                     + TitanGraphqlRoutineSourceGenerator.javaTypeName(relation.name());
-            observable.addReadStep(path + "." + relation.name(), "TITAN PACKAGE " + method + "(?)");
-            List<Row> children = rows(invoker.read(connection, method, List.of(localKey)));
+            String relationPath = path + "." + relation.name();
+            List<Row> children = relationCache.get(new RelationCacheKey(relationPath, cacheKey(localKey)));
+            if (children == null) {
+                observable.addReadStep(relationPath, "TITAN PACKAGE " + method + "(?)");
+                children = rows(invoker.read(connection, method, List.of(localKey)));
+            }
             if (relation.cardinality() == TitanGraphqlRelationDocument.RelationDocumentCardinality.ONE) {
                 result.put(selection.responseKey(), children.isEmpty() ? null : renderObject(connection,
-                        relation.targetType(), path + "." + relation.name(), selection.selections(),
-                        children.getFirst(), observable));
+                        relation.targetType(), relationPath, selection.selections(),
+                        children.getFirst(), observable, relationCache));
             } else {
                 List<Object> values = new ArrayList<>();
                 for (Row child : children) {
-                    values.add(renderObject(connection, relation.targetType(), path + "." + relation.name(),
-                            selection.selections(), child, observable));
+                    values.add(renderObject(connection, relation.targetType(), relationPath,
+                            selection.selections(), child, observable, relationCache));
                 }
                 result.put(selection.responseKey(), values);
             }
         }
         return result;
+    }
+
+    private void prefetchDirectRelations(
+            Connection connection,
+            String ownerTypeName,
+            String ownerPath,
+            List<GraphqlSelection.FieldSelection> selections,
+            List<Row> parents,
+            GraphqlPlan observable,
+            Map<RelationCacheKey, List<Row>> relationCache
+    ) throws SQLException {
+        TitanGraphqlTypeDocument owner = requireType(ownerTypeName);
+        for (GraphqlSelection.FieldSelection selection : selections) {
+            TitanGraphqlRelationDocument relation = relationOrNull(owner, selection.name());
+            if (relation == null) continue;
+            String relationPath = ownerPath + "." + relation.name();
+            Map<String, Object> keys = new LinkedHashMap<>();
+            String localAlias = TitanGraphqlRoutineSourceGenerator.hiddenRelationAlias(relation.name());
+            for (Row parent : parents) {
+                Object key = parent.value(localAlias);
+                if (key != null) keys.putIfAbsent(cacheKey(key), key);
+            }
+            for (String key : keys.keySet()) {
+                relationCache.put(new RelationCacheKey(relationPath, key), new ArrayList<>());
+            }
+            List<Object> values = new ArrayList<>(keys.values());
+            for (int offset = 0; offset < values.size(); offset += 64) {
+                List<Object> chunk = new ArrayList<>(values.subList(offset, Math.min(offset + 64, values.size())));
+                if (chunk.size() == 1) {
+                    String method = relationMethod(owner, relation);
+                    List<Row> children = rows(invoker.read(connection, method, chunk));
+                    relationCache.put(new RelationCacheKey(relationPath, cacheKey(chunk.getFirst())), children);
+                    observable.addReadStep(relationPath + ".batch", "TITAN PACKAGE " + method + "(?)");
+                    continue;
+                }
+                int arity = batchArity(chunk.size());
+                while (chunk.size() < arity) chunk.add(chunk.getLast());
+                String method = relationMethod(owner, relation) + "Batch" + arity;
+                List<Row> children = rows(invoker.read(connection, method, chunk));
+                for (Row child : children) {
+                    Object parentKey = child.value("__titan_parent_key");
+                    RelationCacheKey key = new RelationCacheKey(relationPath, cacheKey(parentKey));
+                    List<Row> grouped = relationCache.get(key);
+                    if (grouped == null) {
+                        throw new SQLException("generated batch carrier '" + method
+                                + "' returned an undeclared parent key '" + parentKey + "'");
+                    }
+                    grouped.add(child);
+                }
+                observable.addReadStep(relationPath + ".batch",
+                        "TITAN PACKAGE " + method + "(" + arity + " parameters)");
+            }
+        }
+    }
+
+    private static String relationMethod(
+            TitanGraphqlTypeDocument owner,
+            TitanGraphqlRelationDocument relation
+    ) {
+        return "readRelation" + TitanGraphqlRoutineSourceGenerator.javaTypeName(owner.name())
+                + TitanGraphqlRoutineSourceGenerator.javaTypeName(relation.name());
+    }
+
+    private static int batchArity(int size) {
+        for (int arity : List.of(2, 4, 8, 16, 32, 64)) {
+            if (size <= arity) return arity;
+        }
+        throw new IllegalArgumentException("relation batch exceeds generated maximum arity: " + size);
+    }
+
+    private static String cacheKey(Object value) {
+        return value == null ? "<null>" : String.valueOf(value);
     }
 
     private static String rootCursor(GraphqlReadPlan.RootRead read, Row row) {
@@ -290,14 +372,15 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                 && !root.pagination().cursor().tieBreaker().equals(root.pagination().cursor().column())) {
             throw unsupported("compound cursor ordering until tuple predicates are emitted");
         }
-        validateFields(selection.rootTypeName(), selection.fields(),
-                selection.rootCardinality() == GraphqlRootField.ResultCardinality.MANY);
+        boolean collection = selection.rootCardinality() == GraphqlRootField.ResultCardinality.MANY;
+        validateFields(selection.rootTypeName(), selection.fields(), collection, collection);
     }
 
     private void validateFields(
             String typeName,
             List<GraphqlSelection.FieldSelection> selections,
-            boolean collectionParent
+            boolean collectionParent,
+            boolean batchingAvailable
     ) {
         TitanGraphqlTypeDocument type = requireType(typeName);
         for (GraphqlSelection.FieldSelection selection : selections) {
@@ -315,7 +398,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                 throw unsupported("protected relation '" + typeName + "." + relation.name()
                         + "' until policy-specific carriers are emitted");
             }
-            if (collectionParent) {
+            if (collectionParent && !batchingAvailable) {
                 throw unsupported("relation '" + typeName + "." + relation.name()
                         + "' beneath a collection until a batched carrier is emitted");
             }
@@ -326,7 +409,9 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                 throw unsupported("relation arguments on '" + typeName + "." + relation.name() + "'");
             }
             validateFields(relation.targetType(), selection.selections(),
-                    relation.cardinality() == TitanGraphqlRelationDocument.RelationDocumentCardinality.MANY);
+                    collectionParent || relation.cardinality()
+                            == TitanGraphqlRelationDocument.RelationDocumentCardinality.MANY,
+                    false);
         }
     }
 
@@ -355,6 +440,10 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
     private static TitanGraphqlRelationDocument relation(TitanGraphqlTypeDocument type, String name) {
         return type.relations().stream().filter(relation -> relation.name().equals(name)).findFirst()
                 .orElseThrow(() -> new GraphqlException("unknown generated field '" + type.name() + "." + name + "'"));
+    }
+
+    private static TitanGraphqlRelationDocument relationOrNull(TitanGraphqlTypeDocument type, String name) {
+        return type.relations().stream().filter(relation -> relation.name().equals(name)).findFirst().orElse(null);
     }
 
     private String scalarType(String typeName, String column) {
@@ -400,5 +489,8 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         Object value(String name) {
             return values.get(name);
         }
+    }
+
+    private record RelationCacheKey(String path, String parentKey) {
     }
 }

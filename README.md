@@ -43,7 +43,8 @@ The full pipeline is automated and green on both supported dialects:
   generic parser, validator, and planner, resolves generated entry points from the verified package
   inventory, and normalizes PostgreSQL JSONB functions and MySQL result-set procedures behind one
   data model. The dual-dialect live proof covers aliases, a point root, a direct relation, computed
-  output, forward cursor continuation, page info, exact count, and fail-closed row visibility.
+  output, forward/backward cursors, page info, exact count, fail-closed row visibility, and a
+  direct relation beneath a collection in one bounded batch rather than N+1 reads.
 - **Transpile (both dialects):** `titanTranspile` lowers the generated carriers and the transitional
   demo-blog whole-request kernel (`DemoBlogTitanGraphqlFunctions`) into PostgreSQL **and MySQL**
   routines with zero validator diagnostics. Its inputs are an explicit allowlist; unrelated
@@ -115,7 +116,9 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   older `sql` route still calls the bounded `DemoBlogTitanGraphqlFunctions` whole-request entry
   point and remains only an equivalence/compiler proof. Generated carriers do not yet cover
   arbitrary generated filters/order,
-  counts, protected-field policy branches, relation connections, or batched collection relations.
+  counts for relation connections, protected-field policy branches, relation connections, or
+  nested multi-level batching. Direct relations immediately beneath collection roots use fixed
+  generated batch arities and do not issue one query per parent.
   The next increments expand compiled-plan coverage, prove a separately packaged unrelated model,
   then retire the demo whole-request kernel from production dispatch.
 - **Management storage: durable JDBC store available (opt-in `jdbc` mode); file-backed by

@@ -23,6 +23,8 @@ For each supported reviewed model the generator emits:
 - `readRoot<Name>Forward(...)` and `readRoot<Name>Backward(...)` for Relay roots;
 - `countRoot<Name>(...)` for roots declaring exact visible counts;
 - `readRelation<Owner><Name>(...)` for unprotected direct relations.
+- `readRelation<Owner><Name>Batch<N>(...)` at fixed arities 2, 4, 8, 16, 32, and 64,
+  allowing a 100-parent page to batch in at most two static calls.
 
 Every query uses prepared-statement parameters. Physical identifiers must satisfy the portable
 unquoted identifier subset and unsafe computed templates are rejected during generation. Scalar
@@ -46,7 +48,8 @@ Docker-free generator tests prove byte stability, absence of fixture rows, fail-
 of unsafe identifiers, protected-field omission, and reuse for unrelated blog and commerce models.
 `GeneratedTitanGraphqlReadsIT` installs the package and proves both dialect shapes against live
 databases, including model attestation, point/page/relation reads, a computed field, policy
-omission, and observing a row update.
+omission, observing a row update, and direct collection-relation grouping in a root-plus-batch
+two-step plan.
 
 ## Deliberate Remaining Boundary
 
@@ -61,7 +64,7 @@ Before the carrier route can replace it, generation and generic runtime invocati
 - composite and non-integer point keys;
 - protected-field and protected-relation policy-specific branches;
 - relation arguments, relation connections, cursors, and counts;
-- batched relations beneath collection roots without N+1;
+- nested multi-level relation batching and relation-connection batching without N+1;
 - portable null ordering and scalar/null value preservation;
 - generic mutation routing at the application boundary.
 

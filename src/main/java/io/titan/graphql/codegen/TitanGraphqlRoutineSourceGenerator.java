@@ -28,6 +28,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
     public static final String DEFAULT_PACKAGE = "io.titan.graphql.generated";
     public static final String DEFAULT_CLASS = "GeneratedTitanGraphqlReads";
     private static final String IDENTIFIER = "[A-Za-z_][A-Za-z0-9_]*";
+    private static final List<Integer> RELATION_BATCH_SIZES = List.of(2, 4, 8, 16, 32, 64);
 
     private TitanGraphqlRoutineSourceGenerator() {
     }
@@ -196,9 +197,36 @@ public final class TitanGraphqlRoutineSourceGenerator {
         }
         emitCarrier(source, "readRelation" + javaTypeName(owner.name()) + javaTypeName(relation.name()),
                 List.of(localKey), sql.toString());
+        for (int batchSize : RELATION_BATCH_SIZES) {
+            List<Parameter> batchParameters = new ArrayList<>();
+            for (int index = 1; index <= batchSize; index++) {
+                batchParameters.add(new Parameter("localKey" + index, localKey.javaType(), localKey.setter()));
+            }
+            String batchSql = selectList(context, target, List.of(
+                    identifier(relation.targetColumn(), "relation target column")
+                            + " AS __titan_parent_key"))
+                    + " WHERE " + identifier(relation.targetColumn(), "relation target column")
+                    + " IN (" + String.join(", ", java.util.Collections.nCopies(batchSize, "?")) + ")";
+            if (!relation.sortPaths().isEmpty()) {
+                TitanGraphqlRelationDocument.RelationDocumentSortPath sort = relation.sortPaths().getFirst();
+                if (sort.hops() == 0) {
+                    batchSql += orderBy(sort.column(), sort.direction().name(), sort.tieBreaker());
+                }
+            }
+            emitCarrier(source, "readRelation" + javaTypeName(owner.name())
+                    + javaTypeName(relation.name()) + "Batch" + batchSize, batchParameters, batchSql);
+        }
     }
 
     private static String selectList(GenerationContext context, TitanGraphqlTypeDocument type) {
+        return selectList(context, type, List.of());
+    }
+
+    private static String selectList(
+            GenerationContext context,
+            TitanGraphqlTypeDocument type,
+            List<String> extraProjections
+    ) {
         List<String> projections = new ArrayList<>();
         for (TitanGraphqlFieldDocument field : type.fields()) {
             if (!field.policies().isEmpty()) {
@@ -218,6 +246,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
                         + hiddenRelationAlias(relation.name()));
             }
         }
+        projections.addAll(extraProjections);
         if (projections.isEmpty()) {
             throw unsupported("type '" + type.name() + "' has no unprotected selectable scalar fields");
         }
