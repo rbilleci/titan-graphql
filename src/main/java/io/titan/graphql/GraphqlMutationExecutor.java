@@ -1,5 +1,6 @@
 package io.titan.graphql;
 
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -8,16 +9,16 @@ final class GraphqlMutationExecutor {
 
     private final GraphqlSchema schema;
     private final Map<String, GraphqlMutationCommandHandler> handlers;
-    private final GraphqlMutationAuditLog auditLog;
+    private final GraphqlMutationAuditSink auditSink;
 
     GraphqlMutationExecutor(
             GraphqlSchema schema,
             Map<String, GraphqlMutationCommandHandler> handlers,
-            GraphqlMutationAuditLog auditLog
+            GraphqlMutationAuditSink auditSink
     ) {
         this.schema = schema;
         this.handlers = handlers == null ? Map.of() : Map.copyOf(handlers);
-        this.auditLog = auditLog;
+        this.auditSink = auditSink == null ? GraphqlMutationAuditSink.NONE : auditSink;
     }
 
     GraphqlExecution execute(GraphqlAst.AstOperation operation, GraphqlRequestContext context) {
@@ -41,6 +42,7 @@ final class GraphqlMutationExecutor {
             throw new GraphqlException("unsupported mutation field '" + field.name() + "'");
         }
         authorize(descriptor, context);
+        validatePayloadSelection(descriptor, field);
         GraphqlMutationCommandHandler handler = handlers.get(descriptor.commandName());
         if (handler == null) {
             throw new GraphqlException("no command handler is registered for mutation '" + descriptor.name() + "'");
@@ -111,7 +113,7 @@ final class GraphqlMutationExecutor {
             }
             coerced.put(inputField.name(), coercedValue);
         }
-        return Map.copyOf(coerced);
+        return Collections.unmodifiableMap(new LinkedHashMap<>(coerced));
     }
 
     private static Object coerceValue(
@@ -194,6 +196,47 @@ final class GraphqlMutationExecutor {
         return json.toString();
     }
 
+    private static void validatePayloadSelection(
+            GraphqlMutationDescriptor descriptor,
+            GraphqlAst.Field field
+    ) {
+        if (field.directives().isEmpty() == false) {
+            throw new GraphqlException("mutation '" + descriptor.name()
+                    + "' does not support directives on the mutation field");
+        }
+        if (field.selections().isEmpty()) {
+            throw new GraphqlException("mutation '" + descriptor.name() + "' requires a payload selection set");
+        }
+        Map<String, GraphqlMutationDescriptor.PayloadField> declared = new LinkedHashMap<>();
+        for (GraphqlMutationDescriptor.PayloadField payloadField : descriptor.payload().fields()) {
+            declared.put(payloadField.name(), payloadField);
+        }
+        Map<String, String> responseKeys = new LinkedHashMap<>();
+        for (GraphqlAst.Selection selection : field.selections()) {
+            if (!(selection instanceof GraphqlAst.Field payloadSelection)) {
+                throw new GraphqlException("mutation '" + descriptor.name()
+                        + "' only supports direct payload fields");
+            }
+            if (payloadSelection.arguments().isEmpty() == false
+                    || payloadSelection.directives().isEmpty() == false
+                    || payloadSelection.selections().isEmpty() == false) {
+                throw new GraphqlException("mutation '" + descriptor.name()
+                        + "' payload field '" + payloadSelection.name()
+                        + "' must be a direct scalar selection without arguments or directives");
+            }
+            if (declared.containsKey(payloadSelection.name()) == false) {
+                throw new GraphqlException("mutation '" + descriptor.name()
+                        + "' payload field '" + payloadSelection.name() + "' is not supported");
+            }
+            String previous = responseKeys.putIfAbsent(
+                    payloadSelection.responseKey(), payloadSelection.name());
+            if (previous != null) {
+                throw new GraphqlException("mutation '" + descriptor.name()
+                        + "' has duplicate payload response key '" + payloadSelection.responseKey() + "'");
+            }
+        }
+    }
+
     private void recordAudit(
             GraphqlMutationDescriptor descriptor,
             GraphqlRequestContext context,
@@ -202,14 +245,14 @@ final class GraphqlMutationExecutor {
             Map<String, Object> payload,
             String errorMessage
     ) {
-        if (auditLog == null || descriptor.audit().mode() == GraphqlMutationDescriptor.AuditMode.NONE) {
+        if (descriptor.audit().mode() == GraphqlMutationDescriptor.AuditMode.NONE) {
             return;
         }
         if (descriptor.audit().mode() == GraphqlMutationDescriptor.AuditMode.ATTEMPT
                 && status != GraphqlMutationAuditEvent.MutationAuditStatus.ATTEMPT) {
             return;
         }
-        auditLog.record(new GraphqlMutationAuditEvent(
+        auditSink.record(new GraphqlMutationAuditEvent(
                 descriptor.name(),
                 descriptor.commandName(),
                 descriptor.audit().eventType(),

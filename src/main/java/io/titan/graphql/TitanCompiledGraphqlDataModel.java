@@ -36,6 +36,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
     private final TitanGraphqlModelDocument document;
     private final DataSource dataSource;
     private final TitanGraphqlRoutineInvoker invoker;
+    private final GraphqlMutationExecutor mutationExecutor;
     private final String semanticHash;
     private final Map<String, TitanGraphqlRootDocument> roots = new LinkedHashMap<>();
     private final Map<String, TitanGraphqlTypeDocument> types = new LinkedHashMap<>();
@@ -47,6 +48,15 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             DataSource dataSource,
             TitanGraphqlGap005ArtifactMetadata packageMetadata
     ) {
+        this(document, dataSource, packageMetadata, GraphqlApplicationMutationProvider.none());
+    }
+
+    public TitanCompiledGraphqlDataModel(
+            TitanGraphqlModelDocument document,
+            DataSource dataSource,
+            TitanGraphqlGap005ArtifactMetadata packageMetadata,
+            GraphqlApplicationMutationProvider mutationProvider
+    ) {
         Objects.requireNonNull(document, "document");
         this.document = document;
         this.dataSource = Objects.requireNonNull(dataSource, "dataSource");
@@ -55,8 +65,18 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             throw new IllegalArgumentException("GraphQL model document has " + report.errorCount()
                     + " deployment-blocking validation error(s)");
         }
-        this.schema = ProjectionGraphqlAdapter.adapt(
+        GraphqlApplicationMutationProvider suppliedMutations = mutationProvider == null
+                ? GraphqlApplicationMutationProvider.none() : mutationProvider;
+        // Snapshot application configuration exactly once. Validation, schema publication, and
+        // dispatch must observe the same registrations even if a custom provider is stateful.
+        GraphqlApplicationMutationProvider mutations = GraphqlApplicationMutationProvider.of(
+                suppliedMutations.descriptors(), suppliedMutations.handlers(), suppliedMutations.auditSink());
+        GraphqlSchema readSchema = ProjectionGraphqlAdapter.adapt(
                 TitanGraphqlProjectionModelAdapter.adapt(document));
+        this.schema = new GraphqlSchema(
+                readSchema.rootFields(), readSchema.types(), readSchema.tables(), mutations.descriptors());
+        this.mutationExecutor = new GraphqlMutationExecutor(
+                this.schema, mutations.handlers(), mutations.auditSink());
         this.invoker = new TitanGraphqlRoutineInvoker(packageMetadata);
         this.semanticHash = TitanGraphqlModelDocumentJson.semanticHash(document);
         document.roots().forEach(root -> roots.put(root.name(), root));
@@ -101,6 +121,14 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         } catch (JsonProcessingException ex) {
             throw new IllegalStateException("Titan-compiled GraphQL result could not be serialized", ex);
         }
+    }
+
+    @Override
+    public GraphqlExecution executeMutation(
+            GraphqlAst.AstOperation operation,
+            GraphqlRequestContext context
+    ) {
+        return mutationExecutor.execute(operation, context);
     }
 
     private List<Row> readRoot(

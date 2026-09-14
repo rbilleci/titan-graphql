@@ -3,10 +3,14 @@ package io.titan.graphql;
 import io.titan.graphql.demo.blog.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 final class GraphqlMutationExecutorTest {
@@ -104,6 +108,101 @@ final class GraphqlMutationExecutorTest {
         assertEquals(2, auditLog.events().size());
         assertEquals(GraphqlMutationAuditEvent.MutationAuditStatus.FAILURE, auditLog.events().get(1).status());
         assertEquals("model document failed semantic validation", auditLog.events().get(1).errorMessage());
+    }
+
+    @Test
+    void rejectsInvalidPayloadSelectionBeforeCallingHandler() {
+        AtomicBoolean called = new AtomicBoolean();
+        GraphqlMutationExecutor executor = new GraphqlMutationExecutor(
+                schema(importModelMutation()),
+                Map.of("titan.management.importModelDocument", request -> {
+                    called.set(true);
+                    return GraphqlMutationCommandResult.of(Map.of());
+                }),
+                new GraphqlMutationAuditLog()
+        );
+
+        GraphqlExecution execution = executor.execute(
+                GraphqlParser.parseSelectedOperation(GraphqlRequest.of("""
+                        mutation Import {
+                          importModelDocument(input: {
+                            workspaceId: "workspace-1",
+                            yaml: "apiVersion: titan.graphql/v1alpha1"
+                          }) { missingField }
+                        }
+                        """, "Import")),
+                context("platform", "req-invalid-payload")
+        );
+
+        assertTrue(execution.json().contains("payload field 'missingField' is not supported"));
+        assertFalse(called.get());
+    }
+
+    @Test
+    void preservesNullableInputAndPayloadValues() {
+        GraphqlMutationDescriptor mutation = new GraphqlMutationDescriptor(
+                "annotate",
+                "example.annotate",
+                "",
+                new GraphqlMutationDescriptor.InputObject("AnnotateInput", List.of(
+                        new GraphqlMutationDescriptor.InputField("note", "String", false, "")
+                )),
+                new GraphqlMutationDescriptor.PayloadObject("AnnotatePayload", List.of(
+                        new GraphqlMutationDescriptor.PayloadField("note", "String", false, "")
+                )),
+                GraphqlMutationDescriptor.AuthorizationMetadata.none(),
+                GraphqlMutationDescriptor.TransactionMetadata.none(),
+                GraphqlMutationDescriptor.AuditMetadata.none()
+        );
+        GraphqlMutationExecutor executor = new GraphqlMutationExecutor(
+                schema(mutation),
+                Map.of("example.annotate", request -> {
+                    assertTrue(request.input().containsKey("note"));
+                    assertNull(request.input().get("note"));
+                    Map<String, Object> payload = new LinkedHashMap<>();
+                    payload.put("note", null);
+                    return GraphqlMutationCommandResult.of(payload);
+                }),
+                GraphqlMutationAuditSink.NONE
+        );
+
+        GraphqlExecution execution = executor.execute(
+                GraphqlParser.parseSelectedOperation(GraphqlRequest.of(
+                        "mutation { annotate(input: { note: null }) { note } }", "")),
+                context("platform", "req-null")
+        );
+
+        assertEquals("{\"data\":{\"annotate\":{\"note\":null}}}", execution.json());
+    }
+
+    @Test
+    void resolvesSchemaDeclaredMutationInputObjectVariable() {
+        GraphqlMutationDescriptor mutation = importModelMutation();
+        GraphqlSchema schema = schema(mutation);
+        GraphqlMutationExecutor executor = new GraphqlMutationExecutor(
+                schema,
+                Map.of(mutation.commandName(), request -> GraphqlMutationCommandResult.of(Map.of(
+                        "draftId", request.input().get("workspaceId"),
+                        "accepted", true
+                ))),
+                GraphqlMutationAuditSink.NONE
+        );
+        Map<String, Object> input = Map.of(
+                "workspaceId", "workspace-variable",
+                "yaml", "apiVersion: titan.graphql/v1alpha1"
+        );
+
+        GraphqlExecution execution = executor.execute(
+                GraphqlParser.parseSelectedOperation(GraphqlRequest.of("""
+                        mutation Import($input: ImportModelDocumentInput!) {
+                          importModelDocument(input: $input) { draftId accepted }
+                        }
+                        """, "Import", Map.of("input", input)), schema),
+                context("platform", "req-input-variable")
+        );
+
+        assertEquals("{\"data\":{\"importModelDocument\":{\"draftId\":\"workspace-variable\","
+                + "\"accepted\":true}}}", execution.json());
     }
 
     @Test

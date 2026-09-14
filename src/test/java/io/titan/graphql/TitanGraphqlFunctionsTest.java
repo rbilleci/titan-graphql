@@ -24,6 +24,14 @@ import org.junit.jupiter.api.Test;
 class TitanGraphqlFunctionsTest {
 
     @Test
+    void unauthenticatedTransportContextHasNoImplicitReaderRole() {
+        GraphqlHttpResource.GraphqlHttpContext context = GraphqlHttpResource.GraphqlHttpContext.defaults();
+
+        assertEquals("", context.actorRole());
+        assertEquals(0L, context.actorId());
+    }
+
+    @Test
     void quarkusPostResourceDelegatesAcceptedEnvelopeToLoweredRequestPath() {
         Map<String, Object> variables = new LinkedHashMap<>();
         variables.put("id", "1");
@@ -112,6 +120,21 @@ class TitanGraphqlFunctionsTest {
     }
 
     @Test
+    void quarkusGetResourceRejectsMutationOperationsAtTheTransportBoundary() {
+        GraphqlHttpResource.GraphqlHttpResult response = new GraphqlHttpResource().negotiateGet(
+                "mutation Rename { renameCustomer(input: { customerId: 7, name: \"Nope\" }) { name } }",
+                null,
+                null,
+                null,
+                MediaType.APPLICATION_JSON
+        );
+
+        assertEquals(200, response.status());
+        assertTrue(response.body().contains("GraphQL GET only supports query operations"));
+        assertErrorCode(response.body(), GraphqlException.UNSUPPORTED_OPERATION);
+    }
+
+    @Test
     void quarkusGetResourceTransportsOperationNameAndVariables() {
         GraphqlHttpResource.GraphqlHttpResult response = new GraphqlHttpResource().negotiateGet(
                 """
@@ -177,20 +200,6 @@ class TitanGraphqlFunctionsTest {
         assertErrorCode(missingQuery.body(), GraphqlException.VALIDATION_ERROR);
         assertTrue(invalidVariables.body().contains("request field 'variables' must be a JSON object"));
         assertErrorCode(invalidVariables.body(), GraphqlException.VALIDATION_ERROR);
-    }
-
-    @Test
-    void quarkusGetResourceRejectsMutationOperationsThroughQueryOnlyEngine() {
-        GraphqlHttpResource.GraphqlHttpResult response = new GraphqlHttpResource().negotiateGet(
-                "mutation Change { article(id: 1) { id } }",
-                null,
-                null,
-                null,
-                MediaType.APPLICATION_JSON
-        );
-
-        assertTrue(response.body().contains("operation type 'mutation' is not supported"));
-        assertErrorCode(response.body(), GraphqlException.UNSUPPORTED_OPERATION);
     }
 
     @Test

@@ -19,11 +19,13 @@ public final class GraphqlHttpResource {
 
     private static final List<String> REQUEST_FIELDS = List.of("query", "operationName", "variables", "extensions");
     static final String GRAPHQL_RESPONSE_JSON = "application/graphql-response+json";
-    private static final String DEFAULT_ACTOR_ROLE = "reader";
+    // An unauthenticated request must never inherit an authorized application role. A trusted
+    // gateway may inject a role only when trust-request-context-headers is explicitly enabled.
+    private static final String DEFAULT_ACTOR_ROLE = "";
 
     /** Mode surface (completion plan W5.1): which engine answered this response. */
     static final String EXECUTION_MODE_HEADER = "X-Titan-Execution-Mode";
-    /** Mode surface: the deployed package's manifest {@code artifactId} (SQL mode only). */
+    /** Mode surface: the bound model/package deployment fingerprint (compiled and SQL modes). */
     static final String DEPLOYMENT_FINGERPRINT_HEADER = "X-Titan-Deployment-Fingerprint";
     static final String EXECUTION_MODE_UNAVAILABLE = "EXECUTION_MODE_UNAVAILABLE";
     private static final int SERVICE_UNAVAILABLE = 503;
@@ -181,7 +183,7 @@ public final class GraphqlHttpResource {
 
     /**
      * Builds the JAX-RS response with the mode surface headers: every response names the
-     * engine that answered it, and SQL-mode responses additionally carry the deployment
+     * engine that answered it, and database-package responses additionally carry the deployment
      * fingerprint for the exact reviewed-model/Titan-package binding.
      */
     private Response withModeSurface(GraphqlHttpResult result) {
@@ -190,7 +192,8 @@ public final class GraphqlHttpResource {
                 .type(result.mediaType())
                 .entity(result.body())
                 .header(EXECUTION_MODE_HEADER, engine.modeName());
-        if (engine.mode() == GraphqlExecutionEngine.Mode.SQL) {
+        if (engine.mode() == GraphqlExecutionEngine.Mode.SQL
+                || engine.mode() == GraphqlExecutionEngine.Mode.COMPILED) {
             response.header(DEPLOYMENT_FINGERPRINT_HEADER, engine.fingerprint());
         }
         return response.build();
@@ -312,6 +315,17 @@ public final class GraphqlHttpResource {
     ) {
         if (query == null || query.isBlank()) {
             return errorJson("GraphQL GET query parameter 'query' is required");
+        }
+        try {
+            if (GraphqlParser.selectedOperationType(query, operationName)
+                    != GraphqlAst.OperationType.QUERY) {
+                return errorJson(
+                        "GraphQL GET only supports query operations",
+                        GraphqlException.UNSUPPORTED_OPERATION
+                );
+            }
+        } catch (GraphqlException invalidDocument) {
+            return GraphqlJsonWriter.error(invalidDocument);
         }
         return engine.runtime().execute(
                 new GraphqlRuntimeRequest(

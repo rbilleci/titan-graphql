@@ -277,7 +277,7 @@ class GeneratedTitanGraphqlReadsIT {
             assertEquals("ada@example.test", protectedField.at("/data/article/author/email").asText(),
                     protectedField.toString());
             JsonNode rejectedProtectedField = graphql(dataModel,
-                    "{ article(id: 1) { author { email } } }",
+                    "{ article(id: 1) { author { protectedAlias: email } } }",
                     GraphqlRequestContext.legacy(10L, "reader"));
             assertTrue(rejectedProtectedField.at("/errors/0/message").asText().contains("not authorized"),
                     rejectedProtectedField.toString());

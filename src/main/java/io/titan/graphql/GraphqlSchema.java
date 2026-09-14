@@ -67,6 +67,10 @@ public final class GraphqlSchema {
         return tables.get(name);
     }
 
+    public List<GraphqlTableDescriptor> tables() {
+        return List.copyOf(tables.values());
+    }
+
     public GraphqlMutationDescriptor mutation(String name) {
         return mutations.get(name);
     }

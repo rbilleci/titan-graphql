@@ -1,14 +1,17 @@
 package io.titan.graphql;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
-record GraphqlMutationCommandResult(Map<String, Object> payload) {
+public record GraphqlMutationCommandResult(Map<String, Object> payload) {
 
-    GraphqlMutationCommandResult {
-        payload = payload == null ? Map.of() : Map.copyOf(payload);
+    public GraphqlMutationCommandResult {
+        payload = payload == null
+                ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(payload));
     }
 
-    static GraphqlMutationCommandResult of(Map<String, Object> payload) {
+    public static GraphqlMutationCommandResult of(Map<String, Object> payload) {
         return new GraphqlMutationCommandResult(payload);
     }
 }

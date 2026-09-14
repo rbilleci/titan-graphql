@@ -1,11 +1,11 @@
 # Titan GraphQL Validation Diagnostics
 
-Status: DXR4 diagnostic format reference.
+Status: implemented diagnostic format reference.
 
 Titan GraphQL validation reports have two stable renderings:
 
 - terminal text for local CLI and CI logs
-- JSON for editors, CI systems, management API responses, and future UI clients
+- JSON for editors, local automation, management API responses, and other consumers
 
 Both renderings are produced from the shared validation report model. They do
 not change parser behavior, semantic validation rules, runtime YAML loading, or
@@ -101,7 +101,7 @@ the same terminal text and JSON surfaces. A drift report does not connect to a
 live database by itself; it compares an already loaded canonical model document
 with an already captured catalog snapshot.
 
-All current DXR6 drift findings use:
+All current drift findings use:
 
 - `code`: `DRIFT_DETECTED`
 - `severity`: `ERROR`
@@ -176,13 +176,10 @@ Operator interpretation:
 - Use `modelPath` to find the model element and metadata such as `schema`,
   `table`, `column`, `targetTable`, or `foreignKeyExists` to find the catalog
   side of the mismatch.
-- Warning and info drift severities are not part of the current DXR6 surface;
-  compatible advisory drift can be added later without changing the renderer
-  contract.
+- Warning and info drift severities are not emitted by the current checker.
 
 ## Current Boundary
 
-DXR4.3 defined the renderer. DXR6.2 proves drift reports on the same renderer
-surface. A future slice will wire these renderings into a real command-line
-validation executable and adapt YAML parser diagnostics into the shared
-validation report model while preserving current parser exceptions.
+Model validation and catalog drift use the same renderer surface. Generation, binding, and runtime
+initialization invoke model validation directly. There is no standalone validation CLI; YAML syntax
+errors remain parser exceptions, while semantic and drift findings use this report format.

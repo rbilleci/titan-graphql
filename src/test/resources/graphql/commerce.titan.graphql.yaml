@@ -82,6 +82,10 @@ types:
         nullable: false
         filter:
           operators: [eq, neq, in, isNull, contains, startsWith, endsWith]
+      nickname:
+        column: nickname
+        type: String
+        nullable: true
       active:
         column: active
         type: Boolean

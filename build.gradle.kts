@@ -31,6 +31,7 @@ dependencies {
     // the deployed stored functions over the Quarkus default (Agroal) datasource.
     implementation("io.quarkus:quarkus-agroal")
     implementation("io.quarkus:quarkus-jdbc-postgresql")
+    implementation("io.quarkus:quarkus-jdbc-mysql")
     // io.titan:titan-runtime-jdbc for the MAIN classpath (TitanExecutionListener +
     // JdbcTelemetrySink, the SQL-mode telemetry wiring) is declared in the afterEvaluate
     // block below — see the TG-BLK-009 workaround note there.

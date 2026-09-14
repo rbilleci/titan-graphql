@@ -29,13 +29,22 @@ final class GraphqlParser {
     }
 
     static GraphqlAst.AstOperation parseSelectedOperation(GraphqlRequest request) {
+        return parseSelectedOperation(request, null);
+    }
+
+    static GraphqlAst.AstOperation parseSelectedOperation(GraphqlRequest request, GraphqlSchema schema) {
         GraphqlAst.Document document = new GraphqlParser(request.query()).parseDocument();
         GraphqlAst.AstOperation operation = selectOperation(document, request.operationName());
-        return GraphqlVariableCoercer.apply(operation, request.variables());
+        return GraphqlVariableCoercer.apply(operation, request.variables(), schema);
     }
 
     static GraphqlAst.Document parseDocument(String query) {
         return new GraphqlParser(query).parseDocument();
+    }
+
+    static GraphqlAst.OperationType selectedOperationType(String query, String operationName) {
+        GraphqlAst.Document document = new GraphqlParser(query).parseDocument();
+        return selectOperation(document, operationName == null ? "" : operationName).type();
     }
 
     GraphqlAst.AstOperation parse() {

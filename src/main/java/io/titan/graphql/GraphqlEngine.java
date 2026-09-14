@@ -21,18 +21,20 @@ public final class GraphqlEngine {
             GraphqlDataModel dataModel,
             GraphqlJsonWriter jsonWriter,
             GraphqlRequest request,
-            GraphqlRequestContext context
+        GraphqlRequestContext context
     ) {
         try {
-            GraphqlAst.AstOperation operation = dataModel.schema().mutations().isEmpty()
-                    ? GraphqlParser.parse(request)
-                    : GraphqlParser.parseSelectedOperation(request);
+            GraphqlAst.AstOperation operation = GraphqlParser.parseSelectedOperation(
+                    request, dataModel.schema());
             if (GraphqlIntrospection.isIntrospectionOperation(operation) && context.introspectionEnabled()) {
                 return GraphqlIntrospection.execute(dataModel.schema(), operation);
             }
             if (operation.type() == GraphqlAst.OperationType.MUTATION
                     && dataModel.schema().mutations().isEmpty() == false) {
                 return dataModel.executeMutation(operation, context);
+            }
+            if (operation.type() != GraphqlAst.OperationType.QUERY) {
+                throw GraphqlException.unsupportedOperation(operation.type().name().toLowerCase());
             }
             GraphqlSelection selection = GraphqlValidator.validate(dataModel.schema(), operation, context);
             return dataModel.execute(selection, context);

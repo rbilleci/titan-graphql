@@ -1,8 +1,11 @@
 package io.titan.graphql;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
-interface GraphqlMutationCommandHandler {
+@FunctionalInterface
+public interface GraphqlMutationCommandHandler {
 
     GraphqlMutationCommandResult handle(GraphqlMutationCommandRequest request);
 
@@ -12,7 +15,8 @@ interface GraphqlMutationCommandHandler {
             GraphqlRequestContext context
     ) {
         public GraphqlMutationCommandRequest {
-            input = input == null ? Map.of() : Map.copyOf(input);
+            input = input == null
+                    ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(input));
         }
     }
 }

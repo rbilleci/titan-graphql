@@ -92,6 +92,23 @@ class GraphqlRuntimeBoundaryTest {
         }
     }
 
+    @Test
+    void compiledProductionPathContainsNoDemoOrSchemaNameDispatch() throws IOException {
+        for (String sourcePath : List.of(
+                "src/main/java/io/titan/graphql/GraphqlExecutionEngine.java",
+                "src/main/java/io/titan/graphql/TitanCompiledGraphqlRuntime.java",
+                "src/main/java/io/titan/graphql/TitanCompiledGraphqlDataModel.java",
+                "src/main/java/io/titan/graphql/GraphqlVariableCoercer.java",
+                "src/main/java/io/titan/graphql/codegen/TitanGraphqlRoutineSourceGenerator.java")) {
+            String source = Files.readString(Path.of(sourcePath));
+            for (String forbidden : List.of(
+                    "DemoBlog", "demo.blog", "Article", "articles", "Customer", "customers")) {
+                assertFalse(source.contains(forbidden),
+                        sourcePath + " must not dispatch on schema-specific name '" + forbidden + "'");
+            }
+        }
+    }
+
     private static void assertCoreSourceDoesNotContainDemoMaterialization(String sourcePath) throws IOException {
         String source = Files.readString(Path.of(sourcePath));
 

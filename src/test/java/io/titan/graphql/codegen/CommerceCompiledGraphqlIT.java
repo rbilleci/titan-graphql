@@ -8,7 +8,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.titan.graphql.GraphqlExecution;
 import io.titan.graphql.GraphqlExecutionEngine;
+import io.titan.graphql.GraphqlApplicationMutationProvider;
 import io.titan.graphql.GraphqlModelRuntime;
+import io.titan.graphql.GraphqlMutationAuditEvent;
+import io.titan.graphql.GraphqlMutationAuditLog;
+import io.titan.graphql.GraphqlMutationCommandResult;
+import io.titan.graphql.GraphqlMutationDescriptor;
 import io.titan.graphql.GraphqlRequest;
 import io.titan.graphql.GraphqlRequestContext;
 import io.titan.graphql.TitanCompiledGraphqlRuntime;
@@ -21,6 +26,8 @@ import io.titan.runtime.testing.TitanTestContext;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
@@ -54,20 +61,51 @@ class CommerceCompiledGraphqlIT {
         for (DatabaseTarget target : List.of(DatabaseTarget.POSTGRESQL, DatabaseTarget.MYSQL)) {
             Connection connection = context.connection(target);
             deploy(connection, target);
-            GraphqlExecutionEngine engine = engine(connection, target);
+            GraphqlMutationAuditLog mutationAudit = new GraphqlMutationAuditLog();
+            GraphqlExecutionEngine engine = engine(
+                    connection, target, commerceMutations(connection, mutationAudit));
             GraphqlModelRuntime runtime = engine.runtime();
             assertEquals(TitanCompiledGraphqlRuntime.NAME, runtime.name(), target.name());
 
             GraphqlExecution point = execute(runtime,
-                    "{ customer(id: 7) { id name active orders { id reference } } }",
+                    "{ customer(id: 7) { id name nickname active orders { id reference } } }",
                     GraphqlRequestContext.legacy(1L, "reader"));
             assertEquals(2, point.plan().readStepCount(), target.name());
             JsonNode pointJson = JSON.readTree(point.json());
             assertEquals("Northwind", pointJson.at("/data/customer/name").asText(), target.name());
+            assertTrue(pointJson.at("/data/customer/nickname").isNull(),
+                    "nullable database values must remain GraphQL null on " + target);
             assertEquals("NW-001", pointJson.at("/data/customer/orders/0/reference").asText(), target.name());
 
+            JsonNode nonNullNickname = JSON.readTree(execute(runtime,
+                    "{ customer(id: 8) { nickname } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals("Adventure", nonNullNickname.at("/data/customer/nickname").asText(), target.name());
+
+            JsonNode introspection = JSON.readTree(execute(runtime,
+                    "{ __type(name: \"Customer\") { fields { name type { kind name ofType { kind name } } } } }",
+                    GraphqlRequestContext.introspectionEnabled(1L, "reader")).json());
+            JsonNode nicknameType = null;
+            for (JsonNode field : introspection.at("/data/__type/fields")) {
+                if (field.path("name").asText().equals("nickname")) nicknameType = field.path("type");
+            }
+            assertTrue(nicknameType != null, introspection.toString());
+            assertEquals("SCALAR", nicknameType.path("kind").asText(), target.name());
+            assertEquals("String", nicknameType.path("name").asText(), target.name());
+
+            JsonNode mutationSchema = JSON.readTree(execute(runtime,
+                    "{ __schema { mutationType { name } } }",
+                    GraphqlRequestContext.introspectionEnabled(1L, "reader")).json());
+            assertEquals("Mutation", mutationSchema.at("/data/__schema/mutationType/name").asText(),
+                    target.name());
+            JsonNode mutationType = JSON.readTree(execute(runtime,
+                    "{ __type(name: \"Mutation\") { fields { name } } }",
+                    GraphqlRequestContext.introspectionEnabled(1L, "reader")).json());
+            assertTrue(mutationType.at("/data/__type/fields").findValuesAsText("name")
+                    .contains("renameCustomer"), mutationType.toString());
+
             JsonNode rejectedOrders = JSON.readTree(execute(runtime,
-                    "{ customer(id: 7) { orders { id } } }",
+                    "{ customer(id: 7) { hiddenOrders: orders { id } } }",
                     GraphqlRequestContext.legacy(1L, "anonymous")).json());
             assertTrue(rejectedOrders.at("/errors/0/message").asText().contains("not authorized"),
                     target.name());
@@ -144,6 +182,23 @@ class CommerceCompiledGraphqlIT {
                     GraphqlRequestContext.legacy(1L, "reader")).json());
             assertEquals(2, composedFilterAndOrder.at("/data/customers/edges").size(), target.name());
             assertEquals(2, composedFilterAndOrder.at("/data/customers/totalCount").asInt(), target.name());
+
+            JsonNode variableFilterAndOrder = JSON.readTree(runtime.executeWithPlan(
+                    GraphqlRequest.of("""
+                            query Customers($filter: CustomerFilter!, $order: [CustomerOrderBy!]!) {
+                              customers(first: 10, filter: $filter, orderBy: $order) {
+                                edges { node { id name } }
+                                totalCount
+                              }
+                            }
+                            """, "Customers", Map.of(
+                            "filter", Map.of("name", Map.of("startsWith", "North")),
+                            "order", List.of(Map.of("name", "DESC"))
+                    )), GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals(2, variableFilterAndOrder.at("/data/customers/edges").size(),
+                    target.name() + ": " + variableFilterAndOrder);
+            assertEquals("Northwind", variableFilterAndOrder.at(
+                    "/data/customers/edges/0/node/name").asText(), target.name());
 
             JsonNode relatedOrder = JSON.readTree(execute(runtime,
                     "{ orders(first: 1, orderBy: [{ customerName: ASC }]) { "
@@ -236,8 +291,28 @@ class CommerceCompiledGraphqlIT {
             assertEquals(2, filtered.at("/data/customers/totalCount").asInt(), target.name());
             assertEquals("Northwind", filtered.at("/data/customers/edges/0/node/name").asText(), target.name());
 
+            JsonNode deniedMutation = JSON.readTree(execute(runtime,
+                    "mutation { renameCustomer(input: { customerId: 7, name: \"Denied\" }) { name } }",
+                    GraphqlRequestContext.legacy(2L, "anonymous")).json());
+            assertTrue(deniedMutation.at("/errors/0/message").asText().contains("not authorized"),
+                    deniedMutation.toString());
+
+            JsonNode mutation = JSON.readTree(runtime.executeWithPlan(GraphqlRequest.of("""
+                            mutation Rename($input: RenameCustomerInput!) {
+                              changed: renameCustomer(input: $input) { id: customerId name }
+                            }
+                            """, "Rename", Map.of(
+                            "input", Map.of("customerId", 7, "name", "Contoso")
+                    )), GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals(7, mutation.at("/data/changed/id").asInt(), target.name());
+            assertEquals("Contoso", mutation.at("/data/changed/name").asText(), target.name());
+            assertEquals(List.of(
+                            GraphqlMutationAuditEvent.MutationAuditStatus.ATTEMPT,
+                            GraphqlMutationAuditEvent.MutationAuditStatus.SUCCESS),
+                    mutationAudit.events().stream().map(GraphqlMutationAuditEvent::status).toList(),
+                    target.name());
+
             try (Statement statement = connection.createStatement()) {
-                statement.executeUpdate("UPDATE commerce.customers SET name = 'Contoso' WHERE id = 7");
                 statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference) "
                         + "VALUES (72, 7, 'CT-003')");
             }
@@ -258,9 +333,68 @@ class CommerceCompiledGraphqlIT {
     }
 
     private static GraphqlExecutionEngine engine(Connection connection, DatabaseTarget target) {
+        return engine(connection, target, GraphqlApplicationMutationProvider.none());
+    }
+
+    private static GraphqlExecutionEngine engine(
+            Connection connection,
+            DatabaseTarget target,
+            GraphqlApplicationMutationProvider mutations
+    ) {
         return new GraphqlExecutionEngine(
                 "compiled", () -> new SingleConnectionDataSource(connection),
-                "isolated commerce " + target.name().toLowerCase(Locale.ROOT), MODEL);
+                "isolated commerce " + target.name().toLowerCase(Locale.ROOT), MODEL, mutations);
+    }
+
+    private static GraphqlApplicationMutationProvider commerceMutations(
+            Connection connection,
+            GraphqlMutationAuditLog audit
+    ) {
+        GraphqlMutationDescriptor descriptor = new GraphqlMutationDescriptor(
+                "renameCustomer",
+                "commerce.renameCustomer",
+                "Rename one customer.",
+                new GraphqlMutationDescriptor.InputObject("RenameCustomerInput", List.of(
+                        new GraphqlMutationDescriptor.InputField(
+                                "customerId", "Int", true, "Customer identifier."),
+                        new GraphqlMutationDescriptor.InputField(
+                                "name", "String", true, "New customer name.")
+                )),
+                new GraphqlMutationDescriptor.PayloadObject("RenameCustomerPayload", List.of(
+                        new GraphqlMutationDescriptor.PayloadField(
+                                "customerId", "Int", true, "Renamed customer identifier."),
+                        new GraphqlMutationDescriptor.PayloadField(
+                                "name", "String", true, "Stored customer name.")
+                )),
+                new GraphqlMutationDescriptor.AuthorizationMetadata(
+                        true, "canRenameCustomer", List.of("reader", "admin")),
+                new GraphqlMutationDescriptor.TransactionMetadata(
+                        GraphqlMutationDescriptor.TransactionMode.REQUIRED, "", "handler-owned"),
+                new GraphqlMutationDescriptor.AuditMetadata(
+                        GraphqlMutationDescriptor.AuditMode.ATTEMPT_AND_RESULT,
+                        "customer_renamed", false, false)
+        );
+        return GraphqlApplicationMutationProvider.of(
+                List.of(descriptor),
+                Map.of(descriptor.commandName(), request -> {
+                    Number customerId = (Number) request.input().get("customerId");
+                    String name = request.input().get("name").toString();
+                    try (PreparedStatement statement = connection.prepareStatement(
+                            "UPDATE commerce.customers SET name = ? WHERE id = ?")) {
+                        statement.setString(1, name);
+                        statement.setLong(2, customerId.longValue());
+                        if (statement.executeUpdate() != 1) {
+                            throw new io.titan.graphql.GraphqlException("customer was not found");
+                        }
+                    } catch (SQLException failure) {
+                        throw new io.titan.graphql.GraphqlException(
+                                "customer rename transaction failed: " + failure.getMessage());
+                    }
+                    return GraphqlMutationCommandResult.of(Map.of(
+                            "customerId", customerId.longValue(), "name", name));
+                }),
+                audit
+        );
     }
 
     private static GraphqlExecution execute(
@@ -285,7 +419,7 @@ class CommerceCompiledGraphqlIT {
             statement.execute("DROP TABLE IF EXISTS commerce.api_clients");
             statement.execute("DROP TABLE IF EXISTS commerce.countries");
             statement.execute("CREATE TABLE commerce.customers (id BIGINT PRIMARY KEY, "
-                    + "name VARCHAR(120) NOT NULL, active BOOLEAN NOT NULL)");
+                    + "name VARCHAR(120) NOT NULL, nickname VARCHAR(120), active BOOLEAN NOT NULL)");
             statement.execute("CREATE TABLE commerce.orders (id BIGINT PRIMARY KEY, "
                     + "customer_id BIGINT NOT NULL, reference VARCHAR(120) NOT NULL, "
                     + "FOREIGN KEY (customer_id) REFERENCES commerce.customers(id))");
@@ -304,8 +438,9 @@ class CommerceCompiledGraphqlIT {
         apply(connection, target, migrations.resolve("R__titan_010_runtime.sql"));
         apply(connection, target, migrations.resolve("R__titan_020_routines.sql"));
         try (Statement statement = connection.createStatement()) {
-            statement.executeUpdate("INSERT INTO commerce.customers (id, name, active) VALUES "
-                    + "(7, 'Northwind', true), (8, 'Adventure Works', false), (9, 'Northwind', true)");
+            statement.executeUpdate("INSERT INTO commerce.customers (id, name, nickname, active) VALUES "
+                    + "(7, 'Northwind', NULL, true), "
+                    + "(8, 'Adventure Works', 'Adventure', false), (9, 'Northwind', NULL, true)");
             statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference) VALUES "
                     + "(70, 7, 'NW-001'), (71, 7, 'NW-002'), (80, 8, 'AW-001')");
             statement.executeUpdate("INSERT INTO commerce.countries (code, name) VALUES "

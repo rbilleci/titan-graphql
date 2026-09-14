@@ -6,9 +6,9 @@ This document defines the first human-authored Titan GraphQL model document
 shape. It is the contract developers should read before authoring
 `titan.graphql.yaml`.
 
-The format is intentionally a source document, not runtime behavior. DXR1.1 only
-documents the YAML shape and examples. It does not add a YAML parser, runtime
-loading, SQL lowering, or new dependencies.
+The format is an implemented source document, not generated output. The YAML parser, validator,
+projection adapter, carrier generator, package binding, and compiled runtime all consume this
+contract. Unsupported or unsafe shapes are rejected before generation or execution.
 
 ## Design Goals
 
@@ -18,7 +18,7 @@ The model document should be:
 - deterministic when exported
 - explicit about data bindings, policies, pagination, filters, and sorts
 - compatible with the current Java projection model
-- compilable later into a canonical JSON IR
+- deterministically normalizable into the canonical JSON used for semantic hashing
 - separate from generated SDL, introspection, conformance, and SQL artifacts
 
 Generated GraphQL SDL remains an output artifact. The model document is the
@@ -53,8 +53,8 @@ Fields:
 | `artifacts` | no | Generated output options for reviewable artifacts. |
 | `deployment` | no | Deployment and preview metadata. |
 
-Unknown top-level fields are unsupported in v1alpha1 and should be rejected by
-future parsers. Extension fields should use `x-<owner>-<name>` only after the
+Unknown top-level fields are unsupported in v1alpha1 and are rejected by the
+parser. Extension fields should use `x-<owner>-<name>` only after the
 canonical IR can preserve and validate them.
 
 ## Metadata
@@ -271,7 +271,7 @@ Sort path fields:
 | `path` | yes | Model path used in the generated order input. |
 | `hops` | no | Relation hop count. Defaults to `0`. |
 | `direction` | no | Default direction, `asc` or `desc`. |
-| `nulls` | no | `first` or `last`. |
+| `nulls` | no | `last` in the compiled profile; `first` is reserved and rejected. |
 | `tieBreaker` | yes | Stable tie-breaker column, usually `id`. |
 
 The compiled carrier path supports local stored or reviewed computed sort values and one-hop

@@ -120,9 +120,8 @@ TitanGraphqlProjection.model()
         .addType();
 ```
 
-Authorization is field-local in this API slice. Broader policy authoring,
-validation reports, and management API policy lifecycle belong to later DXR
-milestones.
+Authorization is field-local in this builder API. Broader root, row, field, and relation policy
+authoring is available in the reviewed YAML model rather than inferred by this facade.
 
 ## Computed Fields
 
@@ -256,7 +255,7 @@ arguments on `Product.reviews`.
 - The public builder creates projection descriptors; it is not a runtime
   registry or deployment mechanism.
 - YAML parsing remains explicit through the model document parser and adapter.
-- Management workflows belong to `/admin/graphql` in later milestones.
+- Management workflows are separate under `/admin/graphql`; the builder does not deploy them.
 - SDL is generated output and should not be edited as source truth.
 - Runtime/lowered support still follows the existing Java/SQL equivalence rule.
 - The API is additive over the current descriptor surface; unsupported future

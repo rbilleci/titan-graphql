@@ -330,22 +330,24 @@ class GraphqlExecutionModeTest {
     }
 
     @Test
-    void sqlModeResponsesNameTheEngineAndTheDeployedArtifact() {
-        GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
-                "sql", () -> new FailingDataSource("unreachable"), "stub datasource", DEMO_MODEL_PATH);
+    void databasePackageResponsesNameTheEngineAndTheDeployedArtifact() {
+        for (String mode : List.of("compiled", "sql")) {
+            GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
+                    mode, () -> new FailingDataSource("unreachable"), "stub datasource", DEMO_MODEL_PATH);
 
-        Response response = new GraphqlHttpResource(engine).postResponse(
-                Map.<String, Object>of("query", SIMPLE_QUERY), GraphqlHttpResource.GRAPHQL_RESPONSE_JSON,
-                null, null, null, null, null, null, null, null, null, null);
+            Response response = new GraphqlHttpResource(engine).postResponse(
+                    Map.<String, Object>of("query", SIMPLE_QUERY), GraphqlHttpResource.GRAPHQL_RESPONSE_JSON,
+                    null, null, null, null, null, null, null, null, null, null);
 
-        assertEquals(503, response.getStatus());
-        assertEquals("sql", response.getHeaderString(GraphqlHttpResource.EXECUTION_MODE_HEADER));
-        // The fingerprint binds the exact reviewed model to the checked-in fixture package.
-        assertEquals(
-                io.titan.graphql.artifact.TitanGraphqlPackageBinding
-                        .read(TitanGraphqlArtifactsDirectory.configuredDirectory())
-                        .deploymentFingerprint(),
-                response.getHeaderString(GraphqlHttpResource.DEPLOYMENT_FINGERPRINT_HEADER));
+            assertEquals(503, response.getStatus());
+            assertEquals(mode, response.getHeaderString(GraphqlHttpResource.EXECUTION_MODE_HEADER));
+            // The fingerprint binds the exact reviewed model to the checked-in fixture package.
+            assertEquals(
+                    io.titan.graphql.artifact.TitanGraphqlPackageBinding
+                            .read(TitanGraphqlArtifactsDirectory.configuredDirectory())
+                            .deploymentFingerprint(),
+                    response.getHeaderString(GraphqlHttpResource.DEPLOYMENT_FINGERPRINT_HEADER));
+        }
     }
 
     private static GraphqlExecutionEngine engine(String mode) {

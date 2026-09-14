@@ -1,351 +1,217 @@
 # Titan GraphQL Design
 
+Status: implemented pre-1.0 architecture and verified support boundary.
+
 ## Purpose
 
-Titan GraphQL is a schema-driven GraphQL layer and a proof project for pushing Titan beyond
-normal stored-procedure authoring.
+Titan GraphQL exposes reviewed database projections through GraphQL without handwritten read
+resolvers or schema-specific query dispatch. Titan codegen supplies physical metadata, a reviewed
+model controls public exposure and policy, Titan GraphQL generates static read carriers, and Titan
+compiles those carriers into PostgreSQL and MySQL routines.
 
-The primary product path is:
+The primary path is:
 
 ```text
 Titan codegen schema.json
-  -> conservative GraphQL projection draft
-  -> reviewed exposure and policy model
+  -> conservative projection draft
+  -> reviewed titan.graphql.yaml
   -> generic parser, validator, and read planner
-  -> parameterized Titan DSL + Titan JDBC (portable in-process route)
-  -> generated static database carriers + Titan transpiler (compiled read route)
+  -> deterministic generated Titan DSL carriers
+  -> Titan transpilation and package/install verification
+  -> model/package semantic binding
+  -> one generic compiled runtime
 ```
 
-This path must not require handwritten read queries or resolvers. Custom mutations are the
-intentional code extension point.
-
-The database-resident experiment is:
-
-> Write Java code that accepts a GraphQL query string and actor context, parses the query, validates the requested shape, executes the necessary database reads through Titan DSL calls, applies authorization rules before data access, and returns a serialized result. Annotate the top-level Java function so Titan transpiles the complete logic into a stored procedure or stored function.
-
-This is intentionally more ambitious than the conservative Titan adoption path. It is a stress test of the Java-to-TIR-to-SQL pipeline, not just a product feature.
-
-## Non-Goals
-
-- Full GraphQL specification support in the first proof.
-- Replacing a general GraphQL server.
-- Runtime Java execution inside the database.
-- Raw dynamic SQL string construction.
-- Post-filter authorization after sensitive rows have already been read.
-- Hiding unsupported query shapes behind silent fallback.
-
-## Success Criteria
-
-The first proof is successful when:
-
-- A single annotated Java entrypoint transpiles to deployable PostgreSQL and/or MySQL SQL.
-- The procedure accepts a query string plus actor context.
-- The transpiled logic parses a bounded GraphQL subset without relying on an external GraphQL runtime.
-- The executor performs data reads through Titan DSL-supported operations.
-- Authorization predicates are applied before protected data is read or returned.
-- Nested relation reads avoid obvious per-parent N+1 behavior where the bounded query shape permits batching.
-- Unsupported syntax and unsupported query shapes fail with explicit errors.
-- Java-mode and SQL-mode tests prove equivalent results for representative queries.
-- Generated SQL remains inspectable enough to diagnose failures.
-
-## Architecture
-
-The project uses Titan in its existing intended shape:
-
-1. Developers write Java.
-2. Titan discovers annotated entrypoints.
-3. Titan validates supported Java and DSL usage.
-4. Titan lowers Java into Titan IR.
-5. Titan emits stored procedure/function SQL.
-6. The database runs the generated SQL artifact.
-
-Unlike a conventional GraphQL integration, the GraphQL parser and executor are not external runtime services. They are ordinary Java code inside the transpiled entrypoint closure.
-
-```text
-GraphQL query string + actor context
-  -> annotated Java entrypoint
-      -> lexer/parser
-      -> bounded AST
-      -> schema-driven validation
-      -> authorization planning
-      -> Titan DSL reads
-      -> JSON/text result builder
-  -> Titan transpiler
-  -> stored procedure/function SQL
-  -> database execution
-```
-
-## Top-Level Entrypoint
-
-The initial API should be deliberately small:
-
-```java
-@StoredFunction
-public static String executeGraphql(String query, long actorId, String actorRole) {
-    // parse, validate, execute, serialize
-}
-```
-
-The exact return type can evolve. A JSON/text string is the simplest first target because it avoids requiring Titan to model a broad GraphQL response object graph immediately.
-
-## Supported GraphQL Subset
-
-The implemented demo subset is powerful enough to be credible while still small
-enough to isolate Titan gaps.
-
-Include:
-
-- one root `query` operation
-- a schema described by Java model descriptors, with the demo model exposing `article` and `articles`
-- scalar fields
-- one-to-one and one-to-many nested relations
-- simple arguments such as `id`, equality filters, and Relay-style cursor pagination through `first`, `after`, `last`, and `before`
-- stable default ordering for list fields
-- nullable fields
-- explicit error objects or error strings for rejected queries
-
-Exclude initially:
-
-- mutations
-- subscriptions
-- fragments
-- aliases
-- variables
-- directives
-- unions/interfaces
-- custom scalars beyond strings, numbers, booleans, and timestamps
-- arbitrary boolean filter expressions
-- deep unbounded recursion
-- user-defined resolver plugins
-
-## Java Components
-
-Keep the implementation split into small Java classes so Titan's failure mode is readable.
-
-- `GraphqlLexer`: scans the query string into tokens.
-- `GraphqlParser`: builds a bounded AST.
-- `GraphqlAst`: records for operation, field, argument, and selection set.
-- `GraphqlSchema`, `GraphqlTableDescriptor`, `GraphqlObjectType`, `GraphqlFieldDescriptor`, and `GraphqlRootField`: describe the GraphQL model and its table-backed projections independently from the parser and validator.
-- `GraphqlValidator`: checks field names, argument types, nesting limits, field policies, and unsupported syntax against the active schema.
-- `GraphqlSelection`: stores the validated root and selection tree without hard-coding a concrete data model.
-- `GraphqlReadPlanner` and `GraphqlReadPlan`: compile a validated selection plus schema descriptors into logical root and relation reads, including projected columns, backing tables, join keys, cardinality, and limits.
-- `GenericJdbcGraphqlDataModel`: executes supported read plans for any reviewed projection
-  through Titan DSL and Titan JDBC, without model-specific query code.
-- `TitanGraphqlRoutineSourceGenerator`: turns reviewed physical/model bindings into deterministic,
-  static Titan-transpilable read carriers and a semantic-hash attestation routine. It emits no
-  fixture data and contains no application schema registry.
-- `TitanCompiledGraphqlDataModel`: executes the shared validated read plan by invoking generated
-  carriers resolved from Titan's verified object inventory, with no model-name dispatch. It
-  normalizes the two dialect carrier shapes and rejects unsupported plan shapes before I/O.
-- `GraphqlDataModel`: binds a schema descriptor to execution and leaves mutations as explicit
-  extension points.
-- `GraphqlPolicy`: maps actor context to allowed fields and row predicates.
-- `GraphqlEngine`: parses and validates a query, then delegates execution to the active data model.
-- `DemoBlogGraphqlExecutor`: the legacy fixture-backed reference implementation used by the
-  bounded compiler corpus.
-- `DemoBlogGraphqlJsonWriter`: serializes demo-blog response rows.
-- `GraphqlJsonWriter`: serializes generic GraphQL errors and shared JSON escaping.
-
-The proof should start with simple arrays/records/strings if Titan supports them well enough. If the current Java subset rejects a structure, document that as the next Titan capability gap rather than weakening the proof silently.
-
-## Projection Metamodel
-
-GraphQL type definitions should initially live in Java code, because the proof is about transpiling Java logic.
-
-The DB schema remains sourced through Titan's normal schema introspection or DDL input.
-`TitanGraphqlSchemaInference` consumes codegen's `schema.json` directly, so GraphQL inference
-and catalog generation share one discovered schema rather than parallel fixtures.
-
-The GraphQL schema model is a projection metamodel over those raw tables, not an ORM. It maps:
-
-- GraphQL object type -> projected DB-backed view of one or more tables
-- scalar field -> DB column or computed expression
-- relation field -> foreign-key or explicit join definition
-- field arguments -> bounded filter/pagination inputs
-- actor policy -> pre-read predicate or field rejection
-
-The projection layer stays below the GraphQL runtime. GraphQL schema, validation arguments,
-relation pagination/filtering/sorting, and visibility rules are generated or derived from the
-projection model where supported.
-
-The current metamodel layer stores:
-
-- physical table descriptors: logical table name, SQL schema/table name, primary key column
-- object bindings: GraphQL type name to backing table descriptor
-- scalar projections: GraphQL field name to backing column name
-- relation projections: GraphQL field name to target type, local column, target column, cardinality, and nullability
-- root descriptors: field name, result type, result cardinality, supported key/filter arguments, pagination mode, cursor ordering, and default/max page sizes
-
-This keeps the API schema decoupled from physical table names. The generic JDBC path consumes the
-model now. `titanGraphqlGenerateRoutines` also generates a static database read boundary from that
-same model: typed and composite point roots, forward/backward page carriers, direct and batched
-relations, safe row-local computed expressions, and a semantic-hash attestation routine. The
-compiled runtime also assembles reviewed Relay relation connections from those ordered carrier
-rows without issuing one query per collection parent. Titan compiles those carriers to JSONB
-functions on PostgreSQL and open-result-set procedures on MySQL. The generated carriers are now
-packaged and live-tested. The opt-in `compiled` runtime executes the supported generic plan subset
-through them. The older `sql` runtime still dispatches a whole request to the fixed demo kernel.
-
-`titanGraphqlBindPackage` links the canonical model semantic hash to Titan's artifact, manifest,
-source-input hashes, and routine inventory. SQL startup verifies that sidecar, resolves routine
-identities from the inventory, and calls the database-resident model attestation routine. This
-prevents serving a stale, unrelated, or wrongly deployed package. The isolated commerce proof now
-builds and serves a second generated-only package without the demo kernel. The remaining
-architectural step is to complete carrier/plan coverage, promote compiled mode, then delete the
-demo kernel from production dispatch.
-
-For reviewed local root sort paths, code generation emits separate ascending and descending page
-carriers. Cursor predicates compare the declared value and tie-breaker as a tuple-equivalent
-boolean expression, so continuation remains stable when sort values repeat. Runtime SQL never
-substitutes a client-provided identifier or direction; the validated plan only chooses among
-inventory-resolved generated entry points. A reviewed `relation.field` path may cross one
-non-null to-one relation and is compiled as a static qualified join. Multiple simultaneous custom
-order keys and nullable, to-many, or deeper relation ordering remain explicit unsupported shapes.
-
-The engine must stay model-agnostic: parsing, validation, policy application, and selection-tree construction cannot know about `Article`, `User`, or any future application type. Concrete data models provide descriptors and execution adapters. The current `DemoBlogGraphqlSchema` and demo executor are only the first adapter.
-
-The demo Java engine now exercises both relation cardinalities: `Article.author` as a one-to-one relation and `Article.comments` as a one-to-many relation. The public SQL kernel may still expose a narrower subset while lowering catches up, but the generic planner records enough join metadata to batch supported nested relation reads from descriptors rather than hard-coded model names.
-
-The stored-function SQL target is allowed to be narrower than the Java engine while Titan's P0 subset is still growing. For now, `DemoBlogTitanGraphqlFunctions.executeGraphql(...)` uses a scalar, static demo-blog kernel that preserves the public API and security behavior for the supported smoke path. `TitanGraphqlFunctions` remains a Java compatibility facade, but it is not the lowerable kernel. The richer Java path remains `executeGraphqlWithPlan(...)`, which exercises the generic descriptors, parser, validator, and model adapter. The architectural rule is that the projection model remains the source of product semantics; GraphQL runtimes and SQL kernels are target-specific adapters, not places to hard-code the overall data model.
-
-Generated schema snapshots expose Relay-capable roots and relations as `Connection`,
-`Edge`, and `PageInfo` types with `first`, `after`, `last`, and `before`
-arguments. The validator, cursor planner, Java executor, and constrained public
-SQL kernel now lower the same connection shape for the demo `articles` root and
-`Article.comments` relation. The snapshot path must keep using Relay-style cursor
-semantics rather than adding offset arguments as a temporary durable API.
-
-The current generated demo schema surface is checked in at [generated-schema.md](generated-schema.md).
-It is produced from the projection model through `ProjectionGraphqlAdapter` and
-`GraphqlSchemaPrinter`; the snapshot is for inspection and tests, not a second
-semantic source.
-
-Longer term, the GraphQL type definitions could be generated from annotations or a small DSL, but the first proof should keep them explicit and inspectable.
-
-## Security Model
-
-Security must be part of planning, not response cleanup.
-
-Required rules:
-
-- Actor context is an explicit input to the stored procedure/function.
-- Field access is checked during validation/planning.
-- Row access is compiled into query predicates wherever possible.
-- Unauthorized fields are rejected or omitted according to a declared mode.
-- Sensitive fields cannot be logged in debug/telemetry output.
-- The implementation never builds SQL by concatenating user query text.
-
-Open question: whether the first proof should reject unauthorized fields or return partial data with GraphQL-style errors. Rejection is simpler and safer for the first proof.
-
-## N+1 Strategy
-
-The proof should make N+1 behavior visible.
-
-For the current implementations:
-
-- scalar root lookups can use direct point queries
-- list root lookups use a single capability-bounded retrieval
-- direct relations beneath a point root are planned from declared local and target columns
-- compiled mode batches direct relations beneath collection roots through fixed arity 2–64
-  carriers; a 100-parent page therefore needs at most two child calls, never one call per parent
-- compiled collection paths recursively batch one read per selected relation level; relation
-  connections still assemble each per-parent window from the ordered batch result in memory
-- the fixed demo Java/SQL equivalence kernel retains its existing bounded connection behavior
-- unsupported deep nesting should fail with an explicit max-depth error
-- tests should compare the number of planned read steps for representative nested queries
-
-This does not require a perfect general GraphQL optimizer. It does require avoiding the most obvious per-parent child query pattern for the supported shape.
-
-## Observability
-
-Each execution should expose enough information to understand what happened:
-
-- accepted or rejected query shape
-- selected root field
-- selected field count
-- relation expansion count
-- actor policy branch
-- planned read steps
-- fallback/rejection reason
-
-Do not log raw query values or sensitive result values by default.
-
-## Testing Plan
-
-Use Titan's existing validation philosophy:
-
-- Java-mode tests for lexer/parser/validator behavior.
-- Java-mode executor tests against a fixture DB through Titan runtime/JDBC.
-- SQL-mode tests calling the transpiled procedure/function.
-- Equivalence tests comparing Java-mode and SQL-mode outputs.
-- Negative tests for unsupported GraphQL syntax and unauthorized fields.
-- Plan-shape tests for nested relation batching.
-
-Representative first queries:
-
-```graphql
-query {
-  article(id: 1) {
-    id
-    title
-    author {
-      id
-      name
-    }
-  }
-}
-```
-
-```graphql
-query {
-  articles(authorId: 10, first: 10) {
-    edges {
-      cursor
-      node {
-        id
-        title
-        comments(first: 3) {
-          edges {
-            node {
-              id
-              body
-            }
-          }
-          pageInfo {
-            hasNextPage
-            endCursor
-          }
-        }
-      }
-    }
-    pageInfo {
-      hasNextPage
-      endCursor
-    }
-  }
-}
-```
-
-## Verified Milestones
-
-The project has proven the initial end-to-end loop:
-
-1. Create a tiny DB schema: users, articles, comments.
-2. Generate Titan catalog descriptors.
-3. `executeGraphql(query, actorId, actorRole)` runs as Java and transpiled SQL.
-4. Point queries, connections, and nested demo relations are covered by the conformance corpus.
-5. Field-level policy is enforced.
-6. Both paths return GraphQL JSON.
-7. Java and SQL behavior is equivalent on PostgreSQL and MySQL.
-8. A second customers/orders schema is served from current database rows by the generic JDBC
-   executor on both dialects without schema-specific read code.
-
-## Remaining Design Decisions
-
-- How should a reviewed projection's semantic hash be embedded into Titan package metadata so an
-  SQL package can be cryptographically bound to its model?
-- What generated static accessor shape best turns arbitrary reviewed models into a transpilable
-  kernel without dynamic SQL?
-- What batching strategy should execute relations beneath generic collection roots?
-- Which computed-expression and policy expression subsets can be safely lowered across both
-  PostgreSQL and MySQL?
+Custom application mutations are the intentional code extension point. Table CRUD is never inferred
+from read exposure.
+
+## Sources of Truth
+
+- The database catalog is the source of physical tables, columns, keys, and foreign keys.
+- The reviewed model document is the source of public roots, fields, relations, computed fields,
+  filters, ordering, pagination, context filters, and named policies.
+- Generated Java, SQL, SDL, introspection JSON, inventories, and bindings are reproducible artifacts.
+  They are not edited as semantic sources.
+- The package binding identifies the exact normalized model and Titan package that may run together.
+
+Inference is deliberately conservative. It preserves scalar and key metadata but does not
+automatically publish roots, relations, or sensitive columns.
+
+## Runtime Components
+
+The application boundary is split into schema-independent components:
+
+- `GraphqlLexer` and `GraphqlParser` parse the supported document language.
+- `GraphqlValidator` validates operation shape, arguments, fields, relations, policies, limits, and
+  introspection against the adapted model.
+- `GraphqlReadPlanner` creates logical root, count, relation, and batch reads.
+- `TitanGraphqlRoutineSourceGenerator` deterministically generates static, model-bound Titan DSL
+  carriers. It contains no application fixture registry.
+- `TitanCompiledGraphqlDataModel` maps validated plans to inventory-resolved carrier entry points,
+  invokes them, normalizes dialect result shapes, batches nested relations, and renders GraphQL data.
+- `TitanGraphqlRoutineInvoker` verifies installed model attestation and invokes only routines from
+  the bound object inventory.
+- `GraphqlExecutionEngine` selects the configured mode and initializes it once with fail-closed
+  configuration behavior.
+
+The generic production classes and carrier generator contain no demo type, root, or table dispatch.
+A source guard and generated-only package inventory tests enforce that boundary.
+
+## Generated Carrier Contract
+
+Generation uses only reviewed identifiers and parameterized values. For supported models it emits:
+
+- typed and composite point-root carriers;
+- forward and backward root page carriers with stable value/tie-breaker cursors;
+- exact visible-row count carriers;
+- static filter and reviewed ordering variants;
+- direct and fixed-arity batch relation carriers;
+- reviewed row-local computed expressions;
+- root, row, field, and relation policy guards; and
+- a semantic-hash attestation routine.
+
+PostgreSQL carriers return JSONB arrays from functions. MySQL carriers return open result sets from
+procedures. The invoker hides that transport difference from the planner and renderer.
+
+No client input becomes a SQL identifier or SQL fragment. Client values are bound parameters, and
+the validated plan selects among generated inventory entries. Unsafe identifiers, templates,
+policies, and unsupported plan shapes fail before database access.
+
+## Artifact and Deployment Integrity
+
+`titanGraphqlGenerateRoutines` validates the model and emits deterministic Java. `titanPackage`
+produces dialect migrations, rollback SQL, an artifact manifest, an object inventory, and an install
+plan. `titanVerifyInstall` installs the package into scratch PostgreSQL and MySQL databases and
+checks object/signature drift. `titanGraphqlBindPackage` records a deterministic binding over:
+
+- the canonical model semantic hash;
+- the Titan artifact id and manifest hash;
+- the source-input hash; and
+- the reviewed routine inventory.
+
+Compiled startup verifies the local binding before opening the serving path. Every read attests the
+installed model hash before calling a carrier. Missing, stale, mismatched, or wrongly installed
+artifacts are rejected; no alternate runtime is selected as fallback. Compiled and legacy SQL HTTP
+responses expose the deployment fingerprint.
+
+## Supported Compiled Read Shapes
+
+The verified compiled boundary includes:
+
+- `Int`, `Long`, `String`, `ID`, UUID, and explicit composite point keys;
+- scalar output with declared GraphQL type and nullability preserved;
+- Relay root connections with forward continuation, backward windows, stable opaque cursors,
+  page-info fields, limits, and exact visible counts;
+- declared scalar filters, bounded Boolean filter composition, and a reviewed non-null to-one
+  relation filter hop;
+- reviewed local scalar/computed ordering and a reviewed non-null to-one relation order hop;
+- direct to-one/to-many relations and Relay relation connections below point or collection roots;
+- fixed-arity nested relation batching, recursively once per selected relation level;
+- reviewed row-local computed SQL templates; and
+- aliases, variables, fragments, supported directives, and bounded introspection.
+
+The generator uses fixed `in` and batch arities and a static filter-plan budget so the set of SQL
+entry points remains finite and reviewable. Exceeding a declared budget returns an explicit GraphQL
+error.
+
+Nullable scalar selection and introspection are supported. Nullable cursor or custom sort keys are
+rejected during model validation because portable stable null ordering is not yet part of the
+cross-dialect contract.
+
+## Authorization
+
+Authorization is applied before protected data is read and repeated at the database carrier
+boundary where appropriate:
+
+- root policies reject the operation before I/O and gate root carriers;
+- type policies filter roots, exact counts, and relation targets;
+- field policies reject unauthorized selections and guard protected SQL projections;
+- relation policies reject unauthorized selections, guard projected relation keys, and add an allow
+  predicate to direct and batch carriers; and
+- context filters fail closed when required context is absent and compose with client predicates.
+
+The reviewed named-policy language is intentionally small: `allowAll`, `denyAll`, `adminOnly`,
+`authenticated`, `roleEquals:<role>`, and `roleIn:<role,...>`. Multiple rules are conjoined. The
+application database identity must be the only caller allowed to execute generated routines because
+their boolean policy parameters are decisions from the trusted application boundary, not a database
+authentication protocol.
+
+Aliases never change authorization lookup: policy checks use schema field identities, while response
+keys affect output only. Tests cover protected aliases, relation batching, exact counts, root gates,
+row gates, and introspection behavior.
+
+## N+1 Boundary
+
+Relations under collection roots are grouped into fixed-size carrier calls. A page larger than one
+carrier arity is chunked, so read count grows with the number of chunks, not the number of parents.
+Nested selected relations repeat this once per level. Relation connection windows are currently
+assembled in memory from ordered, policy-filtered batch rows; reviewed local integer equality
+arguments are applied in SQL before counts and windows. SQL-side per-parent limiting is an
+optimization boundary, not a correctness dependency.
+
+## Mutations
+
+Compiled application schemas publish no mutation root by default. Applications may register explicit
+`GraphqlMutationDescriptor` and `GraphqlMutationCommandHandler` pairs through
+`GraphqlApplicationMutationProvider`. The shared executor owns operation selection, input coercion,
+authorization, exact command dispatch, scalar payload selection, GraphQL error shape, and audit-event
+delivery. The handler owns domain validation, persistence, transaction, idempotency, rollback, and
+any correctness-critical transactional audit/outbox work.
+
+`/admin/graphql` is a separate management plane with file-backed development state or the durable
+Titan GAP-006 JDBC store. Application mutations execute only over POST; GET is query-only. See
+[custom-mutations.md](custom-mutations.md) and
+[mutation-runtime-lowering-boundary.md](mutation-runtime-lowering-boundary.md).
+
+## Execution Modes
+
+| Mode | Purpose | Production role |
+| --- | --- | --- |
+| `compiled` | Reviewed model plus installed generated Titan carriers | Default application read path |
+| `jdbc` | Direct generic Titan DSL/JDBC adapter for a smaller plan subset | Diagnostic/reference path |
+| `java` | In-memory demo reference runtime | Tests and compiler comparison |
+| `sql` | Historical whole-request demo kernel | Isolated equivalence proof only |
+
+The production `titanPackage` output contains generated carriers only. The fixed
+`DemoBlogTitanGraphqlFunctions` kernel is built into a separate legacy package solely by
+`legacySqlIntegrationTest`; compiled mode cannot dispatch to it.
+
+## State and Lifecycle
+
+Application rows and installed routines live in the database. The reviewed model and bound package
+are immutable release inputs. Generated source, SQL, inventories, verification output, SDL, and
+introspection are reproducible build output. Parsed plans and relation batch caches are request or
+process-local and are never correctness state.
+
+Configuration and provider registrations are snapshotted at runtime initialization. Duplicate
+mutation names/commands, missing handlers, orphan handlers, invalid models, missing bindings, and
+attestation mismatches fail initialization or the request explicitly. The compiled runtime holds no
+mutable schema-specific registry.
+
+Management state is file-backed and single-process by default. The JDBC management mode persists
+transaction, idempotency, audit, and product journal state and is required for multi-process or
+restart-durable administrative workflows. See [operations.md](operations.md).
+
+## Verification Boundary
+
+The demo blog and unrelated commerce models are generated, transpiled, packaged, installed, bound,
+and served independently on PostgreSQL 16 and MySQL 8.4. Live tests mutate source data and verify
+point roots, connections, counts, cursors, relations, batching, filters, ordering, policies,
+computed fields, nullable output, custom mutations, artifact mismatch failures, and fresh-engine
+visibility. The legacy 97-case Java/SQL corpus remains a separate Titan transpiler equivalence test.
+
+The checked-in local release gate is authoritative because the project intentionally has no hosted
+GitHub Actions workflow. See [verification.md](verification.md).
+
+## Explicitly Unsupported
+
+The following fail closed rather than use handwritten or dynamic read SQL:
+
+- multiple simultaneous custom order keys;
+- nullable cursor or custom sort keys;
+- to-many or multi-hop filter/order paths;
+- filter expressions beyond the static carrier budget;
+- row-value policy expressions beyond named gates and declared context filters;
+- arbitrary computed SQL or client-defined resolvers;
+- generated CRUD, nested write graphs, SQL-transpiled application handlers; and
+- subscriptions.

@@ -25,7 +25,19 @@ public final class TitanCompiledGraphqlRuntime implements GraphqlModelRuntime {
             String dataSourceDescription,
             TitanGraphqlGap005ArtifactMetadata packageMetadata
     ) {
-        this.dataModel = new TitanCompiledGraphqlDataModel(document, dataSource, packageMetadata);
+        this(document, dataSource, dataSourceDescription, packageMetadata,
+                GraphqlApplicationMutationProvider.none());
+    }
+
+    public TitanCompiledGraphqlRuntime(
+            TitanGraphqlModelDocument document,
+            DataSource dataSource,
+            String dataSourceDescription,
+            TitanGraphqlGap005ArtifactMetadata packageMetadata,
+            GraphqlApplicationMutationProvider mutationProvider
+    ) {
+        this.dataModel = new TitanCompiledGraphqlDataModel(
+                document, dataSource, packageMetadata, mutationProvider);
         this.dataSourceDescription = Objects.requireNonNull(dataSourceDescription, "dataSourceDescription");
     }
 

@@ -241,6 +241,41 @@ final class TitanGraphqlModelDocumentValidatorTest {
         assertTrue(invalid.blocksDeployment());
     }
 
+    @Test
+    void rejectsNullableCursorAndSortBindingsBeforeGeneration() {
+        TitanGraphqlFieldDocument nullableTitle = new TitanGraphqlFieldDocument(
+                "title", "String", "title", true, List.of(), List.of(), null, null);
+        TitanGraphqlTypeDocument type = articleType(List.of(
+                field("id", "Int", "id"), nullableTitle), List.of());
+        TitanGraphqlRootDocument nullableSortRoot = articlesRoot(
+                "Article", List.of(), List.of(sortPath("title", "title", "title", 0)), List.of());
+        TitanGraphqlValidationReport nullableSort = TitanGraphqlModelDocumentValidator.validate(
+                pointDocument(nullableSortRoot, type));
+
+        assertEquals(1, nullableSort.errorCount());
+        assertEquals(TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                nullableSort.issues().getFirst().code());
+        assertTrue(nullableSort.issues().getFirst().message().contains("must bind a non-null scalar"));
+
+        TitanGraphqlRootDocument nullableCursorRoot = TitanGraphqlRootDocument.connection(
+                "articles",
+                "Article",
+                new TitanGraphqlRootDocument.RootDocumentPagination(
+                        20,
+                        100,
+                        TitanGraphqlRootDocument.TotalCountMode.EXACT,
+                        new TitanGraphqlRootDocument.Cursor(
+                                "title", "title",
+                                TitanGraphqlRootDocument.RootDocumentSortDirection.ASC, "id")
+                ),
+                List.of(), List.of(), List.of(), List.of());
+        TitanGraphqlValidationReport nullableCursor = TitanGraphqlModelDocumentValidator.validate(
+                pointDocument(nullableCursorRoot, type));
+
+        assertEquals(1, nullableCursor.errorCount());
+        assertTrue(nullableCursor.issues().getFirst().message().contains("cursor field 'title' must be non-null"));
+    }
+
     private static TitanGraphqlModelDocument validDocument() {
         return new TitanGraphqlModelDocument(
                 TitanGraphqlModelDocument.CURRENT_API_VERSION,

@@ -1,6 +1,6 @@
 # Generated Titan Routine Contract
 
-Status: active compiled-read contract. Opt-in `compiled` mode consumes the supported subset; the
+Status: active compiled-read contract. Default `compiled` mode consumes the supported subset; the
 legacy `sql` route still uses the transitional demo whole-request kernel.
 
 ## Purpose
@@ -62,10 +62,12 @@ root-plus-batch two-step plan, and recursive `articles.comments.author` batching
 level. `commerceIntegrationTest` repeats the complete generate-to-serve chain in an
 isolated output tree for an unrelated customers/orders model. It asserts that every packaged
 entry point belongs to the generated carrier class and that no demo-blog or article routine is
-present, then proves integer, string, native UUID, and composite point keys; nested reads;
+present, then proves integer, string, native UUID, and composite point keys; nullable scalar output
+and introspection metadata; nested reads;
 batching; root and relation counts; root and relation cursor continuation; relation backward
-windows; fail-closed context filtering; generated local scalar filtering with exact counts; live
-mutations; protected-relation authorization/rejection; and restart visibility on PostgreSQL and
+windows; fail-closed context filtering; generated local scalar filtering with exact counts; an
+explicit handler-backed live mutation with authorization and audit evidence;
+protected-relation authorization/rejection; and restart visibility on PostgreSQL and
 MySQL. Both schemas also prove stable one-hop
 root ordering through reviewed non-null to-one relations. Both schemas prove relation connections
 below collection roots with one generated
@@ -82,14 +84,17 @@ corpus remains useful while carrier coverage grows. The default production packa
 `GeneratedTitanGraphqlReads`; the legacy kernel has a separate package and test task. Compiled mode
 has no fallback to that kernel.
 
-Before the carrier route can replace it, generation and generic runtime invocation must cover:
+The following model/query shapes remain deliberately unsupported and fail closed:
 
 - filter expressions beyond the static 3 OR-group by 3 AND-term DNF budget, multiple simultaneous
   custom order keys, and relation ordering beyond a non-null to-one hop;
 - row-value policy expressions beyond the reviewed named role gates and context filters;
-- to-many or multi-hop filter paths and SQL-side per-parent connection limiting;
-- portable null ordering and scalar/null value preservation;
-- generic mutation routing at the application boundary.
+- to-many or multi-hop filter paths;
+- nullable sort/cursor keys (nullable scalar selection and introspection are supported);
+- SQL-side per-parent connection limiting (the current fixed-arity batch still avoids N+1).
+
+Custom application mutations are registered as explicit descriptors and injected handlers rather
+than generated carriers; see [custom-mutations.md](custom-mutations.md).
 
 No release claim should describe the legacy `sql` mode as schema-portable. Compiled mode may be
 described as schema-driven only for its verified plan subset until all items above are closed.

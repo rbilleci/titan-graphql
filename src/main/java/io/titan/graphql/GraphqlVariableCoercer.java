@@ -7,16 +7,30 @@ import java.util.Map;
 
 final class GraphqlVariableCoercer {
 
+    private enum InputObjectKind {
+        FILTER,
+        ORDER,
+        MUTATION
+    }
+
     private GraphqlVariableCoercer() {
     }
 
     static GraphqlAst.AstOperation apply(GraphqlAst.AstOperation operation, Map<String, Object> suppliedVariables) {
-        Map<String, GraphqlAst.VariableDefinition> definitions = variableDefinitions(operation);
+        return apply(operation, suppliedVariables, null);
+    }
+
+    static GraphqlAst.AstOperation apply(
+            GraphqlAst.AstOperation operation,
+            Map<String, Object> suppliedVariables,
+            GraphqlSchema schema
+    ) {
+        Map<String, GraphqlAst.VariableDefinition> definitions = variableDefinitions(operation, schema);
         Map<String, Object> supplied = suppliedVariables == null ? Map.of() : suppliedVariables;
         validateNoUnknownVariables(definitions, supplied);
         List<String> usedVariables = usedVariables(operation);
         validateNoUnusedVariables(definitions, usedVariables);
-        Map<String, GraphqlAst.Value> values = coercedValues(definitions, supplied, usedVariables);
+        Map<String, GraphqlAst.Value> values = coercedValues(definitions, supplied, usedVariables, schema);
         return new GraphqlAst.AstOperation(
                 operation.type(),
                 operation.name(),
@@ -26,10 +40,13 @@ final class GraphqlVariableCoercer {
         );
     }
 
-    private static Map<String, GraphqlAst.VariableDefinition> variableDefinitions(GraphqlAst.AstOperation operation) {
+    private static Map<String, GraphqlAst.VariableDefinition> variableDefinitions(
+            GraphqlAst.AstOperation operation,
+            GraphqlSchema schema
+    ) {
         Map<String, GraphqlAst.VariableDefinition> definitions = new LinkedHashMap<>();
         for (GraphqlAst.VariableDefinition definition : operation.variables()) {
-            if (isSupportedVariableType(namedType(definition.typeName())) == false) {
+            if (isSupportedVariableType(namedType(definition.typeName()), schema) == false) {
                 throw new GraphqlException("variable '$" + definition.name()
                         + "' has unsupported type '" + definition.typeName() + "'");
             }
@@ -63,7 +80,8 @@ final class GraphqlVariableCoercer {
     private static Map<String, GraphqlAst.Value> coercedValues(
             Map<String, GraphqlAst.VariableDefinition> definitions,
             Map<String, Object> supplied,
-            List<String> usedVariables
+            List<String> usedVariables,
+            GraphqlSchema schema
     ) {
         Map<String, GraphqlAst.Value> values = new LinkedHashMap<>();
         for (GraphqlAst.VariableDefinition definition : definitions.values()) {
@@ -76,9 +94,10 @@ final class GraphqlVariableCoercer {
                         + "' cannot be null for " + kind + " '" + type + "'");
             }
             if (suppliedValue) {
-                values.put(definition.name(), coerceJsonValue(definition, raw));
+                values.put(definition.name(), coerceJsonValue(definition, raw, schema));
             } else if (definition.defaultValue() != null) {
-                values.put(definition.name(), coerceLiteralValue(definition, definition.defaultValue()));
+                values.put(definition.name(), coerceLiteralValue(
+                        definition, definition.defaultValue(), schema));
             } else if (definition.required()) {
                 throw new GraphqlException("required variable '$" + definition.name() + "' is missing");
             } else if (usedVariables.contains(definition.name())) {
@@ -256,23 +275,32 @@ final class GraphqlVariableCoercer {
         }
     }
 
-    private static GraphqlAst.Value coerceJsonValue(GraphqlAst.VariableDefinition definition, Object value) {
-        return switch (namedType(definition.typeName())) {
+    private static GraphqlAst.Value coerceJsonValue(
+            GraphqlAst.VariableDefinition definition,
+            Object value,
+            GraphqlSchema schema
+    ) {
+        String type = namedType(definition.typeName());
+        return switch (type) {
             case "ID" -> coerceJsonId(definition, value);
             case "String", "UUID", "Date", "DateTime", "Timestamp" -> coerceJsonString(definition, value);
             case "Int" -> coerceJsonInt(definition, value);
             case "Float" -> coerceJsonFloat(definition, value);
             case "Boolean" -> coerceJsonBoolean(definition, value);
-            case "ArticleFilter" -> coerceJsonArticleFilter(definition, value);
-            case "ArticleOrderBy" -> coerceJsonArticleOrderBy(definition, value);
-            default -> throw new GraphqlException("variable '$" + definition.name()
-                    + "' has unsupported type '" + definition.typeName() + "'");
+            default -> switch (inputObjectKind(type, schema)) {
+                case FILTER -> coerceJsonFilter(definition, value);
+                case ORDER -> coerceJsonOrder(definition, value);
+                case MUTATION -> coerceJsonMutationInput(definition, value);
+                case null -> throw new GraphqlException("variable '$" + definition.name()
+                        + "' has unsupported type '" + definition.typeName() + "'");
+            };
         };
     }
 
     private static GraphqlAst.Value coerceLiteralValue(
             GraphqlAst.VariableDefinition definition,
-            GraphqlAst.Value value
+            GraphqlAst.Value value,
+            GraphqlSchema schema
     ) {
         return switch (namedType(definition.typeName())) {
             case "ID" -> {
@@ -314,9 +342,14 @@ final class GraphqlVariableCoercer {
                 }
                 throw incompatibleDefault(definition);
             }
-            case "ArticleFilter", "ArticleOrderBy" -> value;
-            default -> throw new GraphqlException("variable '$" + definition.name()
-                    + "' has unsupported type '" + definition.typeName() + "'");
+            default -> {
+                if (inputObjectKind(namedType(definition.typeName()), schema) != null
+                        && value instanceof GraphqlAst.InputObjectValue) {
+                    yield value;
+                }
+                throw new GraphqlException("variable '$" + definition.name()
+                        + "' has unsupported type '" + definition.typeName() + "'");
+            }
         };
     }
 
@@ -358,28 +391,38 @@ final class GraphqlVariableCoercer {
         throw incompatibleJson(definition);
     }
 
-    private static GraphqlAst.Value coerceJsonArticleFilter(GraphqlAst.VariableDefinition definition, Object value) {
+    private static GraphqlAst.Value coerceJsonFilter(GraphqlAst.VariableDefinition definition, Object value) {
         if (value instanceof Map<?, ?> objectValue) {
-            return coerceArticleFilterObject(definition, objectValue);
+            return coerceFilterObject(definition, objectValue);
         }
         throw incompatibleJson(definition);
     }
 
-    private static GraphqlAst.Value coerceJsonArticleOrderBy(GraphqlAst.VariableDefinition definition, Object value) {
+    private static GraphqlAst.Value coerceJsonOrder(GraphqlAst.VariableDefinition definition, Object value) {
         if (isListType(definition.typeName())) {
             if (value instanceof List<?> listValue) {
                 List<GraphqlAst.Value> orders = new ArrayList<>();
                 for (Object entry : listValue) {
-                    orders.add(coerceArticleOrderObject(definition, entry));
+                    orders.add(coerceOrderObject(definition, entry));
                 }
                 return new GraphqlAst.InputListValue(List.copyOf(orders));
             }
             throw incompatibleJson(definition);
         }
-        return coerceArticleOrderObject(definition, value);
+        return coerceOrderObject(definition, value);
     }
 
-    private static GraphqlAst.Value coerceArticleFilterObject(
+    private static GraphqlAst.Value coerceJsonMutationInput(
+            GraphqlAst.VariableDefinition definition,
+            Object value
+    ) {
+        if (value instanceof Map<?, ?> objectValue) {
+            return coerceGenericInputObject(definition, objectValue, false);
+        }
+        throw incompatibleJson(definition);
+    }
+
+    private static GraphqlAst.Value coerceFilterObject(
             GraphqlAst.VariableDefinition definition,
             Map<?, ?> objectValue
     ) {
@@ -401,7 +444,7 @@ final class GraphqlVariableCoercer {
                         throw incompatibleJson(definition);
                     }
                     Map<?, ?> child = (Map<?, ?>) item;
-                    values.add(coerceArticleFilterObject(definition, child));
+                    values.add(coerceFilterObject(definition, child));
                 }
                 fields.put(key, new GraphqlAst.InputListValue(List.copyOf(values)));
             } else if ("not".equals(key)) {
@@ -409,7 +452,7 @@ final class GraphqlVariableCoercer {
                     throw incompatibleJson(definition);
                 }
                 Map<?, ?> child = (Map<?, ?>) raw;
-                fields.put(key, coerceArticleFilterObject(definition, child));
+                fields.put(key, coerceFilterObject(definition, child));
             } else {
                 if ((raw instanceof Map<?, ?>) == false) {
                     throw incompatibleJson(definition);
@@ -421,7 +464,7 @@ final class GraphqlVariableCoercer {
         return new GraphqlAst.InputObjectValue(Map.copyOf(fields));
     }
 
-    private static GraphqlAst.Value coerceArticleOrderObject(GraphqlAst.VariableDefinition definition, Object value) {
+    private static GraphqlAst.Value coerceOrderObject(GraphqlAst.VariableDefinition definition, Object value) {
         if ((value instanceof Map<?, ?>) == false) {
             throw incompatibleJson(definition);
         }
@@ -491,10 +534,30 @@ final class GraphqlVariableCoercer {
         return false;
     }
 
-    private static boolean isSupportedVariableType(String typeName) {
+    private static boolean isSupportedVariableType(String typeName, GraphqlSchema schema) {
         return isScalarVariableType(typeName)
-                || typeName.equals("ArticleFilter")
-                || typeName.equals("ArticleOrderBy");
+                || inputObjectKind(typeName, schema) != null;
+    }
+
+    private static InputObjectKind inputObjectKind(String typeName, GraphqlSchema schema) {
+        if (schema == null) {
+            if (typeName.endsWith("Filter")) return InputObjectKind.FILTER;
+            if (typeName.endsWith("OrderBy")) return InputObjectKind.ORDER;
+            if (typeName.endsWith("Input")) return InputObjectKind.MUTATION;
+            return null;
+        }
+        for (GraphqlRootField root : schema.rootFields()) {
+            if (typeName.equals(root.typeName() + "Filter")) {
+                return InputObjectKind.FILTER;
+            }
+            if (typeName.equals(root.typeName() + "OrderBy") && !root.sortPaths().isEmpty()) {
+                return InputObjectKind.ORDER;
+            }
+        }
+        for (GraphqlMutationDescriptor mutation : schema.mutations()) {
+            if (typeName.equals(mutation.input().name())) return InputObjectKind.MUTATION;
+        }
+        return null;
     }
 
     private static boolean isScalarVariableType(String typeName) {

@@ -1,8 +1,10 @@
 package io.titan.graphql;
 
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
-record GraphqlMutationAuditEvent(
+public record GraphqlMutationAuditEvent(
         String mutationName,
         String commandName,
         String eventType,
@@ -16,15 +18,17 @@ record GraphqlMutationAuditEvent(
 
     // Renamed from Status under TG-BLK-005 (closed by titan 705180d — SQL names now qualify by
     // enclosing type); the unique simple name is kept deliberately, it reads better in SQL.
-    enum MutationAuditStatus {
+    public enum MutationAuditStatus {
         ATTEMPT,
         SUCCESS,
         FAILURE
     }
 
-    GraphqlMutationAuditEvent {
-        input = input == null ? Map.of() : Map.copyOf(input);
-        payload = payload == null ? Map.of() : Map.copyOf(payload);
+    public GraphqlMutationAuditEvent {
+        input = input == null
+                ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(input));
+        payload = payload == null
+                ? Map.of() : Collections.unmodifiableMap(new LinkedHashMap<>(payload));
         errorMessage = errorMessage == null ? "" : errorMessage;
         actorRole = actorRole == null ? "" : actorRole;
         requestId = requestId == null ? "" : requestId;

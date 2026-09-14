@@ -33,10 +33,16 @@ The relevant settings are:
 | `titan.graphql.execution.mode` | Use `compiled` (the default). `java` is the reference engine, `jdbc` is the bounded direct DSL adapter, and `sql` is the isolated legacy proof. |
 | `titan.graphql.model.path` | Absolute path to the reviewed, read-only model shipped with the release. |
 | `titan.graphql.artifacts.dir` | Directory containing the exact bound package metadata. |
-| `quarkus.datasource.*` | Supply through deployment configuration or a secret manager; no datasource URL or password is committed. |
+| `quarkus.datasource.*` | Select `postgresql` or `mysql` and supply URL/credentials through deployment configuration or a secret manager; both Quarkus JDBC drivers are packaged, but no URL or password is committed. |
 | `titan.graphql.http.trust-request-context-headers` | Keep `false` unless an authenticated gateway removes client values and injects verified context. |
 | `titan.graphql.admin.access-token` | Leave empty to disable `/admin/graphql`, or inject a rotated secret value. |
 | `titan.graphql.management.store` | Use `jdbc` when management state must survive process or host replacement. The default `file` mode is intended for development and a single process. |
+
+Optional application mutation providers are immutable runtime configuration. Their handlers own
+domain transactions and idempotency; their audit sink must be durable when audit records are
+required for observability. A sink must not throw. Correctness- or compliance-critical audit must be
+committed by the handler with the domain change, normally through the same transaction or an outbox.
+Duplicate/missing registrations fail runtime initialization.
 
 Do not enable a database mode's endpoint as a health check until the package, binding, migrations,
 and source schema are all present. An unavailable or unattested database returns an error; there is

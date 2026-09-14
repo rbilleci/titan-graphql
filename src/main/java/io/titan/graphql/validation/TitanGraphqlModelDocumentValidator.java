@@ -117,8 +117,41 @@ public final class TitanGraphqlModelDocumentValidator {
                     }
                 }
                 validatePointRoot(root, type);
+                validateConnectionOrdering(root, type);
                 validateRootFilterPaths(root, type);
                 validateRootSortPaths(root, type);
+            }
+        }
+
+        private void validateConnectionOrdering(
+                TitanGraphqlRootDocument root,
+                TitanGraphqlTypeDocument type
+        ) {
+            if (root.operation() != TitanGraphqlRootDocument.RootDocumentOperation.CONNECTION
+                    || root.pagination() == null || root.pagination().cursor() == null) {
+                return;
+            }
+            TypeIndex typeIndex = new TypeIndex(type);
+            TitanGraphqlRootDocument.Cursor cursor = root.pagination().cursor();
+            TitanGraphqlFieldDocument cursorField = typeIndex.field(
+                    cursor.path(), cursor.path(), cursor.column());
+            if (cursorField != null && cursorField.nullable()) {
+                issue(
+                        TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                        "Root '" + root.name() + "' cursor field '" + cursor.path()
+                                + "' must be non-null for portable stable pagination.",
+                        path("roots", root.name(), "pagination", "cursor")
+                );
+            }
+            String tieBreaker = cursor.tieBreaker().isBlank() ? cursor.column() : cursor.tieBreaker();
+            TitanGraphqlFieldDocument tieField = typeIndex.field(tieBreaker, tieBreaker, tieBreaker);
+            if (tieField != null && tieField.nullable()) {
+                issue(
+                        TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                        "Root '" + root.name() + "' cursor tie breaker '" + tieBreaker
+                                + "' must be non-null for portable stable pagination.",
+                        path("roots", root.name(), "pagination", "cursor")
+                );
             }
         }
 
@@ -293,6 +326,26 @@ public final class TitanGraphqlModelDocumentValidator {
                             path("roots", root.name(), "sortPaths", sortPath.name())
                     );
                 }
+                if (field.nullable()) {
+                    issue(
+                            TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                            "Root '" + root.name() + "' sort '" + sortPath.name()
+                                    + "' must bind a non-null scalar for portable stable pagination.",
+                            path("roots", root.name(), "sortPaths", sortPath.name())
+                    );
+                }
+                String tieBreaker = sortPath.tieBreaker().isBlank()
+                        ? effectivePrimaryKey(type) : sortPath.tieBreaker();
+                TitanGraphqlFieldDocument tieField = typeIndex.field(
+                        tieBreaker, tieBreaker, tieBreaker);
+                if (tieField != null && tieField.nullable()) {
+                    issue(
+                            TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                            "Root '" + root.name() + "' sort '" + sortPath.name()
+                                    + "' tie breaker '" + tieBreaker + "' must be non-null.",
+                            path("roots", root.name(), "sortPaths", sortPath.name())
+                    );
+                }
             }
         }
 
@@ -374,12 +427,20 @@ public final class TitanGraphqlModelDocumentValidator {
             }
             String tieBreaker = sortPath.tieBreaker().isBlank()
                     ? effectivePrimaryKey(owner) : sortPath.tieBreaker();
-            if (ownerIndex.field(tieBreaker, tieBreaker, tieBreaker) == null) {
+            TitanGraphqlFieldDocument tieField = ownerIndex.field(tieBreaker, tieBreaker, tieBreaker);
+            if (tieField == null) {
                 issue(
                         TitanGraphqlValidationIssueCode.INVALID_BINDING,
                         "Root '" + root.name() + "' one-hop sort '" + sortPath.name()
                                 + "' tie breaker '" + tieBreaker
                                 + "' does not bind to a scalar field on type '" + owner.name() + "'.",
+                        modelPath
+                );
+            } else if (tieField.nullable()) {
+                issue(
+                        TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
+                        "Root '" + root.name() + "' one-hop sort '" + sortPath.name()
+                                + "' tie breaker '" + tieBreaker + "' must be non-null.",
                         modelPath
                 );
             }

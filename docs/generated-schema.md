@@ -10,9 +10,9 @@ DemoBlogGraphqlSchema.projectionModel(policy)
 
 The SDL below is an inspectable snapshot of the generated surface, not a second schema source.
 Projection definitions in `DemoBlogGraphqlSchema` remain the source of truth.
-Executable introspection is policy-disabled by default for the current runtime; root `__schema` and `__type`
-return GraphQL-shaped validation errors unless the internal request policy enables introspection.
-The enabled Java-mode and public SQL-mode smoke subset covers
+Executable introspection is policy-disabled by default; root `__schema` and `__type` return
+GraphQL-shaped validation errors unless trusted request context enables introspection. The demo
+Java/legacy-SQL conformance subset and compiled-schema proofs cover
 `__schema { description mutationType { name } subscriptionType { name } queryType { name } types { name kind } }` and
 `__schema { directives { name description isRepeatable locations args { name type { name kind ofType { name kind } } } } }`,
 `__type(name:) { name kind description fields(includeDeprecated: true|false) { name description isDeprecated deprecationReason type { name kind description ofType { name kind description } } args { name description defaultValue isDeprecated deprecationReason type { name kind description ofType { name kind description ofType { name kind description } } } } } inputFields(includeDeprecated: true|false) { name description defaultValue isDeprecated deprecationReason type { name kind description ofType { name kind description } } } enumValues(includeDeprecated: true|false) { name description isDeprecated deprecationReason } }`.
@@ -33,9 +33,10 @@ introspection fields such as real generated descriptions and real generated depr
 Directive introspection is bounded to names, null descriptions, repeatability, locations, and argument type
 references for the runtime `include`/`skip` directives and generated `relationSortPath` schema directive.
 Richer directive metadata such as non-null default literals and real generated descriptions remains pending.
-Schema description, mutation root, and subscription root introspection are exposed as nullable metadata and
-currently return `null` because the generated demo schema has no schema description and the accepted
-contract excludes mutation and subscription execution.
+Schema description, mutation root, and subscription root introspection are exposed as nullable metadata.
+They return `null` for this demo snapshot because it declares no description and registers no application
+mutation provider. Compiled schemas with registered custom mutations expose `Mutation`; subscriptions are
+unsupported.
 
 ```graphql
 directive @relationSortPath(name: String!, column: String!, path: String!, hops: Int!, direction: String!, tieBreaker: String!) repeatable on FIELD_DEFINITION
@@ -148,6 +149,6 @@ type PageInfo {
 - Relay-capable `ProjectionRelation.many(...)` entries become connection fields such as `Article.comments: CommentConnection!`; relation connections expose `totalCount` only when the relation declares safe exact count support.
 - Scalar and relation-hop filter capability metadata is emitted as generated input types such as `ArticleFilter`, `IntFilter`, and `StringFilter`.
 - Root sort-path metadata is emitted as generated order input types such as `ArticleOrderBy` plus `SortDirection`.
-- Root context-filter metadata, such as the bounded `articles.publishedVisibility` filter over the `published` column, is carried into read plans, can be activated from internal Java-mode request context and the bounded public SQL-mode context entrypoint, and is not exposed as a client argument or SDL field.
+- Root context-filter metadata, such as the bounded `articles.publishedVisibility` filter over the `published` column, is carried into read plans, can be activated from trusted request context in compiled mode and the reference/equivalence modes, and is not exposed as a client argument or SDL field.
 - Relation sort-path metadata is emitted as `@relationSortPath(...)` so generated SDL exposes the stable cursor/sort contract.
 - Field visibility policies, such as `User.email`, are enforced during validation and execution. They do not currently alter this static SDL snapshot.

@@ -44,7 +44,7 @@ class GraphqlConformanceMatrixTest {
         assertEquals("ACCEPTED", classifications.get("QC10-INTROSPECTION-DISABLE"));
         assertEquals("ACCEPTED", classifications.get("QC11-QUARKUS-POST"));
         assertEquals("ACCEPTED", classifications.get("QC11-QUARKUS-GET"));
-        assertEquals("OUT_OF_SCOPE", classifications.get("OOS-MUTATION-EXECUTION"));
+        assertEquals("ACCEPTED", classifications.get("APP-MUTATION-EXECUTION"));
 
         assertTrue(classifications.containsValue("ACCEPTED"));
         assertTrue(classifications.containsValue("OUT_OF_SCOPE"));
@@ -67,7 +67,7 @@ class GraphqlConformanceMatrixTest {
         String markdown = Files.readString(Path.of("docs/query-contract-conformance.md"));
         Map<String, String> classifications = new LinkedHashMap<>();
         for (String line : markdown.split("\\R")) {
-            if (line.startsWith("| QC") || line.startsWith("| OOS")) {
+            if (line.startsWith("| QC") || line.startsWith("| APP") || line.startsWith("| OOS")) {
                 String[] cells = line.split("\\|", -1);
                 if (cells.length >= 6) {
                     classifications.put(cells[1].trim(), cells[4].trim());

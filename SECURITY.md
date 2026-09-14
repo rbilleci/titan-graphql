@@ -15,7 +15,7 @@ for a private reporting channel.
 This repository is a pre-1.0 library and reference service, not a turnkey public endpoint. Its
 secure defaults are:
 
-- `/graphql` ignores caller-supplied `X-Titan-*` context headers.
+- `/graphql` ignores caller-supplied `X-Titan-*` context headers and assigns no implicit role.
 - `/admin/graphql` returns `404` unless the server configures
   `titan.graphql.admin.access-token`; enabled requests require that value as a bearer token.
 - The admin role and actor key come from server configuration, not HTTP headers.
@@ -50,3 +50,16 @@ already-compiled boolean decisions, so grant routine execution only to the appli
 identity; they are not a standalone authentication boundary for arbitrary SQL clients. Models that
 need row-value expressions beyond the reviewed context-filter contract require an application-side
 authorization design and must not invent expressions in model files.
+
+## Custom mutation boundary
+
+No application mutations are published unless the application registers explicit descriptors and
+handlers. The shared runtime validates the declared scalar input/payload surface and enforces required
+roles before dispatch, but handler code remains an application security boundary. Handlers must perform
+domain authorization that cannot be represented by descriptor roles and must own transaction rollback,
+idempotency, and correctness-critical audit. Treat the runtime audit sink as observability unless it is
+backed by a design that is atomic with the domain write, such as a transactional outbox.
+
+Only enable input or payload capture in mutation audit metadata after classifying every field. Audit sinks
+and application logs must not record credentials, access tokens, personal data, or unredacted sensitive
+variables. See [docs/custom-mutations.md](docs/custom-mutations.md).

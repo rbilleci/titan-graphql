@@ -18,7 +18,11 @@ import javax.sql.DataSource;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
 
@@ -78,6 +82,7 @@ public class GraphqlExecutionEngine {
     private final Supplier<DataSource> dataSourceSupplier;
     private final String dataSourceDescription;
     private final String modelPath;
+    private final GraphqlApplicationMutationProvider mutationProvider;
 
     private volatile GraphqlSqlModeRuntime sqlRuntime;
     private volatile GenericJdbcGraphqlRuntime genericJdbcRuntime;
@@ -92,10 +97,21 @@ public class GraphqlExecutionEngine {
     public GraphqlExecutionEngine(
             @ConfigProperty(name = MODE_PROPERTY, defaultValue = "compiled") String configuredMode,
             @ConfigProperty(name = MODEL_PATH_PROPERTY, defaultValue = "__unset__") String configuredModelPath,
+            Instance<DataSource> dataSources,
+            Instance<GraphqlApplicationMutationProvider> mutationProviders
+    ) {
+        this(configuredMode, quarkusDataSourceSupplier(dataSources), QUARKUS_DATASOURCE_DESCRIPTION,
+                configuredModelPath, combineMutationProviders(mutationProviders));
+    }
+
+    /** Compatibility wiring for direct tests and embedding without custom mutations. */
+    public GraphqlExecutionEngine(
+            String configuredMode,
+            String configuredModelPath,
             Instance<DataSource> dataSources
     ) {
         this(configuredMode, quarkusDataSourceSupplier(dataSources), QUARKUS_DATASOURCE_DESCRIPTION,
-                configuredModelPath);
+                configuredModelPath, GraphqlApplicationMutationProvider.none());
     }
 
     /** Direct wiring (tests, non-CDI use): explicit mode, datasource source, and description. */
@@ -104,7 +120,8 @@ public class GraphqlExecutionEngine {
             Supplier<DataSource> dataSourceSupplier,
             String dataSourceDescription
     ) {
-        this(configuredMode, dataSourceSupplier, dataSourceDescription, configuredModelPath());
+        this(configuredMode, dataSourceSupplier, dataSourceDescription, configuredModelPath(),
+                GraphqlApplicationMutationProvider.none());
     }
 
     public GraphqlExecutionEngine(
@@ -113,11 +130,25 @@ public class GraphqlExecutionEngine {
             String dataSourceDescription,
             String modelPath
     ) {
+        this(configuredMode, dataSourceSupplier, dataSourceDescription, modelPath,
+                GraphqlApplicationMutationProvider.none());
+    }
+
+    /** Direct wiring with explicit application-owned custom mutation handlers. */
+    public GraphqlExecutionEngine(
+            String configuredMode,
+            Supplier<DataSource> dataSourceSupplier,
+            String dataSourceDescription,
+            String modelPath,
+            GraphqlApplicationMutationProvider mutationProvider
+    ) {
         this.mode = Mode.parse(configuredMode);
         this.dataSourceSupplier = Objects.requireNonNull(dataSourceSupplier, "dataSourceSupplier");
         this.dataSourceDescription = Objects.requireNonNull(dataSourceDescription, "dataSourceDescription");
         String normalizedModelPath = modelPath == null ? "" : modelPath.trim();
         this.modelPath = "__unset__".equals(normalizedModelPath) ? "" : normalizedModelPath;
+        this.mutationProvider = mutationProvider == null
+                ? GraphqlApplicationMutationProvider.none() : mutationProvider;
     }
 
     /**
@@ -185,7 +216,8 @@ public class GraphqlExecutionEngine {
                         verifiedPackageBinding();
                         try {
                             compiledRuntime = new TitanCompiledGraphqlRuntime(
-                                    packageModel, dataSourceSupplier.get(), dataSourceDescription, packageMetadata);
+                                    packageModel, dataSourceSupplier.get(), dataSourceDescription, packageMetadata,
+                                    mutationProvider);
                         } catch (GraphqlExecutionModeUnavailableException ex) {
                             throw ex;
                         } catch (RuntimeException ex) {
@@ -328,5 +360,34 @@ public class GraphqlExecutionEngine {
             }
             return dataSources.get();
         };
+    }
+
+    private static GraphqlApplicationMutationProvider combineMutationProviders(
+            Iterable<GraphqlApplicationMutationProvider> providers
+    ) {
+        if (providers == null) return GraphqlApplicationMutationProvider.none();
+        List<GraphqlMutationDescriptor> descriptors = new ArrayList<>();
+        Map<String, GraphqlMutationCommandHandler> handlers = new LinkedHashMap<>();
+        Map<String, GraphqlMutationAuditSink> sinksByCommand = new LinkedHashMap<>();
+        for (GraphqlApplicationMutationProvider provider : providers) {
+            if (provider == null) continue;
+            GraphqlApplicationMutationProvider snapshot = GraphqlApplicationMutationProvider.of(
+                    provider.descriptors(), provider.handlers(), provider.auditSink());
+            descriptors.addAll(snapshot.descriptors());
+            for (Map.Entry<String, GraphqlMutationCommandHandler> entry : snapshot.handlers().entrySet()) {
+                if (handlers.putIfAbsent(entry.getKey(), entry.getValue()) != null) {
+                    throw new IllegalStateException("duplicate custom mutation handler command '"
+                            + entry.getKey() + "'");
+                }
+            }
+            for (GraphqlMutationDescriptor descriptor : snapshot.descriptors()) {
+                sinksByCommand.put(descriptor.commandName(), snapshot.auditSink());
+            }
+        }
+        GraphqlMutationAuditSink combinedSink = event -> {
+            GraphqlMutationAuditSink sink = sinksByCommand.get(event.commandName());
+            if (sink != null) sink.record(event);
+        };
+        return GraphqlApplicationMutationProvider.of(descriptors, handlers, combinedSink);
     }
 }

@@ -5,7 +5,7 @@ database structure, a reviewed projection document controls exposure and policy,
 executor turns validated selections into parameterized Titan DSL reads. The project also
 stress-tests Titan by transpiling its bounded GraphQL kernel into database-resident functions.
 
-This project is licensed under [GPL-3.0-or-later](LICENSE). It is a bounded proof project;
+This project is licensed under [GPL-3.0-or-later](LICENSE). It is a pre-1.0 library and reference service;
 read [SECURITY.md](SECURITY.md) before exposing either HTTP endpoint.
 
 The product goal is to put GraphQL over supported schemas without handwritten read resolvers or
@@ -13,7 +13,7 @@ queries. Custom mutations remain explicit application code. Model-driven databas
 compile and install in generated-only production packages; routing validated GraphQL plans through
 those carriers is the fail-closed default `compiled` runtime. Two independently generated packages
 prove that route against unrelated blog and commerce models. The fixed demo kernel is isolated in
-an optional legacy equivalence package while remaining plan-shape and policy gaps are closed.
+an optional legacy equivalence package. Unsupported plan shapes fail closed and are listed below.
 
 New developers should start with [docs/getting-started.md](docs/getting-started.md).
 
@@ -47,15 +47,21 @@ The full pipeline is automated and green on both supported dialects:
   output, forward/backward cursors, reviewed local custom ordering with stable compound cursors,
   page info, exact count, fail-closed row visibility, and a direct relation beneath a collection
   in one bounded batch rather than N+1 reads.
+- **Keep application writes explicit:** optional `GraphqlApplicationMutationProvider` beans attach
+  reviewed command descriptors and dependency-injected handlers to the same compiled runtime.
+  The unrelated commerce proof performs an authorized live mutation, rejects an unauthorized call,
+  records audit events, and observes the write through generated reads on both dialects. GET remains
+  query-only; transactions, idempotency, and domain rollback remain handler-owned.
 - **Prove schema independence with an isolated package:** `commerceIntegrationTest` generates,
   transpiles, packages, install-verifies, binds, deploys, and serves a customers/orders model from
   a separate build tree. Its package inventory contains only generated carriers—no demo-blog class
   or article routine—and the same runtime observes live mutations and a fresh-engine restart on
   PostgreSQL and MySQL.
-- **Transpile (both dialects):** `titanTranspile` lowers the generated carriers and the transitional
-  demo-blog whole-request kernel (`DemoBlogTitanGraphqlFunctions`) into PostgreSQL **and MySQL**
-  routines with zero validator diagnostics. Its inputs are an explicit allowlist; unrelated
-  application, HTTP, inference, artifact, and management records do not enter the SQL package.
+- **Transpile (both dialects):** `titanTranspile` lowers only the model-generated carriers into
+  PostgreSQL **and MySQL** routines with zero validator diagnostics. Its inputs are an explicit
+  allowlist; unrelated demo, application, HTTP, inference, artifact, and management records do not
+  enter the production SQL package. `titanGraphqlTranspileLegacySql` separately lowers the
+  historical demo-blog whole-request kernel for its equivalence proof.
 - **Package (both dialects)**: `titanPackage` produces deterministic migration artifacts
   per dialect (`R__titan_010_runtime.sql` + `R__titan_020_routines.sql`) plus
   manifest/inventory/install-plan/verification JSON and rollback scripts, with zero
@@ -91,7 +97,7 @@ The full pipeline is automated and green on both supported dialects:
   endpoint answers every request by calling the
   DEPLOYED stored functions over the configured datasource instead of the Java kernel —
   the proof as a demonstrable runtime. Every response names its engine
-  (`X-Titan-Execution-Mode`, plus the package fingerprint in SQL mode), execution
+  (`X-Titan-Execution-Mode`, plus the package fingerprint in compiled/SQL modes), execution
   telemetry lands in the serving database's `titan_runtime.telemetry`, and an
   unreachable/undeployed database answers a descriptive 503 GraphQL error — never a
   silent fallback to Java mode. Demo walkthrough: see
@@ -116,11 +122,11 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
 
 ## Honest Boundaries
 
-- **Generic JDBC execution is the schema-portable path.** It currently covers integer-key point
+- **Generic JDBC execution is a bounded diagnostic/reference path.** It currently covers integer-key point
   roots, direct one/many relations from point results, scalar and context filters, and the first
   forward page of root Relay connections. Cursor continuation, backward pagination, relation
   connections, computed SQL expressions, and batched relations beneath collection roots fail explicitly.
-  Those are the next generic executor increments.
+  Production deployments should use compiled mode; JDBC does not inherit compiled-mode coverage.
 - **Compiled mode is generic but still bounded; legacy SQL mode is demo-specific.** A reviewed model
   now becomes Titan-compiled point, page, relation, computed-field, and attestation routines, and
   `compiled` mode executes supported GraphQL plans through those inventory-resolved routines. The
@@ -128,8 +134,10 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   point and remains only an isolated equivalence/compiler proof. It is excluded from the
   production package and from `compiledSchemaIntegrationTest`; `legacySqlIntegrationTest` owns a
   separate package/output tree. Generated carriers do not yet cover
-  multiple simultaneous custom order keys, relation ordering beyond a reviewed non-null to-one
-  hop, or row-value policy expressions beyond named gates/context filters. Generated filters run in
+  multiple simultaneous custom order keys, nullable sort/cursor keys, relation ordering beyond a
+  reviewed non-null to-one hop, or row-value policy expressions beyond named gates/context filters.
+  Nullable scalar output and introspection metadata are preserved; nullable ordering models reject
+  before generation to keep pagination portable. Generated filters run in
   static Titan carriers: one local predicate retains `in` arities through 16, while composed
   `and`/`or`/`not`, filter-plus-order, and reviewed to-one relation paths use a bounded 3-by-3 DNF
   plan. Expressions beyond that declared carrier budget fail closed.
@@ -140,9 +148,9 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   configured selection-depth budget. The current relation connection window is assembled from the ordered compiled carrier
   result; reviewed local integer equality arguments are applied inside the carrier before counts
   and windows, while SQL-side per-parent limiting remains an optimization boundary. A separately packaged
-  unrelated commerce model proves the same path independently of the demo package. The next
-  increments expand compiled-plan coverage, then retire the demo whole-request kernel from
-  production dispatch.
+  unrelated commerce model proves the same path independently of the demo package. The demo
+  whole-request kernel is already absent from production dispatch and retained only as compiler
+  equivalence evidence.
 - **Management storage: durable JDBC store available (opt-in `jdbc` mode); file-backed by
   default.** Core dogfooded the management store — it transpiles the management mutation
   routines in-tree and ships a durable JDBC-backed transactional store over them
@@ -204,6 +212,8 @@ Production configuration, state ownership, rollout, rollback, and incident bound
 [docs/verification.md](docs/verification.md).
 The minimal mutation runtime lowering boundary is documented in
 [docs/mutation-runtime-lowering-boundary.md](docs/mutation-runtime-lowering-boundary.md).
+Explicit application mutation registration is documented in
+[docs/custom-mutations.md](docs/custom-mutations.md).
 
 This repo vendors pinned Titan sources as Git submodules. Initialize them with
 `git submodule update --init --recursive` before building.

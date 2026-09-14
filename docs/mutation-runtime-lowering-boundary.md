@@ -1,213 +1,106 @@
-# Titan GraphQL Mutation Runtime Lowering Boundary
+# Titan GraphQL Mutation Runtime Boundary
 
-Status: DXR8.4 planning boundary.
+Status: implemented management boundary plus explicit application-handler extension.
 
-This document records the support profile for the minimal named mutation
-runtime introduced in DXR8. It does not promote application mutation execution.
-It defines the line between Java-mode reference behavior, production management
-deployment requirements, and still-reserved application CRUD work.
+Titan GraphQL keeps reads schema-generated and writes explicit. It supports two mutation surfaces:
 
-Durability terminology (`TG-BLK-003`, CLOSED): core dogfooded the management
-store — it now ships a durable JDBC-backed transactional store
-(`JdbcTransactionalMutationStore` over Titan-transpiled routines, with JDBC
-idempotency/audit stores and `ManagementSchemaInstaller`), proven on PG 16 +
-MySQL 8.4. The consumer runs on it in the opt-in `jdbc` mode
-(`titan.graphql.management.store=jdbc`): there "durable" means a real JDBC store
-on transpiled routines, exercised on live PG + MySQL by
-`GraphqlJdbcManagementStoreIT`. The DEFAULT `file` mode wraps
-`FileTransactionalMutationStore` (file-backed, single-process), and "durable"
-there means that file boundary. Either way the GAP-006 transaction / idempotency
-/ audit semantics are the same contract; only the persistence substrate differs.
-This durable-store boundary is implemented and covered by the JDBC management-store tests.
+- `/admin/graphql` exposes named Titan GraphQL management commands; and
+- compiled application `/graphql` may expose named application commands registered by the host.
 
-The current query-contract conformance matrix remains query-only. The rows below
-are the developer-experience mutation-runtime profile that future `/admin/graphql`
-work must satisfy before management mutations are considered production-ready.
+No application mutation root exists unless the application registers one. Public read types never
+imply insert, update, delete, or nested-write operations.
 
-## Current Boundary
+## Shared Runtime Contract
 
-DXR8 intentionally built mutation support in three small layers:
+Both surfaces use `GraphqlMutationDescriptor` and `GraphqlMutationExecutor`. The shared runtime:
 
-- selected mutation operations can be parsed as first-class GraphQL operations
-- schemas can declare named command-style mutation descriptors
-- an internal Java-mode executor can dispatch one selected mutation to an
-  explicit command handler and produce GraphQL-shaped output
+- parses and selects a mutation operation;
+- requires exactly one top-level mutation field;
+- validates the descriptor-declared `input` object;
+- coerces the supported scalar input types (`String`, `ID`, `Boolean`, and `Int`);
+- rejects unknown, missing, incorrectly typed, or null required inputs;
+- requires authenticated/authorized roles declared by the descriptor;
+- resolves exactly one handler by stable command name;
+- validates direct scalar payload selections and aliases;
+- returns GraphQL-shaped success and error bodies; and
+- delivers descriptor-selected attempt/result audit events.
 
-Application `/graphql` remains query-only. The existing runtime and lowered
-entrypoints still reject mutation execution for application traffic, and schema
-introspection still reports no mutation root for the bounded demo application
-schema.
+Mutation descriptors are also the source for mutation SDL and introspection. Duplicate mutation
+names, duplicate commands, missing handlers, and handlers without descriptors fail initialization.
 
-The Java-mode executor is a reference boundary for the management API, not a
-public application write surface. It proves the shape of typed inputs, payloads,
-authorization checks, handler dispatch, error envelopes, and audit events before
-DXR9 wires those pieces into `/admin/graphql`.
+POST may carry registered mutations. GET is query-only and rejects mutation or subscription
+operations before runtime dispatch.
 
-## Java-Mode Only For Now
+## Application Commands
 
-These pieces may remain Java-mode-only while DXR9 starts the management API:
+Applications register immutable descriptor/handler sets through one or more
+`GraphqlApplicationMutationProvider` CDI beans. Direct embedding can pass the same provider to
+`GraphqlExecutionEngine` or `TitanCompiledGraphqlRuntime`. Providers are snapshotted during runtime
+initialization so schema publication, validation, and dispatch see one consistent registration set.
 
-- in-process command handler registration for tests and early management
-  services
-- in-memory audit sinks used by focused unit tests
-- Java object maps used as the command input and payload exchange format
-- direct payload field rendering for scalar-like payload fields
-- descriptor instances built directly in Java for the first management model
-- management store behavior backed by an in-memory test store
+The handler receives the descriptor, coerced input map, and trusted `GraphqlRequestContext`, then
+returns `GraphqlMutationCommandResult`. The application handler owns:
 
-Those pieces are allowed only behind the management/control-plane boundary.
-They must not be exposed through the application `/graphql` endpoint as
-production application mutations.
+- domain validation and authorization beyond descriptor roles;
+- database/service calls;
+- transaction boundaries and rollback;
+- idempotency and retry semantics;
+- concurrency control; and
+- correctness-critical audit records or an outbox committed with the domain change.
 
-## Must Be Production-Safe Before Management Deployment
+`TransactionMetadata` and idempotency metadata describe the application contract. They do not cause
+Titan GraphQL to wrap an arbitrary handler in a transaction. The optional runtime audit sink is for
+event delivery/observability and must not throw. `GraphqlMutationAuditLog` is thread-safe but
+in-memory and intended only for tests and development.
 
-Before `/admin/graphql` management mutations can be deployed as production
-control-plane behavior, these capabilities need lowerable behavior or an
-explicit production-safe service boundary:
+See [custom-mutations.md](custom-mutations.md) for the registration API and an example.
 
-- mutation descriptor materialization from generated management model artifacts
-- request-envelope parity for mutation operations, `operationName`, variables,
-  and reserved extensions
-- deterministic input coercion and validation for all descriptor-declared input
-  fields used by management mutations
-- generated mutation SDL, introspection metadata, and artifact manifest hashes
-- actor and role extraction through the management HTTP context boundary
-- authorization decisions with stable GraphQL-shaped error output
-- transaction handling for state-changing management operations
-- idempotency-key handling for retryable management mutations
-- durable audit attempt and result records with actor, request id, mutation
-  name, timestamp, outcome, and failure code
-- handler execution that is safe for the selected deployment mode
-- conformance artifact generation that distinguishes accepted, Java-only,
-  pending, and out-of-scope mutation-runtime rows
+## Management Commands
 
-For management writes, "lowerable" does not require every command handler to be
-transpiled into SQL. It does require that the product has one explicit execution
-contract for the chosen deployment mode. A management mutation may call a
-bounded Java service if that service owns transaction, audit, authorization,
-idempotency, and artifact consistency. It must not silently depend on a private
-controller path that bypasses the shared GraphQL mutation runtime.
+The administrative surface is disabled unless a server-side bearer token is configured. Its actor
+and role come from server configuration, not request-context headers.
 
-## Still Reserved
+The default `file` management store is a single-process development boundary. With
+`titan.graphql.management.store=jdbc`, `TitanGraphqlDurableManagementStore` uses Titan GAP-006
+transaction, idempotency, audit, and deployment records plus a GraphQL-owned product journal. The
+JDBC store is proven on PostgreSQL 16 and MySQL 8.4 and survives a new store instance. Deployment
+activation additionally requires matching Titan GAP-005 artifact/install-verification evidence.
 
-The following remain outside DXR8 and should stay out of DXR9 unless a later
-roadmap explicitly reopens them:
+The durable management path covers `importModelDocument`, validation, artifact generation,
+operation review, and deployment readiness using the explicitly documented store contracts. It is
+not a general deployment orchestrator.
 
-- broad application CRUD generation
-- nested relation mutation graphs
-- implicit table writes derived from object types
-- subscription execution
-- application `/graphql` mutation root publication
-- SQL/lowered application write execution
-- preview endpoint application mutations
-- UI-only mutation paths that bypass `/admin/graphql`
+## Security and Failure Rules
 
-## Mutation Runtime Conformance Profile
+- The default application HTTP context has no actor role.
+- Caller-supplied `X-Titan-*` headers are ignored unless the trusted-gateway switch is enabled.
+- An unregistered application mutation is rejected.
+- A descriptor requiring authentication rejects a blank actor role.
+- Required roles are matched exactly.
+- Input and payload inclusion in audit events is opt-in metadata and must be reviewed for sensitive
+  data.
+- Handler failures return deterministic GraphQL errors and emit a failure event when configured.
+- A runtime audit sink must not throw; transactional audit belongs inside the handler/store boundary.
+- Reads after a successful application write still use only generated carriers.
 
-Classifications match the existing query conformance vocabulary:
+## Verification
 
-- `ACCEPTED`: production-supported for the named management mutation surface.
-- `JAVA_ONLY`: implemented in Java-mode, but not production-supported until the
-  selected deployment boundary has parity and artifact coverage.
-- `PENDING`: required by the accepted DX roadmap, but not implemented yet.
-- `OUT_OF_SCOPE`: intentionally excluded from the minimal mutation runtime.
+Unit tests cover descriptors, coercion, aliases, authorization, dispatch, handler failures, and audit
+statuses. HTTP tests prove GET rejects mutations and anonymous callers receive no implicit role.
+The unrelated commerce integration test registers a custom `renameCustomer` command, rejects an
+anonymous attempt, performs an authorized live update, checks attempt/success audit events, and
+observes the updated row through a fresh compiled engine on PostgreSQL and MySQL.
 
-| ID | Area | Behavior | Classification | Current Evidence | Next Work |
-| --- | --- | --- | --- | --- | --- |
-| DXR8-MUTATION-PARSE | Operations | Selected named mutation operations can be parsed as first-class AST operations | ACCEPTED | `/admin/graphql` selects named mutation operations through `GraphqlParser.parseSelectedOperation`; application/runtime query paths still reject mutations. | Keep application `/graphql` writes rejected unless a later application-write roadmap reopens them. |
-| DXR8-MUTATION-DESCRIPTOR | Schema | Named command-style mutation descriptors declare typed inputs, typed payloads, authorization, transaction, idempotency, and audit metadata | ACCEPTED | `GraphqlManagementMutationSupport` attaches management mutation descriptors to the admin schema, with descriptor metadata guarded by mutation descriptor and admin introspection tests. | Generate descriptors from the dogfood management model in a later backend expansion, without changing the accepted descriptor contract. |
-| DXR8-MUTATION-EXECUTOR | Execution | Java-mode executor dispatches one selected mutation to a registered command handler | ACCEPTED | `GraphqlMutationExecutor` is the shared management executor behind `/admin/graphql`; `importModelDocument` executes through the durable selected-store path while preserving GraphQL-shaped responses. | Keep broad application mutation execution out of scope. |
-| DXR8-MUTATION-INPUTS | Inputs | Descriptor-declared input object fields are coerced and validated | ACCEPTED | Admin endpoint and mutation executor tests cover descriptor input coercion, variable-backed YAML input, deterministic invalid-input errors, and GAP-006 command validation for `importModelDocument`. | Broaden only as management descriptors require new scalar or object shapes. |
-| DXR8-MUTATION-PAYLOADS | Payloads | Descriptor-declared payload fields render with GraphQL response keys and aliases | ACCEPTED | Management mutation tests cover GraphQL-shaped payloads for import, validation, artifact generation, and operation review; unsupported nested payload selection remains rejected by the shared executor. | Define nested payload rules only when management payload descriptors need them. |
-| DXR8-MUTATION-AUTHZ | Authorization | Actor and role metadata can reject unauthorized mutation attempts | ACCEPTED | `/admin/graphql` extracts actor role/id and request context into `GraphqlRequestContext`; shared executor and GAP-006 command-context tests reject unauthorized or incomplete management attempts. | Add richer policy metadata only when management roles outgrow the current operator/admin/platform shape. |
-| DXR8-MUTATION-AUDIT | Audit | Mutation attempt/result records are emitted | ACCEPTED | Durable `importModelDocument` records Titan GAP-006 audit attempts/outcomes, including idempotency replay, conflict, and validation failure paths; Java audit events remain test/reference evidence for product-only mutations. | Move additional management mutations to Titan command audit only when Titan has product-neutral commands for them. |
-| DXR8-MUTATION-TX | Transaction | Transaction and idempotency metadata influence execution | ACCEPTED | Durable `importModelDocument` uses Titan GAP-006 transactions and idempotency records: same-key retries replay, mismatched input conflicts, failed validation writes no draft state, and audit evidence remains durable. | Do not claim Titan transaction semantics for product-only wrapper journal mutations. |
-| DXR8-MUTATION-GENERATED-SCHEMA | Generated schema | Mutation root, input objects, payload objects, and introspection metadata are generated from descriptors | ACCEPTED | `GraphqlSchemaPrinter` and admin introspection expose the management `Mutation` root, input objects, payload objects, and mutation fields only on `/admin/graphql`; application introspection still reports no mutation root. | Move descriptor source from Java bootstrap to generated management artifacts later. |
-| DXR8-MUTATION-LOWERED | Lowering | Mutation request execution has a production-safe lowered or service-backed deployment contract | ACCEPTED | The selected production management boundary is service-backed: `TitanGraphqlDurableManagementStore` consumes Titan GAP-006 transaction, idempotency, audit, deployment activation, and durable records, plus GAP-005 artifact verification for deployment-ready claims. | Keep SQL/lowered application writes and broad deployment orchestration reserved. |
-| DXR8-APP-CRUD | Application CRUD | Broad generated application CRUD mutations | OUT_OF_SCOPE | The DX proposal explicitly excludes full CRUD from the first mutation slice. | Revisit only in a later application mutation roadmap. |
-| DXR8-NESTED-WRITES | Application CRUD | Nested relation mutation graphs | OUT_OF_SCOPE | No descriptor or executor support exists by design. | Revisit only after named command-style management mutations are proven. |
+The management JDBC integration test proves durable state, transaction/idempotency behavior, audit
+records, and deployment-evidence gating on both dialects.
 
-## Promotion Rule
+## Explicitly Unsupported
 
-No mutation row may be promoted to `ACCEPTED` for production management use
-until it has:
-
-- descriptor metadata and generated artifact coverage
-- request-envelope and variable behavior covered at the management endpoint
-- deterministic GraphQL-shaped success and error output
-- authorization, audit, and transaction/idempotency behavior appropriate for
-  the selected deployment mode
-- explicit conformance artifact coverage
-
-Application mutation execution remains `OUT_OF_SCOPE` until a later roadmap
-creates a separate application write contract.
-
-## Handoff Evidence
-
-`TG-HANDOFF-M2.1` wires the first GAP-006 command-context adapter for
-`/admin/graphql` `importModelDocument`: `TitanGraphqlGap006CommandContext`
-maps the GraphQL-owned field/input/header names to Titan-neutral
-`ManagementCommands.CommandInvocation` data and validates actor, request id,
-idempotency key, workspace scope, source format, and source text against the
-Titan `management.importModelDocument` descriptor before the current Java-mode
-handler runs. This is endpoint context evidence only; it does not promote the
-transaction, durable audit, durable idempotency, generated schema, or
-lowered/service rows.
-
-`TG-HANDOFF-M3.1` adds the first durable management store adapter:
-`TitanGraphqlDurableManagementStore` wraps Titan GAP-006
-`ManagementTransactions.TransactionalMutationStore` records for durable
-drafts, GAP-005 artifact refs, deployments, idempotency, audit, transaction
-framing, and deterministic Titan-neutral reads. This is durable core-store
-evidence, but it does not yet promote mutation runtime rows to `ACCEPTED`:
-the optional Java-reference endpoint handler is still not migrated through the
-transactional execution path, generated mutation schema/conformance artifacts
-are still pending, and GraphQL-only wrapper records still need a consumer-side
-persistence decision.
-
-`TG-HANDOFF-M4.1` migrates the `importModelDocument` mutation to the Titan
-GAP-006 transactional execution path when the GraphQL-owned durable store
-setting selects `TitanGraphqlDurableManagementStore`. The mutation preserves
-GraphQL-shaped output while Titan records command validation, audit
-attempt/outcome rows, idempotency replay/conflict state, and the durable draft
-row in a transaction-framed store. Same-key same-input retries replay through
-Titan, same-key different-input retries fail without adding another draft, and
-missing idempotency is audited without writing draft state. This is durable
-mutation evidence for `importModelDocument` only. The mutation-runtime rows
-remain unpromoted overall because generated mutation schema/conformance
-artifacts are still pending and `validateModelDraft`, `generateModelArtifacts`,
-`approveObservedOperation`, and `rejectObservedOperation` still need a
-truthful product-side persistence decision.
-
-`TG-HANDOFF-M4.2` adds that product-side persistence decision for the remaining
-existing management mutations. The durable store keeps GraphQL wrapper state in
-a GraphQL-owned product-state journal next to the Titan transaction log, so
-`validateModelDraft`, `generateModelArtifacts`, `approveObservedOperation`,
-and `rejectObservedOperation` can reload validation report refs, GraphQL
-artifact refs, observed operation documents, and registry presentation records.
-This does not promote those mutations to Titan command/idempotency/transaction
-evidence: the journal is a `titan-graphql` adapter concern, and Titan remains
-limited to product-neutral GAP-006 records plus GAP-005 artifact refs when
-GAP-005 metadata is explicitly supplied.
-
-`TG-HANDOFF-M5.1` ties durable preview and deployment readiness to Titan
-artifact evidence. Verified preview-build manifests are accepted only when the
-durable store has a Titan GAP-005 artifact ref with passed install
-verification, matching manifest path/content hash, matching generated SQL hash,
-and matching GraphQL SDL hash. Durable active deployment records must be
-created through Titan GAP-006 `activateDeployment`, which records audit,
-idempotency, artifact hash, GAP-005 evidence, verification status, environment,
-and activation state in Titan-neutral records. This is deployment-consistency
-evidence, not broad deployment orchestration and not generated mutation schema
-or conformance promotion.
-
-`TG-HANDOFF-M6.1` closes the current handoff by promoting the bounded
-management mutation runtime rows to `ACCEPTED` for `/admin/graphql`. The
-promotion is intentionally scoped: the accepted surface is the named management
-mutation runtime with a durable service-backed boundary selected through
-`TitanGraphqlDurableManagementStore`, Titan GAP-006 transaction/idempotency/audit
-evidence for `importModelDocument`, Titan GAP-005 artifact verification evidence
-for deployment-ready claims, and GraphQL-owned generated schema/introspection
-for the admin endpoint. This does not promote application `/graphql` mutation
-execution, broad CRUD, nested writes, SQL-lowered application writes, product
-UI behavior, or broad deployment orchestration.
+- generated table CRUD;
+- mutations inferred from object/root exposure;
+- nested relation write graphs;
+- arbitrary nested payload objects;
+- SQL-transpiled application command handlers;
+- application mutations in `java`, `jdbc`, or legacy `sql` modes;
+- mutations over GET; and
+- subscriptions.
