@@ -54,7 +54,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                     + " deployment-blocking validation error(s)");
         }
         this.schema = ProjectionGraphqlAdapter.adapt(
-                TitanGraphqlProjectionModelAdapter.adapt(document, new GraphqlPolicy()));
+                TitanGraphqlProjectionModelAdapter.adapt(document));
         this.invoker = new TitanGraphqlRoutineInvoker(packageMetadata);
         this.semanticHash = TitanGraphqlModelDocumentJson.semanticHash(document);
         document.roots().forEach(root -> roots.put(root.name(), root));

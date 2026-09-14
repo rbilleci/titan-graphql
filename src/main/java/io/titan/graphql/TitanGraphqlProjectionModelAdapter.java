@@ -18,7 +18,7 @@ final class TitanGraphqlProjectionModelAdapter {
     private TitanGraphqlProjectionModelAdapter() {
     }
 
-    static ProjectionModel adapt(TitanGraphqlModelDocument document, GraphqlPolicy policy) {
+    static ProjectionModel adapt(TitanGraphqlModelDocument document) {
         if (!TitanGraphqlModelDocument.CURRENT_API_VERSION.equals(document.apiVersion())) {
             throw unsupported("UNSUPPORTED_API_VERSION", "unsupported apiVersion '" + document.apiVersion() + "'");
         }
@@ -26,7 +26,7 @@ final class TitanGraphqlProjectionModelAdapter {
             throw unsupported("UNSUPPORTED_KIND", "unsupported kind '" + document.kind() + "'");
         }
 
-        AdapterContext context = new AdapterContext(document, policy);
+        AdapterContext context = new AdapterContext(document);
         List<ProjectionRetrieval> retrievals = new ArrayList<>();
         for (TitanGraphqlRootDocument root : document.roots()) {
             retrievals.add(root(root, context));
@@ -36,6 +36,12 @@ final class TitanGraphqlProjectionModelAdapter {
             types.add(type(type, context));
         }
         return new ProjectionModel(retrievals, types);
+    }
+
+    /** Compatibility overload for the former demo-policy adapter parameter. */
+    static ProjectionModel adapt(TitanGraphqlModelDocument document, GraphqlPolicy ignored) {
+        if (ignored == null) throw new NullPointerException("policy");
+        return adapt(document);
     }
 
     private static ProjectionRetrieval root(TitanGraphqlRootDocument root, AdapterContext context) {
@@ -513,7 +519,6 @@ final class TitanGraphqlProjectionModelAdapter {
 
     private static final class AdapterContext {
 
-        private final GraphqlPolicy policy;
         private final String defaultSchema;
         private final Map<String, String> primaryKeys;
         private final Map<String, String> typePrimaryKeys;
@@ -521,8 +526,7 @@ final class TitanGraphqlProjectionModelAdapter {
         private final Map<String, TitanGraphqlContextFilterDocument> contextFilters;
         private final Map<String, TitanGraphqlTypeDocument> types;
 
-        AdapterContext(TitanGraphqlModelDocument document, GraphqlPolicy policy) {
-            this.policy = policy;
+        AdapterContext(TitanGraphqlModelDocument document) {
             this.defaultSchema = defaultText(document.database().defaultSchema(), "public");
             this.primaryKeys = new LinkedHashMap<>();
             document.database().tables().forEach(table -> primaryKeys.put(table.name(), table.primaryKey()));
@@ -535,10 +539,6 @@ final class TitanGraphqlProjectionModelAdapter {
             document.contextFilters().forEach(filter -> contextFilters.put(filter.name(), filter));
             this.types = new LinkedHashMap<>();
             document.types().forEach(type -> types.put(type.name(), type));
-        }
-
-        GraphqlPolicy policy() {
-            return policy;
         }
 
         String defaultSchema() {

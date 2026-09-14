@@ -100,7 +100,7 @@ public final class TitanGraphqlGeneratedArtifactWorkflow {
             throw new IllegalArgumentException("model document is required");
         }
         GraphqlSchema schema = ProjectionGraphqlAdapter.adapt(
-                TitanGraphqlProjectionModelAdapter.adapt(document, new GraphqlPolicy())
+                TitanGraphqlProjectionModelAdapter.adapt(document)
         );
         TitanGraphqlArtifactOptions options = document.artifacts();
         List<TitanGraphqlGeneratedArtifact> artifacts = new ArrayList<>();

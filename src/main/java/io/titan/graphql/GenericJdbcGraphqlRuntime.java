@@ -30,7 +30,7 @@ public final class GenericJdbcGraphqlRuntime implements GraphqlModelRuntime {
                     + " deployment-blocking validation error(s)");
         }
         GraphqlSchema schema = ProjectionGraphqlAdapter.adapt(
-                TitanGraphqlProjectionModelAdapter.adapt(document, new GraphqlPolicy()));
+                TitanGraphqlProjectionModelAdapter.adapt(document));
         this.dataModel = new GenericJdbcGraphqlDataModel(schema, dataSource);
     }
 
