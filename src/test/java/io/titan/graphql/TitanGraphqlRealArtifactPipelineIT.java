@@ -70,24 +70,23 @@ final class TitanGraphqlRealArtifactPipelineIT {
         // Entry points come from the packaged manifest joined with the object inventory —
         // the runtime-reflection scan is gone.
         assertFalse(metadata.entryPoints().isEmpty());
-        TitanGraphqlEntryPointRef executeGraphql = metadata.entryPoints().stream()
-                .filter(entryPoint -> entryPoint.methodName().equals("executeGraphql"))
+        TitanGraphqlEntryPointRef modelSemanticHash = metadata.entryPoints().stream()
+                .filter(entryPoint -> entryPoint.methodName().equals("modelSemanticHash"))
                 .findFirst()
                 .orElseThrow();
-        assertEquals("io.titan.graphql.demo.blog.DemoBlogTitanGraphqlFunctions", executeGraphql.className());
-        assertEquals(List.of("java.lang.String", "long", "java.lang.String"), executeGraphql.parameterTypes());
-        TitanGraphqlSqlRoutineRef routine = executeGraphql.routines().stream()
+        assertEquals("io.titan.graphql.generated.GeneratedTitanGraphqlReads", modelSemanticHash.className());
+        assertEquals(List.of(), modelSemanticHash.parameterTypes());
+        TitanGraphqlSqlRoutineRef routine = modelSemanticHash.routines().stream()
                 .filter(candidate -> candidate.dialect().equals("postgresql"))
                 .findFirst()
                 .orElseThrow();
         assertEquals("function", routine.objectKind());
-        assertEquals("public.execute_graphql", routine.qualifiedName());
-        assertTrue(routine.signature().contains("p_query"));
+        assertEquals("public.model_semantic_hash", routine.qualifiedName());
         // The MySQL target (W5.2) packages the same entry point.
-        assertTrue(executeGraphql.routines().stream()
+        assertTrue(modelSemanticHash.routines().stream()
                         .anyMatch(candidate -> candidate.dialect().equals("mysql")
-                                && candidate.qualifiedName().equals("public.execute_graphql")),
-                "expected a mysql routine for executeGraphql in the packaged inventory");
+                                && candidate.qualifiedName().equals("public.model_semantic_hash")),
+                "expected a mysql attestation routine in the packaged inventory");
 
         // The real titanPackage manifest now integrity-links each rollback script (core B-5,
         // titan 0933913: rollbackScripts[]). Per dialect the ref reads the manifest's authoritative
@@ -138,8 +137,8 @@ final class TitanGraphqlRealArtifactPipelineIT {
         assertTrue(rollbackScripts.getFirst().present());
         assertTrue(rollbackScripts.getFirst().statementCount() > 100);
         assertTrue(rollbackScripts.getFirst().integrityVerified());
-        assertEquals("public.execute_graphql", store.deploymentEntryPoints("deployment-real-001").stream()
-                .filter(entryPoint -> entryPoint.methodName().equals("executeGraphql"))
+        assertEquals("public.model_semantic_hash", store.deploymentEntryPoints("deployment-real-001").stream()
+                .filter(entryPoint -> entryPoint.methodName().equals("modelSemanticHash"))
                 .findFirst()
                 .orElseThrow()
                 .routines()
