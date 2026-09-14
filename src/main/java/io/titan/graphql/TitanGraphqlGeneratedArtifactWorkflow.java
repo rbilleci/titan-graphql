@@ -31,6 +31,9 @@ import java.util.TreeMap;
 
 public final class TitanGraphqlGeneratedArtifactWorkflow {
 
+    private static final String PACKAGED_DEMO_MODEL = "demo-blog";
+    private static final String PACKAGED_DEMO_ENTRY_POINT =
+            "io.titan.graphql.demo.blog.DemoBlogTitanGraphqlFunctions";
     private static final JsonMapper JSON = JsonMapper.builder()
             .enable(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY)
             .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS)
@@ -152,6 +155,7 @@ public final class TitanGraphqlGeneratedArtifactWorkflow {
                                 + " / " + TitanGraphqlArtifactsDirectory.ENVIRONMENT_VARIABLE
                                 + " at a Titan package directory");
             }
+            assertPackageMatchesModel(document, gap005Metadata);
             generatedSqlHash = gap005Metadata.manifestContentHash();
             artifacts.addAll(gap005Metadata.artifacts());
             manifestEntries.addAll(gap005Metadata.manifestEntries());
@@ -182,6 +186,22 @@ public final class TitanGraphqlGeneratedArtifactWorkflow {
                 manifestEntries
         );
         return new TitanGraphqlGeneratedArtifactSet(manifest, artifacts);
+    }
+
+    private static void assertPackageMatchesModel(
+            TitanGraphqlModelDocument document,
+            TitanGraphqlGap005ArtifactMetadata metadata
+    ) {
+        boolean demoEntryPoint = metadata.entryPoints().stream()
+                .anyMatch(entryPoint -> PACKAGED_DEMO_ENTRY_POINT.equals(entryPoint.className()));
+        boolean demoShape = document.roots().stream().anyMatch(root -> "article".equals(root.name()))
+                && document.types().stream().anyMatch(type -> "Article".equals(type.name()));
+        if (!PACKAGED_DEMO_MODEL.equals(document.metadata().name()) || !demoShape || !demoEntryPoint) {
+            throw new IllegalStateException(
+                    "the available Titan SQL package is the fixed demo-blog kernel and is not bound to model '"
+                            + document.metadata().name() + "'; generate a model-bound Titan package before enabling "
+                            + "artifacts.generateSql for another schema");
+        }
     }
 
     private static String conformanceArtifactJson(String generationProfile) {

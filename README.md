@@ -1,11 +1,16 @@
 # titan-graphql
 
-Titan GraphQL is a stress-test project for Titan: write a bounded GraphQL query engine in Java, annotate the top-level entrypoints, and transpile the complete parser/validator/planner/executor logic into database-resident stored function SQL.
+Titan GraphQL is a schema-driven GraphQL layer built around Titan. Titan codegen discovers
+database structure, a reviewed projection document controls exposure and policy, and a generic
+executor turns validated selections into parameterized Titan DSL reads. The project also
+stress-tests Titan by transpiling its bounded GraphQL kernel into database-resident functions.
 
 This project is licensed under [GPL-3.0-or-later](LICENSE). It is a bounded proof project;
 read [SECURITY.md](SECURITY.md) before exposing either HTTP endpoint.
 
-The goal is not to build a full GraphQL server first. The goal is to create a credible, falsifiable proof that Titan can move nontrivial interpreter-style Java logic into the database while preserving correctness, security boundaries, and observable plan shape.
+The product goal is to put GraphQL over supported schemas without handwritten read resolvers or
+queries. Custom mutations remain explicit application code. The database-resident kernel is a
+second, narrower proof until model-driven kernel generation replaces the fixed demo package.
 
 New developers should start with [docs/getting-started.md](docs/getting-started.md).
 
@@ -13,20 +18,30 @@ New developers should start with [docs/getting-started.md](docs/getting-started.
 
 The full pipeline is automated and green on both supported dialects:
 
+- **Serve a reviewed model generically:** `titan.graphql.execution.mode=jdbc` loads a
+  `titan.graphql.yaml` projection and executes supported point reads, direct relations, and
+  forward collection pages against live data. Declared fail-closed context predicates are
+  applied in SQL before client filters. Titan DSL renders bound SQL and Titan's JDBC
+  runtime executes it. A customers/orders integration fixture proves the same runtime on
+  PostgreSQL and MySQL and verifies that database changes appear immediately without generated
+  or handwritten schema-specific execution code.
+- **Start from Titan codegen metadata:** `TitanGraphqlSchemaInference` consumes the
+  `build/titan/schema.json` emitted by `titanIntrospect`, preserving tables, scalar columns,
+  keys, and foreign-key relation candidates in a fail-closed review draft. Public roots and
+  sensitive or relational exposure still require deliberate approval. Composite keys are
+  retained as diagnostics and are never silently reduced to their first column.
 - **Transpile (both dialects)**: `titanTranspile` lowers the demo-blog GraphQL kernel
-  (`DemoBlogTitanGraphqlFunctions`, ~6,900 lines, plus its supporting types) into
-  PostgreSQL **and MySQL** stored functions with zero validator diagnostics — the kernel
-  was rewritten to core's GAP-004 bounded-traversal contract (539 generated SQL files per
-  dialect; a 32K-line routine bundle each). The MySQL target (completion plan W5.2) sailed
-  through `DialectCapabilities` with zero compile-time rejections.
+  (`DemoBlogTitanGraphqlFunctions`) into PostgreSQL **and MySQL** stored functions with zero
+  validator diagnostics. The transpiler input is an explicit one-file kernel allowlist, so
+  application, HTTP, inference, artifact, and management records do not leak into the SQL
+  package. The kernel follows core's GAP-004 bounded-traversal contract.
 - **Package (both dialects)**: `titanPackage` produces deterministic migration artifacts
   per dialect (`R__titan_010_runtime.sql` + `R__titan_020_routines.sql`) plus
-  manifest/inventory/install-plan/verification JSON and rollback scripts —
-  currently ~1,700 generated objects per dialect, zero duplicate identities.
+  manifest/inventory/install-plan/verification JSON and rollback scripts, with zero
+  duplicate identities.
 - **Verify (both dialects)**: `titanVerifyInstall` installs the package into scratch
-  PostgreSQL and MySQL containers and verifies objects, routine signatures, and drift —
-  passing on BOTH dialects at core HEAD (postgresql 1452 objects verified / mysql 1438,
-  zero diagnostics) since core's `TG-BLK-011` identifier-limit fix (titan 5649ebb).
+  PostgreSQL and MySQL containers and verifies objects, routine signatures, and drift with
+  zero diagnostics.
 - **Prove equivalence (the finish line, both dialects)**: `integrationTest` deploys the
   packaged migrations onto Testcontainers databases and runs a 97-case conformance corpus
   through the deployed `public.execute_graphql*` stored functions, comparing every
@@ -44,7 +59,7 @@ The full pipeline is automated and green on both supported dialects:
   real `titanPackage`/`titanVerifyInstall` outputs (no fixture strings, no placeholder
   metadata, no kernel reflection); deployment activation is gated on a passed install
   verification, and rollback scripts are discovered and surfaced.
-- **Serve live from the database (opt-in)**: with `titan.graphql.execution.mode=sql`
+- **Serve the compiled demo from the database (opt-in)**: with `titan.graphql.execution.mode=sql`
   (default `java`), the Quarkus `/graphql` endpoint answers every request by calling the
   DEPLOYED stored functions over the configured datasource instead of the Java kernel —
   the proof as a demonstrable runtime. Every response names its engine
@@ -68,6 +83,17 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
 
 ## Honest Boundaries
 
+- **Generic JDBC execution is the schema-portable path.** It currently covers integer-key point
+  roots, direct one/many relations from point results, scalar and context filters, and the first
+  forward page of root Relay connections. Cursor continuation, backward pagination, relation
+  connections, computed SQL expressions, and batched relations beneath collection roots fail explicitly.
+  Those are the next generic executor increments.
+- **The transpiled SQL kernel remains demo-specific.** The 97-case SQL equivalence corpus is a
+  strong Titan compiler proof, but its application rows are embedded in the bounded blog kernel.
+  It does not yet prove that an arbitrary projection document becomes a database-resident GraphQL
+  routine. Model-driven kernel generation remains required before `sql` mode is schema-portable.
+  Artifact generation refuses to attach that demo package to a differently named/shaped model;
+  a future package contract must bind the reviewed model's semantic hash directly.
 - **Management storage: durable JDBC store available (opt-in `jdbc` mode); file-backed by
   default.** Core dogfooded the management store — it transpiles the management mutation
   routines in-tree and ships a durable JDBC-backed transactional store over them
@@ -92,8 +118,10 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   divergences** — after core closed `TG-BLK-011` (identifier overflow, titan 5649ebb) and
   `TG-BLK-012` (MySQL boolean→JSON rendering, titan f9e3b43). The dual-dialect status is
   fully clean; no consumer-side workaround remains for either entry.
-- The engine remains a bounded demo surface (query-only application contract, 5-entity
-  demo-blog model), by design.
+- Point roots currently require a single integer key. Inference preserves composite-key discovery
+  but emits explicit primary- and foreign-key diagnostics rather than pretending the first
+  component is sufficient. The projection adapter currently enforces the named `adminOnly`
+  field policy and rejects relation policies it cannot enforce before reading.
 
 ## Documentation Map
 

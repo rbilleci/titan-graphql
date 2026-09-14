@@ -164,6 +164,7 @@ public final class ProjectionField {
     private final String name;
     private final String columnName;
     private final String graphqlType;
+    private final boolean nullable;
     private final GraphqlFieldPolicy policy;
     private final FilterCapabilities filterCapabilities;
     private final SortCapabilities sortCapabilities;
@@ -173,6 +174,7 @@ public final class ProjectionField {
             String name,
             String columnName,
             String graphqlType,
+            boolean nullable,
             GraphqlFieldPolicy policy,
             FilterCapabilities filterCapabilities,
             SortCapabilities sortCapabilities,
@@ -181,6 +183,7 @@ public final class ProjectionField {
         this.name = name;
         this.columnName = columnName;
         this.graphqlType = graphqlType;
+        this.nullable = nullable;
         this.policy = policy;
         this.filterCapabilities = filterCapabilities;
         this.sortCapabilities = sortCapabilities;
@@ -192,12 +195,33 @@ public final class ProjectionField {
     }
 
     public static ProjectionField column(String name, String columnName, GraphqlFieldPolicy policy) {
+        return column(name, columnName, inferredGraphqlType(name, columnName), policy);
+    }
+
+    public static ProjectionField column(
+            String name,
+            String columnName,
+            String graphqlType,
+            GraphqlFieldPolicy policy
+    ) {
+        return column(name, columnName, graphqlType, false, policy);
+    }
+
+    public static ProjectionField column(
+            String name,
+            String columnName,
+            String graphqlType,
+            boolean nullable,
+            GraphqlFieldPolicy policy
+    ) {
         return new ProjectionField(
                 name,
                 columnName,
-                inferredGraphqlType(name, columnName),
+                graphqlType,
+                nullable,
                 policy,
-                FilterCapabilities.inferred(name, columnName),
+                "String".equals(graphqlType)
+                        ? FilterCapabilities.defaultString() : FilterCapabilities.defaultScalar(),
                 SortCapabilities.scalar(name),
                 null
         );
@@ -208,6 +232,7 @@ public final class ProjectionField {
                 computedExpression.name(),
                 computedExpression.name(),
                 computedExpression.graphqlType(),
+                computedExpression.nullable(),
                 policy,
                 computedExpression.filterable()
                         ? computedFilterCapabilities(computedExpression.graphqlType())
@@ -256,6 +281,10 @@ public final class ProjectionField {
 
     public String graphqlType() {
         return graphqlType;
+    }
+
+    public boolean nullable() {
+        return nullable;
     }
 
     public GraphqlFieldPolicy policy() {

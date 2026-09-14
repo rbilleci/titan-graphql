@@ -165,21 +165,12 @@ configure<TitanExtension> {
 // (core plan Phase 4.1), so no manual srcDir/dependsOn wiring is needed here.
 
 tasks.named<TitanTranspileTask>("titanTranspile") {
+    // The database proof kernel is intentionally self-contained. Keep this an allowlist: feeding
+    // the entire application source tree makes unrelated admin, inference, HTTP, and model records
+    // part of the SQL package merely because the transpiler can see them.
     sourceFiles.setFrom(
-        fileTree("src/main/java") {
-            include("**/*.java")
-            exclude("**/GraphqlHttpResource.java")
-            // W5.1 serving layer (execution-mode plumbing + JDBC dispatch): Java/HTTP transport
-            // around the kernel, never part of the transpiled bundle — without these excludes
-            // the transpiler emits SQL model files for its records/enums (Execute, Mode, ...)
-            // into the deployed routine set and shifts the package fingerprint.
-            exclude("**/GraphqlExecutionEngine.java")
-            // Phase C management-store selection/bootstrap: JDBC + Arc wiring around the store,
-            // never part of the transpiled kernel (same reason as GraphqlExecutionEngine above).
-            exclude("**/TitanGraphqlManagementStoreFactory.java")
-            exclude("**/sqlmode/**")
-            exclude("**/model/TitanGraphqlModelDocumentYaml*.java")
-        },
-        fileTree(layout.buildDirectory.dir("generated/sources/titan")) { include("**/*.java") }
+        layout.projectDirectory.file(
+            "src/main/java/io/titan/graphql/demo/blog/DemoBlogTitanGraphqlFunctions.java"
+        )
     )
 }

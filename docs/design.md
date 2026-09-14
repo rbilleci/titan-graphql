@@ -2,9 +2,24 @@
 
 ## Purpose
 
-Titan GraphQL is a proof project for pushing Titan beyond normal stored-procedure authoring.
+Titan GraphQL is a schema-driven GraphQL layer and a proof project for pushing Titan beyond
+normal stored-procedure authoring.
 
-The central experiment:
+The primary product path is:
+
+```text
+Titan codegen schema.json
+  -> conservative GraphQL projection draft
+  -> reviewed exposure and policy model
+  -> generic parser, validator, and read planner
+  -> parameterized Titan DSL
+  -> Titan JDBC runtime
+```
+
+This path must not require handwritten read queries or resolvers. Custom mutations are the
+intentional code extension point.
+
+The database-resident experiment is:
 
 > Write Java code that accepts a GraphQL query string and actor context, parses the query, validates the requested shape, executes the necessary database reads through Titan DSL calls, applies authorization rules before data access, and returns a serialized result. Annotate the top-level Java function so Titan transpiles the complete logic into a stored procedure or stored function.
 
@@ -114,10 +129,14 @@ Keep the implementation split into small Java classes so Titan's failure mode is
 - `GraphqlValidator`: checks field names, argument types, nesting limits, field policies, and unsupported syntax against the active schema.
 - `GraphqlSelection`: stores the validated root and selection tree without hard-coding a concrete data model.
 - `GraphqlReadPlanner` and `GraphqlReadPlan`: compile a validated selection plus schema descriptors into logical root and relation reads, including projected columns, backing tables, join keys, cardinality, and limits.
-- `GraphqlDataModel`: binds a schema descriptor to model-specific execution.
+- `GenericJdbcGraphqlDataModel`: executes supported read plans for any reviewed projection
+  through Titan DSL and Titan JDBC, without model-specific query code.
+- `GraphqlDataModel`: binds a schema descriptor to execution and leaves mutations as explicit
+  extension points.
 - `GraphqlPolicy`: maps actor context to allowed fields and row predicates.
 - `GraphqlEngine`: parses and validates a query, then delegates execution to the active data model.
-- `DemoBlogGraphqlExecutor`: executes the demo blog model using Titan DSL reads.
+- `DemoBlogGraphqlExecutor`: the legacy fixture-backed reference implementation used by the
+  bounded compiler corpus.
 - `DemoBlogGraphqlJsonWriter`: serializes demo-blog response rows.
 - `GraphqlJsonWriter`: serializes generic GraphQL errors and shared JSON escaping.
 
@@ -127,9 +146,11 @@ The proof should start with simple arrays/records/strings if Titan supports them
 
 GraphQL type definitions should initially live in Java code, because the proof is about transpiling Java logic.
 
-The DB schema remains sourced through Titan's normal schema introspection or DDL input, producing typed catalog descriptors.
+The DB schema remains sourced through Titan's normal schema introspection or DDL input.
+`TitanGraphqlSchemaInference` consumes codegen's `schema.json` directly, so GraphQL inference
+and catalog generation share one discovered schema rather than parallel fixtures.
 
-The GraphQL schema model is evolving into a projection metamodel over those raw tables, not an ORM. It maps:
+The GraphQL schema model is a projection metamodel over those raw tables, not an ORM. It maps:
 
 - GraphQL object type -> projected DB-backed view of one or more tables
 - scalar field -> DB column or computed expression
@@ -137,7 +158,9 @@ The GraphQL schema model is evolving into a projection metamodel over those raw 
 - field arguments -> bounded filter/pagination inputs
 - actor policy -> pre-read predicate or field rejection
 
-The roadmap target is to keep this projection layer below the GraphQL runtime. GraphQL schema, validation arguments, relation pagination/filtering/sorting, and visibility rules should be generated or derived from the projection model where possible. See [roadmap.md](roadmap.md) for the milestone plan.
+The projection layer stays below the GraphQL runtime. GraphQL schema, validation arguments,
+relation pagination/filtering/sorting, and visibility rules are generated or derived from the
+projection model where supported.
 
 The current metamodel layer stores:
 
@@ -147,7 +170,9 @@ The current metamodel layer stores:
 - relation projections: GraphQL field name to target type, local column, target column, cardinality, and nullability
 - root descriptors: field name, result type, result cardinality, supported key/filter arguments, pagination mode, cursor ordering, and default/max page sizes
 
-This keeps the API schema decoupled from physical table names while remaining concrete enough for Titan to lower. The constrained SQL kernel may still use static helper code, but it should consume or mirror compiled constants from this metamodel rather than becoming a second hand-written schema.
+This keeps the API schema decoupled from physical table names. The generic JDBC path consumes the
+model now. The constrained SQL kernel still mirrors a fixed demo; generating its static,
+Titan-transpilable accessors from the reviewed model is the remaining database-resident step.
 
 The engine must stay model-agnostic: parsing, validation, policy application, and selection-tree construction cannot know about `Article`, `User`, or any future application type. Concrete data models provide descriptors and execution adapters. The current `DemoBlogGraphqlSchema` and demo executor are only the first adapter.
 
@@ -188,12 +213,14 @@ Open question: whether the first proof should reject unauthorized fields or retu
 
 The proof should make N+1 behavior visible.
 
-For the current demo proof:
+For the current implementations:
 
 - scalar root lookups can use direct point queries
-- list root lookups use a single capability-bounded retrieval; the generic Java engine now models the demo `articles` root as a Relay connection with descriptor-backed equality filters, and the SQL kernel exposes the same public connection shape
-- nested relations are planned from relation descriptors, including local and target join columns, so supported list roots can batch relation reads instead of rediscovering joins in model-specific code
-- nested one-to-many relations batch by parent IDs where the declared relation capability supports it
+- list root lookups use a single capability-bounded retrieval
+- direct relations beneath a point root are planned from declared local and target columns
+- the generic JDBC executor rejects relations beneath collection roots instead of issuing N+1
+  queries; descriptor-driven batched relation reads are a required next increment
+- the fixed demo Java/SQL equivalence kernel retains its existing bounded connection behavior
 - unsupported deep nesting should fail with an explicit max-depth error
 - tests should compare the number of planned read steps for representative nested queries
 
@@ -269,25 +296,27 @@ query {
 }
 ```
 
-## First Milestone
+## Verified Milestones
 
-Milestone 1 should prove the smallest end-to-end loop:
+The project has proven the initial end-to-end loop:
 
 1. Create a tiny DB schema: users, articles, comments.
 2. Generate Titan catalog descriptors.
-3. Write `executeGraphql(query, actorId, actorRole)`.
-4. Support one root point query and one nested relation.
-5. Enforce one field-level policy.
-6. Return JSON text.
-7. Validate Java-mode and SQL-mode equivalence.
+3. `executeGraphql(query, actorId, actorRole)` runs as Java and transpiled SQL.
+4. Point queries, connections, and nested demo relations are covered by the conformance corpus.
+5. Field-level policy is enforced.
+6. Both paths return GraphQL JSON.
+7. Java and SQL behavior is equivalent on PostgreSQL and MySQL.
+8. A second customers/orders schema is served from current database rows by the generic JDBC
+   executor on both dialects without schema-specific read code.
 
-## Key Open Questions
+## Remaining Design Decisions
 
-- Which database dialect is the first target: PostgreSQL only, or dual PostgreSQL/MySQL from day one?
-- What Java data structures are acceptable for the first parser AST under current Titan support?
-- Should unauthorized fields reject the whole query or produce partial GraphQL-style errors?
-- How much JSON construction should happen inside transpiled code versus SQL JSON functions?
-- Should GraphQL schema definitions be plain Java classes, annotations, or a Titan DSL extension?
-- What is the maximum supported nesting depth for the first proof?
-- What observable metric best proves N+1 avoidance in generated SQL?
-- Should the first proof live as an independent repo or a module/example under the main Titan repo?
+- How should a reviewed projection's semantic hash be embedded into Titan package metadata so an
+  SQL package can be cryptographically bound to its model?
+- What generated static accessor shape best turns arbitrary reviewed models into a transpilable
+  kernel without dynamic SQL?
+- How should composite and non-integer keys be represented in point-root arguments and cursors?
+- What batching strategy should execute relations beneath generic collection roots?
+- Which computed-expression and policy expression subsets can be safely lowered across both
+  PostgreSQL and MySQL?

@@ -40,18 +40,25 @@ final class TitanGraphqlProjectionModelAdapter {
 
     private static ProjectionRetrieval root(TitanGraphqlRootDocument root, AdapterContext context) {
         return switch (root.operation()) {
-            case POINT -> pointRoot(root);
+            case POINT -> pointRoot(root, context);
             case CONNECTION -> connectionRoot(root, context);
         };
     }
 
-    private static ProjectionRetrieval pointRoot(TitanGraphqlRootDocument root) {
+    private static ProjectionRetrieval pointRoot(TitanGraphqlRootDocument root, AdapterContext context) {
         TitanGraphqlRootDocument.RootDocumentArgument argument = root.argument();
         if (argument == null) {
             throw unsupported("UNSUPPORTED_ROOT_ARGUMENT", "point root '" + root.name() + "' requires an argument");
         }
         requireRootArgumentKind(argument, TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS, root.name());
         requireType(argument.type(), "Int", "point root '" + root.name() + "' argument");
+        String primaryKey = context.primaryKeyForType(root.type());
+        if (!primaryKey.equals(argument.column())) {
+            throw unsupported("UNSUPPORTED_POINT_ROOT_KEY",
+                    "point root '" + root.name() + "' maps argument '" + argument.name()
+                            + "' to column '" + argument.column() + "' but the current point planner requires "
+                            + "the single primary key column '" + primaryKey + "'");
+        }
         return ProjectionRetrieval.point(root.name(), root.type(), argument.name());
     }
 
@@ -171,7 +178,7 @@ final class TitanGraphqlProjectionModelAdapter {
                 defaultText(type.physicalTable(), type.table()),
                 defaultText(type.primaryKey(), context.primaryKey(type.table())),
                 fields(type, context),
-                relations(type)
+                relations(type, context)
         );
     }
 
@@ -188,7 +195,8 @@ final class TitanGraphqlProjectionModelAdapter {
         if (field.computed() != null) {
             return ProjectionField.computed(computed(field), policy);
         }
-        ProjectionField projectionField = ProjectionField.column(field.name(), field.column(), policy);
+        ProjectionField projectionField = ProjectionField.column(
+                field.name(), field.column(), field.type(), field.nullable(), policy);
         requireFieldType(field, projectionField);
         requireFilterOperators(
                 projectionField.filterCapabilities(),
@@ -234,15 +242,30 @@ final class TitanGraphqlProjectionModelAdapter {
         return expression;
     }
 
-    private static List<ProjectionRelation> relations(TitanGraphqlTypeDocument type) {
+    private static List<ProjectionRelation> relations(
+            TitanGraphqlTypeDocument type,
+            AdapterContext context
+    ) {
         List<ProjectionRelation> relations = new ArrayList<>();
         for (TitanGraphqlRelationDocument relation : type.relations()) {
-            relations.add(relation(relation));
+            relations.add(relation(relation, context));
         }
         return relations;
     }
 
-    private static ProjectionRelation relation(TitanGraphqlRelationDocument relation) {
+    private static ProjectionRelation relation(
+            TitanGraphqlRelationDocument relation,
+            AdapterContext context
+    ) {
+        if (!relation.policies().isEmpty()) {
+            for (String policyName : relation.policies()) {
+                context.policy(policyName);
+            }
+            throw unsupported("UNSUPPORTED_RELATION_POLICY",
+                    "relation '" + relation.name() + "' has policies that the projection adapter cannot "
+                            + "enforce before reading; remove the relation from public exposure or implement "
+                            + "an enforceable relation policy");
+        }
         ProjectionRelation.ProjectionRelationCapabilities capabilities = relationCapabilities(relation);
         List<ProjectionRelation.ProjectionRelationArgument> arguments = relationArguments(relation);
         List<ProjectionRelation.ProjectionRelationSortPath> sortPaths = relationSortPaths(relation);
@@ -462,6 +485,7 @@ final class TitanGraphqlProjectionModelAdapter {
         private final GraphqlPolicy policy;
         private final String defaultSchema;
         private final Map<String, String> primaryKeys;
+        private final Map<String, String> typePrimaryKeys;
         private final Map<String, TitanGraphqlPolicyDocument> policies;
         private final Map<String, TitanGraphqlContextFilterDocument> contextFilters;
 
@@ -470,6 +494,9 @@ final class TitanGraphqlProjectionModelAdapter {
             this.defaultSchema = defaultText(document.database().defaultSchema(), "public");
             this.primaryKeys = new LinkedHashMap<>();
             document.database().tables().forEach(table -> primaryKeys.put(table.name(), table.primaryKey()));
+            this.typePrimaryKeys = new LinkedHashMap<>();
+            document.types().forEach(type -> typePrimaryKeys.put(
+                    type.name(), defaultText(type.primaryKey(), primaryKey(type.table()))));
             this.policies = new LinkedHashMap<>();
             document.policies().forEach(policyDocument -> policies.put(policyDocument.name(), policyDocument));
             this.contextFilters = new LinkedHashMap<>();
@@ -485,7 +512,15 @@ final class TitanGraphqlProjectionModelAdapter {
         }
 
         String primaryKey(String tableName) {
-            return defaultText(primaryKeys.get(tableName), "id");
+            return primaryKeys.getOrDefault(tableName, "");
+        }
+
+        String primaryKeyForType(String typeName) {
+            String primaryKey = typePrimaryKeys.get(typeName);
+            if (primaryKey == null) {
+                throw unsupported("UNKNOWN_ROOT_TYPE", "unknown root type '" + typeName + "'");
+            }
+            return primaryKey;
         }
 
         TitanGraphqlPolicyDocument policy(String name) {

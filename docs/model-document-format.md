@@ -812,8 +812,8 @@ deployment:
 
 ## Canonicalization Notes
 
-The future canonical JSON IR should preserve behavior, not source formatting.
-The canonical form should:
+The canonical JSON IR preserves behavior, not source formatting.
+The canonical form:
 
 - keep `apiVersion`, `kind`, `metadata`, `roots`, `types`, policies, context
   filters, artifacts, modules, and deployment metadata as structured records
@@ -874,6 +874,9 @@ The adapter accepts the current demo-blog-shaped subset:
   `totalCount`, Relay arguments, and declared relation sort paths
 - the current named `adminOnly` field-policy predicate used by
   `canReadUserEmail`
+
+Relation policies currently fail closed with `UNSUPPORTED_RELATION_POLICY`; the adapter does not
+discard or post-filter a policy it cannot enforce before reading.
 
 Unsupported adapter input fails explicitly with adapter diagnostics such as
 `UNSUPPORTED_POLICY`, `UNSUPPORTED_FIELD_TYPE`,

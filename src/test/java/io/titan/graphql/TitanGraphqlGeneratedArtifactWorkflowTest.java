@@ -175,6 +175,39 @@ final class TitanGraphqlGeneratedArtifactWorkflowTest {
     }
 
     @Test
+    void refusesToAttachTheDemoSqlPackageToAnUnrelatedModel() {
+        TitanGraphqlModelDocument demo = modelDocument(List.of(
+                TitanGraphqlFieldDocument.column("id", "Int", "id", List.of(), null)
+        ), TitanGraphqlArtifactOptions.defaults());
+        TitanGraphqlModelDocument commerce = new TitanGraphqlModelDocument(
+                demo.apiVersion(),
+                demo.kind(),
+                new TitanGraphqlModelMetadata("commerce", "1", "platform", "Commerce model.", List.of()),
+                demo.database(),
+                demo.modules(),
+                demo.roots(),
+                demo.types(),
+                demo.policies(),
+                demo.contextFilters(),
+                demo.artifacts(),
+                demo.deployment());
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                () -> TitanGraphqlGeneratedArtifactWorkflow.generateFromModelDocument(
+                        "artifact-set-wrong-model",
+                        "draft-wrong-model",
+                        commerce,
+                        TitanGraphqlIntrospectionArtifactPolicy.DISABLED,
+                        "postgres-demo",
+                        "2026-06-01T11:31:00Z",
+                        gap005Metadata()));
+
+        assertTrue(error.getMessage().contains("fixed demo-blog kernel"), error.getMessage());
+        assertTrue(error.getMessage().contains("commerce"), error.getMessage());
+    }
+
+    @Test
     void rejectsIncompleteGap005MetadataBeforeTreatingSqlAsPackageTruth() {
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,

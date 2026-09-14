@@ -1,0 +1,103 @@
+apiVersion: titan.graphql/v1alpha1
+kind: ProjectionModel
+metadata:
+  name: commerce
+  version: 1
+  owner: test
+  description: Unrelated schema proving metadata-driven JDBC execution.
+
+database:
+  catalog: commerce
+  defaultSchema: commerce
+  tables:
+    customers:
+      physicalName: customers
+      schema: commerce
+      primaryKey: id
+    orders:
+      physicalName: orders
+      schema: commerce
+      primaryKey: id
+
+contextFilters:
+  activeCustomers:
+    description: Example fail-closed row predicate supplied by trusted request context.
+    type: booleanEquals
+    column: active
+    contextKey: activeCustomers
+    valueType: Boolean
+    failClosed: true
+    phase: beforeClientFilters
+
+types:
+  Customer:
+    table: customers
+    schema: commerce
+    physicalTable: customers
+    primaryKey: id
+    fields:
+      id:
+        column: id
+        type: Int
+        nullable: false
+      name:
+        column: name
+        type: String
+        nullable: false
+      active:
+        column: active
+        type: Boolean
+        nullable: false
+    relations:
+      orders:
+        target: Order
+        cardinality: many
+        nullable: false
+        localColumn: id
+        targetColumn: customer_id
+        capabilities:
+          selectable: true
+          batchable: true
+          selectionHopBudget: 2
+
+  Order:
+    table: orders
+    schema: commerce
+    physicalTable: orders
+    primaryKey: id
+    fields:
+      id:
+        column: id
+        type: Int
+        nullable: false
+      reference:
+        column: reference
+        type: String
+        nullable: false
+
+roots:
+  customer:
+    type: Customer
+    operation: point
+    argument:
+      name: id
+      type: Int
+      kind: equals
+      column: id
+      path: id
+
+  customers:
+    type: Customer
+    operation: connection
+    pagination:
+      mode: relay
+      defaultPageSize: 10
+      maxPageSize: 100
+      totalCount: exact
+      cursor:
+        path: id
+        column: id
+        direction: asc
+        tieBreaker: id
+    contextFilters:
+      - activeCustomers

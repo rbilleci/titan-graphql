@@ -1,6 +1,5 @@
 package io.titan.graphql;
 
-import io.titan.graphql.sqlmode.GraphqlSqlModeUnavailableException;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
@@ -219,7 +218,7 @@ public final class GraphqlHttpResource {
         }
         try {
             return new GraphqlHttpResult(Response.Status.OK.getStatusCode(), responseType, executePost(request, context));
-        } catch (GraphqlSqlModeUnavailableException unavailable) {
+        } catch (GraphqlExecutionModeUnavailableException unavailable) {
             return executionModeUnavailable(responseType, unavailable);
         }
     }
@@ -266,7 +265,7 @@ public final class GraphqlHttpResource {
                     responseType,
                     executeGet(query, operationName, variablesJson, extensionsJson, context)
             );
-        } catch (GraphqlSqlModeUnavailableException unavailable) {
+        } catch (GraphqlExecutionModeUnavailableException unavailable) {
             return executionModeUnavailable(responseType, unavailable);
         }
     }
@@ -277,7 +276,7 @@ public final class GraphqlHttpResource {
      * and the remedy — never a silent fallback to Java mode.
      */
     private static GraphqlHttpResult executionModeUnavailable(
-            String responseType, GraphqlSqlModeUnavailableException unavailable) {
+            String responseType, GraphqlExecutionModeUnavailableException unavailable) {
         return new GraphqlHttpResult(
                 SERVICE_UNAVAILABLE,
                 responseType,

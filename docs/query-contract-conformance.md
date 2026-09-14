@@ -45,15 +45,13 @@ column (today: only `QC10-MATRIX`, the documentation row itself). The two
 HTTP bridge delegates into; the HTTP negotiation layer above it is Java by design and
 covered by `GraphqlHttpResourceQuarkusSmokeTest`.
 
-**Database-leg status at titan HEAD (2026-06-13, after core's TG-BLK-011 and TG-BLK-012
-fixes, honest): both dialects fully clean.**
+**Current database-leg status: both dialects fully clean.**
 
 - `TG-BLK-011` (identifier overflow) is **resolved** — titan 5649ebb applies
   `NamingRules.identifierMaxLength` to record/enum names. Verified recovery:
-  `titanVerifyInstall` passes both dialects (postgresql 1452 objects verified / mysql
-  1438, zero diagnostics), and the PostgreSQL corpus is back to **97/97 equivalent,
-  0 divergences** on a live run against core HEAD — the SQL-Mode Evidence column cites
-  green runs again, not a historical result.
+  `titanVerifyInstall` passes both dialects with zero diagnostics, and the PostgreSQL corpus is
+  **97/97 equivalent, 0 divergences** on a live run — the SQL-Mode Evidence column cites green
+  runs again, not a historical result.
 - `TG-BLK-012` (MySQL boolean→JSON rendering) is **resolved** — core's B-10 fix
   (titan f9e3b43) makes MySQL render boolean routine values `true`/`false` in text/JSON
   output where it previously rendered `1`/`0`. The MySQL corpus is now **97/97 strictly

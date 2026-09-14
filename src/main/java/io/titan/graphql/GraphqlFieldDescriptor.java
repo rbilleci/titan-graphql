@@ -361,16 +361,41 @@ public final class GraphqlFieldDescriptor {
             ScalarFilterCapabilities scalarFilterCapabilities,
             ScalarSortCapabilities scalarSortCapabilities
     ) {
+        return scalarColumn(name, columnName, inferredGraphqlType(name, columnName), policy,
+                scalarFilterCapabilities, scalarSortCapabilities);
+    }
+
+    static GraphqlFieldDescriptor scalarColumn(
+            String name,
+            String columnName,
+            String graphqlType,
+            GraphqlFieldPolicy policy,
+            ScalarFilterCapabilities scalarFilterCapabilities,
+            ScalarSortCapabilities scalarSortCapabilities
+    ) {
+        return scalarColumn(name, columnName, graphqlType, false, policy,
+                scalarFilterCapabilities, scalarSortCapabilities);
+    }
+
+    static GraphqlFieldDescriptor scalarColumn(
+            String name,
+            String columnName,
+            String graphqlType,
+            boolean nullable,
+            GraphqlFieldPolicy policy,
+            ScalarFilterCapabilities scalarFilterCapabilities,
+            ScalarSortCapabilities scalarSortCapabilities
+    ) {
         return new GraphqlFieldDescriptor(
                 name,
                 FieldKind.SCALAR,
                 columnName,
-                inferredGraphqlType(name, columnName),
+                graphqlType,
                 "",
                 "",
                 "",
                 RelationCardinality.ONE,
-                false,
+                nullable,
                 policy,
                 RelationCapabilities.none(),
                 RelationRetrievals.currentDefault(name),

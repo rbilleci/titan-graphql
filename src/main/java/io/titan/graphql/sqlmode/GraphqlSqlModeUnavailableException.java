@@ -1,5 +1,7 @@
 package io.titan.graphql.sqlmode;
 
+import io.titan.graphql.GraphqlExecutionModeUnavailableException;
+
 /**
  * SQL execution mode could not answer a request: the configured datasource is unreachable,
  * the Titan migrations are not deployed on it, or no datasource is configured at all.
@@ -8,7 +10,7 @@ package io.titan.graphql.sqlmode;
  * 503-style GraphQL error naming the mode, the datasource, and the remedy. There is never a
  * silent fallback to Java mode.</p>
  */
-public final class GraphqlSqlModeUnavailableException extends RuntimeException {
+public final class GraphqlSqlModeUnavailableException extends GraphqlExecutionModeUnavailableException {
 
     public GraphqlSqlModeUnavailableException(String message) {
         super(message);

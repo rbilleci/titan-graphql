@@ -3,6 +3,8 @@ package io.titan.graphql;
 import io.titan.graphql.demo.blog.*;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.titan.graphql.model.TitanGraphqlModelDocument;
 import io.titan.graphql.model.TitanGraphqlModelDocumentYaml;
@@ -399,6 +401,22 @@ class GraphqlMetamodelTest {
         assertEquals("articleVisibility", articles.contextFilters().getFirst().contextKey());
         assertEquals(true, model.type("User").field("email").policy().canRead("admin"));
         assertEquals(false, model.type("User").field("email").policy().canRead("reader"));
+    }
+
+    @Test
+    void pointRootCannotSilentlyTargetAColumnOtherThanTheDeclaredPrimaryKey() throws IOException {
+        String yaml = readDemoBlogFixture().replaceFirst(
+                "(?s)(operation: point\\s+argument:.*?column:) id",
+                "$1 author_id");
+        TitanGraphqlModelDocument document = TitanGraphqlModelDocumentYaml.parse(yaml);
+
+        TitanGraphqlProjectionModelAdapterException failure = assertThrows(
+                TitanGraphqlProjectionModelAdapterException.class,
+                () -> TitanGraphqlProjectionModelAdapter.adapt(document, new GraphqlPolicy()));
+
+        assertEquals("UNSUPPORTED_POINT_ROOT_KEY", failure.code());
+        assertTrue(failure.getMessage().contains("author_id"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("primary key column 'id'"), failure.getMessage());
     }
 
     @Test

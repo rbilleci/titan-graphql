@@ -50,6 +50,7 @@ class GraphqlExecutionModeTest {
     void modeValuesParseLenientlyOnCaseAndWhitespaceOnly() {
         assertEquals(GraphqlExecutionEngine.Mode.JAVA, engine("").mode());
         assertEquals(GraphqlExecutionEngine.Mode.JAVA, engine(" Java ").mode());
+        assertEquals(GraphqlExecutionEngine.Mode.JDBC, engine("JDBC").mode());
         assertEquals(GraphqlExecutionEngine.Mode.SQL, engine("SQL").mode());
     }
 
@@ -58,7 +59,7 @@ class GraphqlExecutionModeTest {
         IllegalStateException failure = assertThrows(IllegalStateException.class, () -> engine("yaml"));
 
         assertTrue(failure.getMessage().contains(GraphqlExecutionEngine.MODE_PROPERTY), failure.getMessage());
-        assertTrue(failure.getMessage().contains("'java' or 'sql'"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("'java', 'jdbc', or 'sql'"), failure.getMessage());
         assertTrue(failure.getMessage().contains("yaml"), failure.getMessage());
     }
 
@@ -87,6 +88,40 @@ class GraphqlExecutionModeTest {
                 .negotiatePost(Map.<String, Object>of("query", SIMPLE_QUERY), GraphqlHttpResource.GRAPHQL_RESPONSE_JSON);
         assertEquals(200, result.status());
         assertTrue(result.body().contains("\"data\""), result.body());
+    }
+
+    @Test
+    void jdbcModeRequiresAReviewedModelBeforeResolvingTheDataSource() {
+        GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
+                "jdbc",
+                () -> {
+                    throw new AssertionError("missing model configuration must fail before datasource resolution");
+                },
+                "must-not-be-used",
+                "");
+
+        GraphqlExecutionModeUnavailableException failure = assertThrows(
+                GraphqlExecutionModeUnavailableException.class, engine::runtime);
+
+        assertTrue(failure.getMessage().contains(GraphqlExecutionEngine.MODEL_PATH_PROPERTY), failure.getMessage());
+        assertTrue(failure.getMessage().contains(GraphqlExecutionEngine.MODEL_PATH_ENVIRONMENT_VARIABLE),
+                failure.getMessage());
+    }
+
+    @Test
+    void jdbcConfigurationFailureIsADescriptive503WithoutJavaFallback() {
+        GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
+                "jdbc", () -> { throw new AssertionError("must not resolve"); }, "unused", "");
+
+        GraphqlHttpResource.GraphqlHttpResult result = new GraphqlHttpResource(engine)
+                .negotiatePost(Map.<String, Object>of("query", SIMPLE_QUERY),
+                        GraphqlHttpResource.GRAPHQL_RESPONSE_JSON);
+
+        assertEquals(503, result.status());
+        assertTrue(result.body().contains("titan.graphql.execution.mode=jdbc"), result.body());
+        assertTrue(result.body().contains(GraphqlExecutionEngine.MODEL_PATH_PROPERTY), result.body());
+        assertTrue(result.body().contains(GraphqlHttpResource.EXECUTION_MODE_UNAVAILABLE), result.body());
+        assertFalse(result.body().contains("\"data\""), result.body());
     }
 
     // --- failure honesty (SQL mode, absent/unreachable datasource) -------------------------

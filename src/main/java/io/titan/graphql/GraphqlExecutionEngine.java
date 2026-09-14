@@ -9,6 +9,7 @@ import jakarta.inject.Singleton;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import javax.sql.DataSource;
+import java.nio.file.Path;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -17,8 +18,8 @@ import java.util.function.Supplier;
  * Selects the engine that answers application {@code /graphql} requests (completion plan
  * W5.1): the in-JVM Java kernel (default) or the deployed SQL stored functions.
  *
- * <p>Configured by {@code titan.graphql.execution.mode} ({@code java} | {@code sql}, default
- * {@code java}) — an ordinary MicroProfile/Quarkus config property, so
+ * <p>Configured by {@code titan.graphql.execution.mode} ({@code java} | {@code jdbc} |
+ * {@code sql}, default {@code java}) — an ordinary MicroProfile/Quarkus config property, so
  * {@code application.properties}, {@code -Dtitan.graphql.execution.mode=...} and the
  * {@code TITAN_GRAPHQL_EXECUTION_MODE} environment variable all work. An unknown value fails
  * fast and descriptively; there is no silent defaulting on bad input.</p>
@@ -34,22 +35,26 @@ public class GraphqlExecutionEngine {
 
     public static final String MODE_PROPERTY = "titan.graphql.execution.mode";
     public static final String MODE_ENVIRONMENT_VARIABLE = "TITAN_GRAPHQL_EXECUTION_MODE";
+    public static final String MODEL_PATH_PROPERTY = "titan.graphql.model.path";
+    public static final String MODEL_PATH_ENVIRONMENT_VARIABLE = "TITAN_GRAPHQL_MODEL_PATH";
     static final String QUARKUS_DATASOURCE_DESCRIPTION =
             "Quarkus default datasource (quarkus.datasource.jdbc.url)";
     static final String FINGERPRINT_UNAVAILABLE = "unavailable";
 
-    /** The two execution modes; the enum names (lowercased) are the config values. */
+    /** The execution modes; the enum names (lowercased) are the config values. */
     public enum Mode {
         JAVA,
+        JDBC,
         SQL;
 
         static Mode parse(String configuredValue) {
             String normalized = configuredValue == null ? "" : configuredValue.trim().toLowerCase(Locale.ROOT);
             return switch (normalized) {
                 case "", "java" -> JAVA;
+                case "jdbc" -> JDBC;
                 case "sql" -> SQL;
                 default -> throw new IllegalStateException(
-                        MODE_PROPERTY + " must be 'java' or 'sql' but was '" + configuredValue + "'");
+                        MODE_PROPERTY + " must be 'java', 'jdbc', or 'sql' but was '" + configuredValue + "'");
             };
         }
     }
@@ -57,17 +62,21 @@ public class GraphqlExecutionEngine {
     private final Mode mode;
     private final Supplier<DataSource> dataSourceSupplier;
     private final String dataSourceDescription;
+    private final String modelPath;
 
     private volatile GraphqlSqlModeRuntime sqlRuntime;
+    private volatile GenericJdbcGraphqlRuntime genericJdbcRuntime;
     private volatile String fingerprint;
 
     /** CDI wiring: mode from MicroProfile config, datasource from the Agroal default bean. */
     @Inject
     public GraphqlExecutionEngine(
             @ConfigProperty(name = MODE_PROPERTY, defaultValue = "java") String configuredMode,
+            @ConfigProperty(name = MODEL_PATH_PROPERTY, defaultValue = "__unset__") String configuredModelPath,
             Instance<DataSource> dataSources
     ) {
-        this(configuredMode, quarkusDataSourceSupplier(dataSources), QUARKUS_DATASOURCE_DESCRIPTION);
+        this(configuredMode, quarkusDataSourceSupplier(dataSources), QUARKUS_DATASOURCE_DESCRIPTION,
+                configuredModelPath);
     }
 
     /** Direct wiring (tests, non-CDI use): explicit mode, datasource source, and description. */
@@ -76,9 +85,20 @@ public class GraphqlExecutionEngine {
             Supplier<DataSource> dataSourceSupplier,
             String dataSourceDescription
     ) {
+        this(configuredMode, dataSourceSupplier, dataSourceDescription, configuredModelPath());
+    }
+
+    public GraphqlExecutionEngine(
+            String configuredMode,
+            Supplier<DataSource> dataSourceSupplier,
+            String dataSourceDescription,
+            String modelPath
+    ) {
         this.mode = Mode.parse(configuredMode);
         this.dataSourceSupplier = Objects.requireNonNull(dataSourceSupplier, "dataSourceSupplier");
         this.dataSourceDescription = Objects.requireNonNull(dataSourceDescription, "dataSourceDescription");
+        String normalizedModelPath = modelPath == null ? "" : modelPath.trim();
+        this.modelPath = "__unset__".equals(normalizedModelPath) ? "" : normalizedModelPath;
     }
 
     /**
@@ -105,7 +125,7 @@ public class GraphqlExecutionEngine {
         return mode;
     }
 
-    /** The config value form of the active mode ({@code java} | {@code sql}). */
+    /** The config value form of the active mode ({@code java} | {@code jdbc} | {@code sql}). */
     public String modeName() {
         return mode.name().toLowerCase(Locale.ROOT);
     }
@@ -114,6 +134,29 @@ public class GraphqlExecutionEngine {
     public GraphqlModelRuntime runtime() {
         if (mode == Mode.JAVA) {
             return GraphqlRuntimeRegistry.activeRuntime();
+        }
+        if (mode == Mode.JDBC) {
+            if (modelPath.isBlank()) {
+                throw jdbcUnavailable("no reviewed model path is configured", null);
+            }
+            GenericJdbcGraphqlRuntime runtime = genericJdbcRuntime;
+            if (runtime == null) {
+                synchronized (this) {
+                    if (genericJdbcRuntime == null) {
+                        try {
+                            genericJdbcRuntime = GenericJdbcGraphqlRuntime.fromYaml(
+                                    Path.of(modelPath), dataSourceSupplier.get());
+                        } catch (GraphqlExecutionModeUnavailableException ex) {
+                            throw ex;
+                        } catch (RuntimeException ex) {
+                            throw jdbcUnavailable("the model or datasource could not be initialized ("
+                                    + ex.getMessage() + ")", ex);
+                        }
+                    }
+                    runtime = genericJdbcRuntime;
+                }
+            }
+            return runtime;
         }
         GraphqlSqlModeRuntime runtime = sqlRuntime;
         if (runtime == null) {
@@ -135,7 +178,7 @@ public class GraphqlExecutionEngine {
      * the package.
      */
     public String fingerprint() {
-        if (mode == Mode.JAVA) {
+        if (mode != Mode.SQL) {
             return "";
         }
         String value = fingerprint;
@@ -148,6 +191,26 @@ public class GraphqlExecutionEngine {
             }
         }
         return value;
+    }
+
+    private static String configuredModelPath() {
+        String configured = System.getProperty(MODEL_PATH_PROPERTY, "");
+        if (configured.isBlank()) {
+            String environment = System.getenv(MODEL_PATH_ENVIRONMENT_VARIABLE);
+            configured = environment == null ? "" : environment;
+        }
+        return configured;
+    }
+
+    private GraphqlExecutionModeUnavailableException jdbcUnavailable(String cause, Throwable failure) {
+        String message = "JDBC execution mode (" + MODE_PROPERTY + "=jdbc) could not answer this request: "
+                + cause + " [model: " + (modelPath.isBlank() ? "not configured" : modelPath)
+                + "; datasource: " + dataSourceDescription + "]. Remedy: set " + MODEL_PATH_PROPERTY
+                + " (or " + MODEL_PATH_ENVIRONMENT_VARIABLE + ") to a reviewed titan.graphql.yaml, configure "
+                + "the datasource for that schema, or switch " + MODE_PROPERTY + " back to java.";
+        return failure == null
+                ? new GraphqlExecutionModeUnavailableException(message)
+                : new GraphqlExecutionModeUnavailableException(message, failure);
     }
 
     private static String readFingerprint() {

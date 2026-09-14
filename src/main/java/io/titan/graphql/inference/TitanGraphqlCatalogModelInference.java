@@ -67,7 +67,14 @@ final class TitanGraphqlCatalogModelInference {
                 String typeName = typeName(table.name());
                 String tableBindingName = table.name();
                 String primaryKey = primaryKeyColumn(table);
-                if (primaryKey.isBlank()) {
+                if (hasCompositePrimaryKey(table)) {
+                    warnings.add(new TitanGraphqlCatalogInferenceReport.Warning(
+                            "COMPOSITE_PRIMARY_KEY_REQUIRES_EXPLICIT_ROOT",
+                            tablePath,
+                            "all key columns were discovered, but the current point-root contract accepts one key; "
+                                    + "do not expose a point root until an explicit key mapping is configured"
+                    ));
+                } else if (primaryKey.isBlank()) {
                     warnings.add(new TitanGraphqlCatalogInferenceReport.Warning(
                             "MISSING_PRIMARY_KEY",
                             tablePath,
@@ -129,6 +136,20 @@ final class TitanGraphqlCatalogModelInference {
 
                 List<TitanGraphqlRelationDocument> relations = new ArrayList<>();
                 for (TitanGraphqlCatalogSnapshot.ForeignKey foreignKey : table.foreignKeys()) {
+                    if (foreignKey.columns().size() != 1 || foreignKey.targetColumns().size() != 1) {
+                        warnings.add(new TitanGraphqlCatalogInferenceReport.Warning(
+                                "COMPOSITE_FOREIGN_KEY_REQUIRES_EXPLICIT_RELATION",
+                                tablePath + "." + foreignKey.name(),
+                                "all foreign-key columns were discovered, but a multi-column relation cannot be "
+                                        + "reduced to its first column; configure the relation explicitly"
+                        ));
+                        reviewDecisions.add(new TitanGraphqlCatalogInferenceReport.ReviewDecision(
+                                "RELATION_NOT_SCAFFOLDED",
+                                typeName + "." + relationName(foreignKey),
+                                "composite foreign key requires an explicit relation mapping"
+                        ));
+                        continue;
+                    }
                     String relationName = relationName(foreignKey);
                     relations.add(new TitanGraphqlRelationDocument(
                             relationName,
@@ -261,7 +282,12 @@ final class TitanGraphqlCatalogModelInference {
     }
 
     private static String primaryKeyColumn(TitanGraphqlCatalogSnapshot.Table table) {
-        return table.primaryKey() == null ? "" : first(table.primaryKey().columns());
+        return table.primaryKey() == null || table.primaryKey().columns().size() != 1
+                ? "" : table.primaryKey().columns().getFirst();
+    }
+
+    private static boolean hasCompositePrimaryKey(TitanGraphqlCatalogSnapshot.Table table) {
+        return table.primaryKey() != null && table.primaryKey().columns().size() > 1;
     }
 
     private static String first(List<String> values) {

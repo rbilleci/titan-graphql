@@ -67,6 +67,8 @@ public final class ProjectionGraphqlAdapter {
                 fields.add(GraphqlFieldDescriptor.scalarColumn(
                         field.name(),
                         field.columnName(),
+                        field.graphqlType(),
+                        field.nullable(),
                         field.policy(),
                         adaptFilterCapabilities(field.filterCapabilities()),
                         adaptSortCapabilities(field.sortCapabilities())
