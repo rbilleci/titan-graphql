@@ -113,7 +113,8 @@ public final class TitanGraphqlModelDocumentJson {
                         .map(TitanGraphqlModelDocumentJson::normalizeRootFilterPath)
                         .toList(),
                 sorted(root.sortPaths(), Comparator.comparing(TitanGraphqlRootDocument.RootDocumentSortPath::name)),
-                sortedStrings(root.contextFilters())
+                sortedStrings(root.contextFilters()),
+                sortedStrings(root.policies())
         );
     }
 
@@ -144,7 +145,8 @@ public final class TitanGraphqlModelDocumentJson {
                 sorted(type.relations(), Comparator.comparing(TitanGraphqlRelationDocument::name))
                         .stream()
                         .map(TitanGraphqlModelDocumentJson::normalizeRelation)
-                        .toList()
+                        .toList(),
+                sortedStrings(type.policies())
         );
     }
 

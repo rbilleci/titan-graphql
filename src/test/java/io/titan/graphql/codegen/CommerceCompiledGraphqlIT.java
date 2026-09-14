@@ -72,10 +72,22 @@ class CommerceCompiledGraphqlIT {
             assertTrue(rejectedOrders.at("/errors/0/message").asText().contains("not authorized"),
                     target.name());
 
+            JsonNode filteredCustomerRows = JSON.readTree(execute(runtime,
+                    "{ customers(first: 2) { edges { node { id } } totalCount } }",
+                    GraphqlRequestContext.legacy(1L, "anonymous")).json());
+            assertEquals(0, filteredCustomerRows.at("/data/customers/edges").size(), target.name());
+            assertEquals(0, filteredCustomerRows.at("/data/customers/totalCount").asInt(), target.name());
+
             JsonNode stringKey = JSON.readTree(execute(runtime,
                     "{ country(code: \"NL\") { code name } }",
                     GraphqlRequestContext.legacy(1L, "reader")).json());
             assertEquals("Netherlands", stringKey.at("/data/country/name").asText(), target.name());
+
+            JsonNode rejectedRoot = JSON.readTree(execute(runtime,
+                    "{ country(code: \"NL\") { code } }",
+                    GraphqlRequestContext.legacy(1L, "anonymous")).json());
+            assertTrue(rejectedRoot.at("/errors/0/message").asText().contains("root 'country'"),
+                    target.name());
 
             JsonNode uuidKey = JSON.readTree(execute(runtime,
                     "{ apiClient(id: \"" + CLIENT_ID + "\") { id label } }",

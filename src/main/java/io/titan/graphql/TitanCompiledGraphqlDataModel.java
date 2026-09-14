@@ -63,6 +63,10 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         document.types().forEach(type -> types.put(type.name(), type));
         document.contextFilters().forEach(filter -> contextFilters.put(filter.name(), filter));
         document.policies().forEach(policy -> policies.put(policy.name(), policy));
+        document.roots().forEach(root ->
+                TitanGraphqlPolicyCompiler.compile(root.policies(), this::requirePolicy));
+        document.types().forEach(type ->
+                TitanGraphqlPolicyCompiler.compile(type.policies(), this::requirePolicy));
     }
 
     @Override
@@ -73,7 +77,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
     @Override
     public GraphqlExecution execute(GraphqlSelection selection, GraphqlRequestContext context) {
         GraphqlReadPlan plan = GraphqlReadPlanner.plan(schema, selection);
-        validateSupported(selection);
+        validateSupported(selection, context);
         GraphqlPlan observable = new GraphqlPlan();
         try (Connection connection = dataSource.getConnection()) {
             invoker.attest(connection, semanticHash);
@@ -113,6 +117,13 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         if (root.operation() == TitanGraphqlRootDocument.RootDocumentOperation.POINT) {
             method = "readRoot" + suffix;
             parameters = new ArrayList<>(projectionPolicyParameters(requireType(root.type()), context));
+            if (!root.policies().isEmpty()) {
+                parameters.add(policyDecision(root.policies(), context));
+            }
+            TitanGraphqlTypeDocument rootType = requireType(root.type());
+            if (!rootType.policies().isEmpty()) {
+                parameters.add(policyDecision(rootType.policies(), context));
+            }
             List<TitanGraphqlRootDocument.RootDocumentArgument> keys = pointKeyArguments(root);
             for (TitanGraphqlRootDocument.RootDocumentArgument key : keys) {
                 Object value = selection.rootKeyValues().get(key.name());
@@ -254,6 +265,13 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             GraphqlSelection.GeneratedRootFilter generatedFilter
     ) {
         List<Object> parameters = new ArrayList<>();
+        if (!root.policies().isEmpty()) {
+            parameters.add(policyDecision(root.policies(), context));
+        }
+        TitanGraphqlTypeDocument rootType = requireType(root.type());
+        if (!rootType.policies().isEmpty()) {
+            parameters.add(policyDecision(rootType.policies(), context));
+        }
         if (cursors) {
             String cursorBinding = order == null
                     ? root.pagination().cursor().column() : order.columnName();
@@ -761,6 +779,10 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         if (!relation.policies().isEmpty()) {
             parameters.add(policyDecision(relation.policies(), context));
         }
+        TitanGraphqlTypeDocument target = requireType(relation.targetType());
+        if (!target.policies().isEmpty()) {
+            parameters.add(policyDecision(target.policies(), context));
+        }
         parameters.addAll(localKeys);
         for (TitanGraphqlRelationDocument.RelationDocumentArgument modelArgument
                 : relationFilterArguments(relation)) {
@@ -856,8 +878,12 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                 ordering, String.valueOf(value), String.valueOf(tie)));
     }
 
-    private void validateSupported(GraphqlSelection selection) {
+    private void validateSupported(GraphqlSelection selection, GraphqlRequestContext context) {
         TitanGraphqlRootDocument root = requireRoot(selection.rootFieldName());
+        if (!root.policies().isEmpty() && !policyDecision(root.policies(), context)) {
+            throw GraphqlException.authorization("root '" + root.name()
+                    + "' is not authorized for actor role '" + context.actorRole() + "'");
+        }
         selection.generatedRootFilters().forEach(filter -> validateGeneratedFilterTree(root.type(), filter));
         GraphqlSelection.GeneratedRootFilter simple = simpleScalarRootFilter(
                 selection.generatedRootFilters());

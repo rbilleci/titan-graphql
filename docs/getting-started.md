@@ -323,7 +323,7 @@ matching, pagination, and exact counts inside the database. A single local `in` 
 at most 16 values; composed `and`/`or`/`not`, filter/order combinations, and reviewed one-hop
 to-one relation filters use a static 3-by-3 DNF carrier. Larger filter plans, multiple simultaneous
 order keys, nullable/to-many or multi-hop relation ordering, to-many or multi-hop filters,
-root/row policy predicates, and deeper nested
+row-value policy expressions beyond named role gates/context filters, and deeper nested
 collection batching return explicit GraphQL errors; they never fall back to `jdbc`, `java`, or the
 demo `sql` kernel.
 
@@ -464,7 +464,7 @@ This YAML document describes the demo blog model used by the runtime tests:
 - root fields such as `article` and `articles`
 - object types such as `Article`, `User`, and `Comment`
 - table bindings
-- field policies
+- root, row, field, and relation policies
 - context filters
 - relation capabilities
 - artifact and deployment metadata

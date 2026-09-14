@@ -142,7 +142,8 @@ public final class TitanGraphqlModelDocumentYaml {
                     rootArguments(value.path("arguments")),
                     rootFilterPaths(value.path("filterPaths")),
                     rootSortPaths(value.path("sortPaths")),
-                    stringList(value.path("contextFilters"))
+                    stringList(value.path("contextFilters")),
+                    stringList(value.path("policies"))
             ));
         });
         return roots;
@@ -239,7 +240,8 @@ public final class TitanGraphqlModelDocumentYaml {
                 text(entry.getValue(), "physicalTable"),
                 text(entry.getValue(), "primaryKey"),
                 fieldsDocuments(entry.getValue().path("fields")),
-                relations(entry.getValue().path("relations"))
+                relations(entry.getValue().path("relations")),
+                stringList(entry.getValue().path("policies"))
         )));
         return types;
     }

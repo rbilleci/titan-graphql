@@ -85,7 +85,7 @@ Before the carrier route can replace it, generation and generic runtime invocati
 
 - filter expressions beyond the static 3 OR-group by 3 AND-term DNF budget, multiple simultaneous
   custom order keys, and relation ordering beyond a non-null to-one hop;
-- root/row policy predicates and their exact visible counts;
+- row-value policy expressions beyond the reviewed named role gates and context filters;
 - to-many or multi-hop filter paths and SQL-side per-parent connection limiting;
 - nested multi-level relation batching;
 - portable null ordering and scalar/null value preservation;
@@ -93,7 +93,9 @@ Before the carrier route can replace it, generation and generic runtime invocati
 
 No release claim should describe the legacy `sql` mode as schema-portable. Compiled mode may be
 described as schema-driven only for its verified plan subset until all items above are closed.
-Protected field values and relation keys are guarded in generated SQL by reviewed boolean policy
+Root policies reject unauthorized operations before I/O and are repeated in root carrier
+predicates. Type-level row policies gate root rows, exact counts, and relation targets. Protected
+field values and relation keys are guarded in generated SQL by reviewed boolean policy
 decisions supplied by the runtime. Protected relation carriers additionally include an allow
 predicate, so direct invocation with a denied decision returns no relation rows. GraphQL validation
 still rejects unauthorized selections before I/O; the SQL guard is a second boundary rather than

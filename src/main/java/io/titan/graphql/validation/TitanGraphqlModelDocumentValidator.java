@@ -107,6 +107,15 @@ public final class TitanGraphqlModelDocumentValidator {
                         );
                     }
                 }
+                for (String policy : root.policies()) {
+                    if (!policies.containsKey(policy)) {
+                        issue(
+                                TitanGraphqlValidationIssueCode.UNKNOWN_REFERENCE,
+                                "Root '" + root.name() + "' references unknown policy '" + policy + "'.",
+                                path("roots", root.name(), "policies", policy)
+                        );
+                    }
+                }
                 validatePointRoot(root, type);
                 validateRootFilterPaths(root, type);
                 validateRootSortPaths(root, type);
@@ -409,6 +418,15 @@ public final class TitanGraphqlModelDocumentValidator {
         }
 
         private void validateFields(TitanGraphqlTypeDocument type, TypeIndex typeIndex) {
+            for (String policy : type.policies()) {
+                if (!policies.containsKey(policy)) {
+                    issue(
+                            TitanGraphqlValidationIssueCode.UNKNOWN_REFERENCE,
+                            "Type '" + type.name() + "' references unknown row policy '" + policy + "'.",
+                            path("types", type.name(), "policies", policy)
+                    );
+                }
+            }
             for (TitanGraphqlFieldDocument field : type.fields()) {
                 for (String policy : field.policies()) {
                     if (!policies.containsKey(policy)) {

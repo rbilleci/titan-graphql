@@ -2,10 +2,12 @@ package io.titan.graphql.codegen;
 
 import io.titan.graphql.TitanGraphqlFilterLayout;
 import io.titan.graphql.TitanGraphqlFilterPlan;
+import io.titan.graphql.TitanGraphqlPolicyCompiler;
 import io.titan.graphql.model.TitanGraphqlContextFilterDocument;
 import io.titan.graphql.model.TitanGraphqlFieldDocument;
 import io.titan.graphql.model.TitanGraphqlModelDocument;
 import io.titan.graphql.model.TitanGraphqlModelDocumentJson;
+import io.titan.graphql.model.TitanGraphqlPolicyDocument;
 import io.titan.graphql.model.TitanGraphqlRelationDocument;
 import io.titan.graphql.model.TitanGraphqlRootDocument;
 import io.titan.graphql.model.TitanGraphqlTypeDocument;
@@ -53,6 +55,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
         requireIdentifier(className, "generated class");
 
         GenerationContext context = new GenerationContext(document);
+        validatePolicies(document);
         String semanticHash = TitanGraphqlModelDocumentJson.semanticHash(document);
         StringBuilder source = new StringBuilder();
         source.append("package ").append(packageName).append(";\n\n")
@@ -89,6 +92,14 @@ public final class TitanGraphqlRoutineSourceGenerator {
             List<TitanGraphqlRootDocument.RootDocumentArgument> keys = pointKeyArguments(root);
             List<Parameter> parameters = new ArrayList<>(projectionParameters(type));
             List<String> predicates = new ArrayList<>();
+            if (!root.policies().isEmpty()) {
+                parameters.add(new Parameter("allowRoot", "boolean", "setBoolean"));
+                predicates.add("? = TRUE");
+            }
+            if (!type.policies().isEmpty()) {
+                parameters.add(new Parameter("allowRows", "boolean", "setBoolean"));
+                predicates.add("? = TRUE");
+            }
             for (TitanGraphqlRootDocument.RootDocumentArgument key : keys) {
                 if (key.kind() != TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS
                         || key.hops() != 0) {
@@ -561,6 +572,14 @@ public final class TitanGraphqlRoutineSourceGenerator {
     ) {
         List<Parameter> parameters = new ArrayList<>();
         List<String> clauses = new ArrayList<>();
+        if (!root.policies().isEmpty()) {
+            parameters.add(new Parameter("allowRoot", "boolean", "setBoolean"));
+            clauses.add("? = TRUE");
+        }
+        if (!type.policies().isEmpty()) {
+            parameters.add(new Parameter("allowRows", "boolean", "setBoolean"));
+            clauses.add("? = TRUE");
+        }
         if (sort != null) {
             String afterOperator = sort.direction() == TitanGraphqlRootDocument.RootDocumentSortDirection.ASC
                     ? ">" : "<";
@@ -766,11 +785,17 @@ public final class TitanGraphqlRoutineSourceGenerator {
         if (!relation.policies().isEmpty()) {
             directParameters.add(new Parameter("allowRelation", "boolean", "setBoolean"));
         }
+        if (!target.policies().isEmpty()) {
+            directParameters.add(new Parameter("allowRows", "boolean", "setBoolean"));
+        }
         directParameters.add(localKey);
         directParameters.addAll(relationParameters);
         StringBuilder sql = new StringBuilder(selectList(context, target))
                 .append(" WHERE ");
         if (!relation.policies().isEmpty()) {
+            sql.append("? = TRUE AND ");
+        }
+        if (!target.policies().isEmpty()) {
             sql.append("? = TRUE AND ");
         }
         sql.append(identifier(relation.targetColumn(), "relation target column")).append(" = ?");
@@ -785,6 +810,9 @@ public final class TitanGraphqlRoutineSourceGenerator {
             if (!relation.policies().isEmpty()) {
                 batchParameters.add(new Parameter("allowRelation", "boolean", "setBoolean"));
             }
+            if (!target.policies().isEmpty()) {
+                batchParameters.add(new Parameter("allowRows", "boolean", "setBoolean"));
+            }
             for (int index = 1; index <= batchSize; index++) {
                 batchParameters.add(new Parameter("localKey" + index, localKey.javaType(), localKey.setter()));
             }
@@ -793,6 +821,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
                     identifier(relation.targetColumn(), "relation target column")
                             + " AS __titan_parent_key"))
                     + " WHERE " + (!relation.policies().isEmpty() ? "? = TRUE AND " : "")
+                    + (!target.policies().isEmpty() ? "? = TRUE AND " : "")
                     + identifier(relation.targetColumn(), "relation target column")
                     + " IN (" + String.join(", ", java.util.Collections.nCopies(batchSize, "?")) + ")";
             StringBuilder orderedBatchSql = new StringBuilder(batchSql);
@@ -909,6 +938,19 @@ public final class TitanGraphqlRoutineSourceGenerator {
             }
         }
         return List.copyOf(parameters);
+    }
+
+    private static void validatePolicies(TitanGraphqlModelDocument document) {
+        Map<String, TitanGraphqlPolicyDocument> policies = new LinkedHashMap<>();
+        document.policies().forEach(policy -> policies.put(policy.name(), policy));
+        document.roots().forEach(root -> TitanGraphqlPolicyCompiler.compile(root.policies(), policies::get));
+        document.types().forEach(type -> {
+            TitanGraphqlPolicyCompiler.compile(type.policies(), policies::get);
+            type.fields().forEach(field ->
+                    TitanGraphqlPolicyCompiler.compile(field.policies(), policies::get));
+            type.relations().forEach(relation ->
+                    TitanGraphqlPolicyCompiler.compile(relation.policies(), policies::get));
+        });
     }
 
     private static String computedExpression(TitanGraphqlTypeDocument type, TitanGraphqlFieldDocument field) {

@@ -75,6 +75,32 @@ final class TitanGraphqlModelDocumentValidatorTest {
     }
 
     @Test
+    void rejectsUnknownRootAndRowPolicies() {
+        TitanGraphqlModelDocument valid = validDocument();
+        TitanGraphqlRootDocument sourceRoot = valid.roots().getFirst();
+        TitanGraphqlRootDocument root = new TitanGraphqlRootDocument(
+                sourceRoot.name(), sourceRoot.type(), sourceRoot.operation(), sourceRoot.argument(),
+                sourceRoot.pagination(), sourceRoot.arguments(), sourceRoot.filterPaths(),
+                sourceRoot.sortPaths(), sourceRoot.contextFilters(), List.of("missingRootPolicy"));
+        TitanGraphqlTypeDocument sourceType = valid.types().getFirst();
+        TitanGraphqlTypeDocument type = new TitanGraphqlTypeDocument(
+                sourceType.name(), sourceType.table(), sourceType.schema(), sourceType.physicalTable(),
+                sourceType.primaryKey(), sourceType.fields(), sourceType.relations(),
+                List.of("missingRowPolicy"));
+        TitanGraphqlModelDocument document = new TitanGraphqlModelDocument(
+                valid.apiVersion(), valid.kind(), valid.metadata(), valid.database(), valid.modules(),
+                List.of(root), List.of(type, valid.types().get(1)), valid.policies(),
+                valid.contextFilters(), valid.artifacts(), valid.deployment());
+
+        TitanGraphqlValidationReport report = TitanGraphqlModelDocumentValidator.validate(document);
+
+        assertEquals(List.of(
+                "$.roots.articles.policies.missingRootPolicy",
+                "$.types.Article.policies.missingRowPolicy"
+        ), report.issues().stream().map(issue -> issue.modelPath().displayPath()).toList());
+    }
+
+    @Test
     void validatesTypedAndCompositePointKeyBindingsBeforeDeployment() {
         TitanGraphqlRootDocument.RootDocumentArgument warehouse = pointArgument(
                 "warehouse", "String", "warehouse_code", 0);

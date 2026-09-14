@@ -65,8 +65,10 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         String source = TitanGraphqlRoutineSourceGenerator.generate(model("commerce.titan.graphql.yaml"));
 
         assertTrue(source.contains("readRootCustomer(Connection connection, "
-                + "boolean allowRelationOrders, int id)"), source);
-        assertTrue(source.contains("readRootCountry(Connection connection, String code)"), source);
+                + "boolean allowRelationOrders, boolean allowRows, int id)"), source);
+        assertTrue(source.contains("readRootCountry(Connection connection, boolean allowRoot, String code)"), source);
+        assertTrue(source.contains("FROM commerce.countries WHERE ? = TRUE AND code = ?"), source);
+        assertTrue(source.contains("FROM commerce.customers WHERE ? = TRUE AND id = ?"), source);
         assertTrue(source.contains("readRootApiClient(Connection connection, UUID id)"), source);
         assertTrue(source.contains(
                 "readRootInventoryItem(Connection connection, String sku, String warehouse)"), source);
@@ -82,6 +84,8 @@ class TitanGraphqlRoutineSourceGeneratorTest {
         assertTrue(source.contains("FROM commerce.customers"), source);
         assertTrue(source.contains("FROM commerce.orders WHERE ? = TRUE AND customer_id = ?"), source);
         assertTrue(source.contains("public static List<Map<String,Object>> countRootCustomers("), source);
+        assertTrue(source.contains("SELECT COUNT(*) AS total_count FROM commerce.customers WHERE ? = TRUE"),
+                source);
         assertTrue(source.contains("readRootCustomersOrderNameDescForward("), source);
         assertTrue(source.contains("readRootCustomersOrderNameDescFilterPlanForward("), source);
         assertTrue(source.contains("name < ? OR (name = ? AND id < ?)"), source);

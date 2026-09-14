@@ -224,6 +224,9 @@
         },
         "contextFilters": {
           "$ref": "#/$defs/stringList"
+        },
+        "policies": {
+          "$ref": "#/$defs/stringList"
         }
       }
     },
@@ -413,6 +416,9 @@
               "$ref": "#/$defs/relation"
             }
           }
+        },
+        "policies": {
+          "$ref": "#/$defs/stringList"
         }
       }
     },

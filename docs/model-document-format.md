@@ -48,7 +48,7 @@ Fields:
 | `database` | no | Database catalog, schema, and table binding hints. |
 | `roots` | yes | Public root fields on the generated `Query` type. |
 | `types` | yes | Object projection types exposed by roots and relations. |
-| `policies` | no | Named field and root policy declarations. |
+| `policies` | no | Named root, row, field, and relation policy declarations. |
 | `contextFilters` | no | Named request-context filters that compose into roots. |
 | `artifacts` | no | Generated output options for reviewable artifacts. |
 | `deployment` | no | Deployment and preview metadata. |
@@ -189,6 +189,7 @@ roots:
   articles:
     type: Article
     operation: connection
+    policies: [canReadArticles]
     pagination:
       mode: relay
       defaultPageSize: 10
@@ -235,6 +236,7 @@ Fields:
 | `filterPaths` | no | Generated filter input paths exposed on the root. |
 | `sortPaths` | no | Generated order input paths exposed on the root. |
 | `contextFilters` | no | Context filter names applied before client filters unless the filter says otherwise. |
+| `policies` | no | Named root policies. A denied decision rejects the operation before database I/O and is repeated as a generated carrier predicate. |
 
 Root argument kinds:
 
@@ -287,6 +289,7 @@ types:
   Article:
     table: articles
     description: Published and draft blog article.
+    policies: [canReadArticleRows]
     fields:
       id:
         column: id
@@ -305,6 +308,7 @@ Fields:
 | `description` | no | Generated type description. |
 | `fields` | yes | Field map for scalar and computed fields. |
 | `relations` | no | Relation map for object or connection fields. |
+| `policies` | no | Named row policies. Denied decisions filter this type from roots, exact counts, and relation reads in generated SQL. |
 
 ## Fields
 
@@ -502,16 +506,18 @@ Fields:
 | `description` | no | Human policy description. |
 | `appliesTo` | no | Model paths guarded by the policy. |
 | `input` | no | Required request-context keys and types. |
-| `mode` | yes | `reject`, `mask`, or `filter`. Current field-policy behavior uses `reject`. |
+| `mode` | yes | Must be `reject` for the current compiled named-policy language. |
 | `expression.kind` | yes | `named` in v1alpha1. |
 | `expression.name` | yes | Reviewed named expression: `adminOnly`, `authenticated`, `allowAll`, `denyAll`, `roleEquals:<role>`, or `roleIn:<role,...>`. Multiple attached policies are ANDed. |
 
 The same compiler is used for field and relation authorization and unknown expressions fail
-closed while adapting the model. In compiled mode, each protected projection is emitted with a SQL
+closed while adapting or generating the model. Root policies reject unauthorized operations before
+I/O and are also emitted as SQL predicates. Type policies are row gates applied to root reads,
+counts, and relation targets. In compiled mode, each protected projection is emitted with a SQL
 `CASE` guard driven by the compiled decision, and protected relation routines also require the
-decision in their row predicate. Reserved for later: root/row policy predicates, arbitrary
-expression languages, user-defined Java snippets, nested write policies, and actor-shaped schema
-generation.
+decision in their row predicate. Reserved for later: row-value expression predicates beyond the
+existing reviewed context filters, arbitrary expression languages, user-defined Java snippets,
+nested write policies, and actor-shaped schema generation.
 
 ## Context Filters
 
@@ -918,8 +924,9 @@ The adapter accepts the currently compiled subset:
   filter/sort capability shapes
 - `one` and `many` relations, Relay relation pagination with exact
   `totalCount`, Relay arguments, and declared relation sort paths
-- reviewed named field and relation policies: `adminOnly`, `authenticated`, `allowAll`, `denyAll`,
-  `roleEquals:<role>`, and `roleIn:<role,...>`; multiple attached policies are ANDed
+- reviewed named root, type-row, field, and relation policies: `adminOnly`, `authenticated`,
+  `allowAll`, `denyAll`, `roleEquals:<role>`, and `roleIn:<role,...>`; multiple attached policies
+  are ANDed
 
 Unsupported adapter input fails explicitly with adapter diagnostics such as
 `UNSUPPORTED_POLICY`, `UNSUPPORTED_FIELD_TYPE`,

@@ -39,6 +39,20 @@ policies:
     expression:
       kind: named
       name: "roleIn:reader,admin"
+  canReadCustomerRows:
+    description: Customer rows are visible to reviewed reader and admin roles.
+    appliesTo: [Customer.*]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:reader,admin"
+  canReadCountryRoot:
+    description: Country lookup is exposed only to reviewed reader and admin roles.
+    appliesTo: [Query.country]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:reader,admin"
 
 contextFilters:
   activeCustomers:
@@ -56,6 +70,7 @@ types:
     schema: commerce
     physicalTable: customers
     primaryKey: id
+    policies: [canReadCustomerRows]
     fields:
       id:
         column: id
@@ -209,6 +224,7 @@ roots:
   country:
     type: Country
     operation: point
+    policies: [canReadCountryRoot]
     argument:
       name: code
       type: String

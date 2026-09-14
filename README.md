@@ -129,7 +129,8 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   production package and from `compiledSchemaIntegrationTest`; `legacySqlIntegrationTest` owns a
   separate package/output tree. Generated carriers do not yet cover
   multiple simultaneous custom order keys, relation ordering beyond a reviewed non-null to-one
-  hop, root/row policy predicates, or nested multi-level batching. Generated filters run in
+  hop, row-value policy expressions beyond named gates/context filters, or nested multi-level
+  batching. Generated filters run in
   static Titan carriers: one local predicate retains `in` arities through 16, while composed
   `and`/`or`/`not`, filter-plus-order, and reviewed to-one relation paths use a bounded 3-by-3 DNF
   plan. Expressions beyond that declared carrier budget fail closed.
@@ -178,8 +179,10 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   allow predicate. The dual-dialect demo proof covers an authorized protected scalar, direct
   carrier masking, and an unauthorized rejection. The unrelated dual-dialect commerce proof
   covers an authorized protected relation and rejects an unreviewed role; generated relation SQL
-  is also checked for guarded keys and direct/batch allow predicates. Root/row policy predicates
-  remain a release blocker.
+  is also checked for guarded keys and direct/batch allow predicates. The same commerce package
+  proves a root policy rejects before I/O and a type-row policy filters roots and exact counts on
+  both dialects. Row-value expressions beyond the existing reviewed context-filter predicates
+  remain out of scope.
 
 ## Documentation Map
 
