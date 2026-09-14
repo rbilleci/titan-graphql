@@ -56,6 +56,8 @@ types:
         column: name
         type: String
         nullable: false
+        filter:
+          operators: [eq, neq, in, isNull, contains, startsWith, endsWith]
       active:
         column: active
         type: Boolean

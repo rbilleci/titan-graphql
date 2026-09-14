@@ -283,6 +283,35 @@ class GraphqlValidatorSchemaTest {
     }
 
     @Test
+    void rejectsGeneratedFiltersOnProtectedScalarFields() {
+        GraphqlSchema schema = ProjectionGraphqlAdapter.adapt(TitanGraphqlProjection.model()
+                .relayConnectionRoot("secrets", "Secret")
+                .pageSize(10, 50)
+                .cursorOrderingAscending("id", "id", "id")
+                .addRoot()
+                .type("Secret")
+                .table("public", "secrets", "secrets", "id")
+                .scalarField("id", "id")
+                .scalarField("value", "value", role -> "admin".equals(role))
+                .addType()
+                .build()
+                .toProjectionModel());
+
+        GraphqlException denied = assertThrows(GraphqlException.class, () -> GraphqlValidator.validate(
+                schema,
+                GraphqlParser.parse("{ secrets(filter: { value: { eq: \"hidden\" } }) { totalCount } }"),
+                "reader"));
+        assertEquals(GraphqlException.AUTHORIZATION_ERROR, denied.code());
+        assertTrue(denied.getMessage().contains("filter field 'Secret.value'"));
+
+        GraphqlSelection allowed = GraphqlValidator.validate(
+                schema,
+                GraphqlParser.parse("{ secrets(filter: { value: { eq: \"hidden\" } }) { totalCount } }"),
+                "admin");
+        assertEquals("value", allowed.generatedRootFilters().getFirst().children().getFirst().fieldName());
+    }
+
+    @Test
     void validatesGeneratedRootFilterCompositionForPlanning() {
         GraphqlSelection selection = GraphqlValidator.validate(
                 DemoBlogGraphqlSchema.create(new GraphqlPolicy()),

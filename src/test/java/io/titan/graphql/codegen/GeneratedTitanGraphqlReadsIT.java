@@ -130,6 +130,66 @@ class GeneratedTitanGraphqlReadsIT {
             assertTrue(firstPage.at("/data/articles/pageInfo/hasNextPage").asBoolean(), target.name());
             String cursor = firstPage.at("/data/articles/pageInfo/endCursor").asText();
 
+            JsonNode filtered = graphql(dataModel, """
+                    { articles(first: 10, filter: { title: { contains: "GraphQL" } }) {
+                        edges { node { id title } }
+                        totalCount
+                    } }
+                    """, GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(1, filtered.at("/data/articles/edges").size(), target.name());
+            assertEquals(1, filtered.at("/data/articles/edges/0/node/id").asInt(), target.name());
+            assertEquals(1, filtered.at("/data/articles/totalCount").asInt(), target.name());
+
+            JsonNode computedFilter = graphql(dataModel,
+                    "{ articles(first: 10, filter: { titleLength: { gt: 20 } }) { "
+                            + "edges { node { id titleLength } } totalCount } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(1, computedFilter.at("/data/articles/edges").size(), target.name());
+            assertEquals(2, computedFilter.at("/data/articles/edges/0/node/id").asInt(), target.name());
+            assertEquals(1, computedFilter.at("/data/articles/totalCount").asInt(), target.name());
+
+            JsonNode nullFilter = graphql(dataModel,
+                    "{ articles(first: 10, filter: { title: { eq: null } }) { totalCount } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(0, nullFilter.at("/data/articles/totalCount").asInt(), target.name());
+
+            JsonNode emptyIn = graphql(dataModel,
+                    "{ articles(first: 10, filter: { id: { in: [] } }) { totalCount } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(0, emptyIn.at("/data/articles/totalCount").asInt(), target.name());
+
+            JsonNode filteredFirst = graphql(dataModel,
+                    "{ articles(first: 1, filter: { id: { in: [1, 2] } }) { "
+                            + "edges { cursor node { id } } pageInfo { hasNextPage } totalCount } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(2, filteredFirst.at("/data/articles/totalCount").asInt(), target.name());
+            assertTrue(filteredFirst.at("/data/articles/pageInfo/hasNextPage").asBoolean(), target.name());
+            String filteredCursor = filteredFirst.at("/data/articles/edges/0/cursor").asText();
+            JsonNode filteredContinuation = graphql(dataModel,
+                    "{ articles(first: 1, after: \"" + filteredCursor
+                            + "\", filter: { id: { in: [1, 2] } }) { edges { node { id } } } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(2, filteredContinuation.at(
+                    "/data/articles/edges/0/node/id").asInt(), target.name());
+
+            JsonNode oversizedIn = graphql(dataModel,
+                    "{ articles(first: 10, filter: { id: { in: [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17] } }) "
+                            + "{ totalCount } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertTrue(oversizedIn.at("/errors/0/message").asText()
+                    .contains("more than 16 values"), target.name());
+
+            JsonNode escapedWildcard = graphql(dataModel,
+                    "{ articles(first: 10, filter: { title: { contains: \"%\" } }) { totalCount } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertEquals(0, escapedWildcard.at("/data/articles/totalCount").asInt(), target.name());
+
+            JsonNode unsupportedComposition = graphql(dataModel,
+                    "{ articles(first: 10, filter: { id: { gt: 0, lt: 3 } }) { totalCount } }",
+                    GraphqlRequestContext.legacy(10L, "reader"));
+            assertTrue(unsupportedComposition.at("/errors/0/message").asText()
+                    .contains("filter composition"), target.name());
+
             JsonNode continuation = graphql(dataModel,
                     "{ articles(first: 1, after: \"" + cursor
                             + "\") { edges { node { id } } pageInfo { hasPreviousPage } } }",

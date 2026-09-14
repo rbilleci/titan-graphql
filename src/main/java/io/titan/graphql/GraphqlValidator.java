@@ -60,7 +60,7 @@ public final class GraphqlValidator {
             throw new GraphqlException("root field '" + root.name() + "' does not support limit arguments");
         }
         RootArgumentPlan rootArgumentPlan = rootField.resultCardinality() == GraphqlRootField.ResultCardinality.MANY
-                ? rootFilters(schema, root.arguments(), rootField, root.name())
+                ? rootFilters(schema, root.arguments(), rootField, root.name(), context.actorRole())
                 : RootArgumentPlan.empty();
         GraphqlSelection.RootPagination rootPagination = rootPagination(
                 root.arguments(),
@@ -988,7 +988,8 @@ public final class GraphqlValidator {
             GraphqlSchema schema,
             Map<String, GraphqlAst.Value> arguments,
             GraphqlRootField rootField,
-            String fieldName
+            String fieldName,
+            String actorRole
     ) {
         List<GraphqlSelection.RootFilter> filters = new ArrayList<>();
         List<GraphqlSelection.GeneratedRootFilter> generatedFilters = new ArrayList<>();
@@ -1000,7 +1001,8 @@ public final class GraphqlValidator {
                 continue;
             }
             if (argument.getKey().equals("filter")) {
-                generatedFilters.add(validateGeneratedRootFilter(schema, rootField, fieldName, argument.getValue()));
+                generatedFilters.add(validateGeneratedRootFilter(
+                        schema, rootField, fieldName, argument.getValue(), actorRole));
                 continue;
             }
             if (argument.getKey().equals("orderBy")) {
@@ -1036,13 +1038,15 @@ public final class GraphqlValidator {
             GraphqlSchema schema,
             GraphqlRootField rootField,
             String fieldName,
-            GraphqlAst.Value value
+            GraphqlAst.Value value,
+            String actorRole
     ) {
         if (rootField.retrievalCapabilities().supportsFilterArguments() == false) {
             throw new GraphqlException("root field '" + fieldName + "' does not support generated filter arguments");
         }
         GraphqlObjectType type = requireType(schema, rootField.typeName());
-        return validateObjectFilter(schema, rootField, type, value, rootField.typeName() + "Filter");
+        return validateObjectFilter(
+                schema, rootField, type, value, rootField.typeName() + "Filter", actorRole);
     }
 
     private static GraphqlSelection.GeneratedRootFilter validateObjectFilter(
@@ -1050,7 +1054,8 @@ public final class GraphqlValidator {
             GraphqlRootField rootField,
             GraphqlObjectType type,
             GraphqlAst.Value value,
-            String filterTypeName
+            String filterTypeName,
+            String actorRole
     ) {
         if (!(value instanceof GraphqlAst.InputObjectValue objectValue)) {
             throw new GraphqlException("argument 'filter' must be an input object");
@@ -1058,7 +1063,8 @@ public final class GraphqlValidator {
         List<GraphqlSelection.GeneratedRootFilter> children = new ArrayList<>();
         for (Map.Entry<String, GraphqlAst.Value> field : objectValue.fields().entrySet()) {
             if (field.getKey().equals("and") || field.getKey().equals("or")) {
-                children.add(validateFilterList(schema, rootField, type, field.getValue(), field.getKey()));
+                children.add(validateFilterList(
+                        schema, rootField, type, field.getValue(), field.getKey(), actorRole));
                 continue;
             }
             if (field.getKey().equals("not")) {
@@ -1071,13 +1077,15 @@ public final class GraphqlValidator {
                         "",
                         null,
                         List.of(),
-                        List.of(validateObjectFilter(schema, rootField, type, field.getValue(), filterTypeName))
+                        List.of(validateObjectFilter(
+                                schema, rootField, type, field.getValue(), filterTypeName, actorRole))
                 ));
                 continue;
             }
             GraphqlFieldDescriptor scalar = type.field(field.getKey());
             if (scalar != null && scalar.kind() == GraphqlFieldDescriptor.FieldKind.SCALAR
                     && scalar.scalarFilterCapabilities().operators().isEmpty() == false) {
+                requireFilterAuthorization(type.name(), scalar, actorRole);
                 children.add(validateScalarFilter(
                         field.getKey(),
                         field.getValue(),
@@ -1113,6 +1121,7 @@ public final class GraphqlValidator {
             }
             GraphqlRootField.RootFieldFilterPath filterPath = rootField.filterPath(field.getKey());
             if (filterPath != null) {
+                requireFilterPathAuthorization(schema, type, filterPath, actorRole);
                 children.add(validateScalarFilter(
                         field.getKey(),
                         field.getValue(),
@@ -1144,14 +1153,16 @@ public final class GraphqlValidator {
             GraphqlRootField rootField,
             GraphqlObjectType type,
             GraphqlAst.Value value,
-            String fieldName
+            String fieldName,
+            String actorRole
     ) {
         if (!(value instanceof GraphqlAst.InputListValue listValue)) {
             throw new GraphqlException("filter field '" + fieldName + "' must be a list");
         }
         List<GraphqlSelection.GeneratedRootFilter> children = new ArrayList<>();
         for (GraphqlAst.Value item : listValue.values()) {
-            children.add(validateObjectFilter(schema, rootField, type, item, rootField.typeName() + "Filter"));
+            children.add(validateObjectFilter(
+                    schema, rootField, type, item, rootField.typeName() + "Filter", actorRole));
         }
         return new GraphqlSelection.GeneratedRootFilter(
                 fieldName.equals("and")
@@ -1166,6 +1177,42 @@ public final class GraphqlValidator {
                 List.of(),
                 children
         );
+    }
+
+    private static void requireFilterPathAuthorization(
+            GraphqlSchema schema,
+            GraphqlObjectType rootType,
+            GraphqlRootField.RootFieldFilterPath filterPath,
+            String actorRole
+    ) {
+        String[] segments = filterPath.filterPath().split("\\.", -1);
+        GraphqlObjectType current = rootType;
+        for (int index = 0; index < segments.length; index++) {
+            GraphqlFieldDescriptor descriptor = current.field(segments[index]);
+            if (descriptor == null) {
+                throw new GraphqlException("filter path '" + filterPath.name()
+                        + "' references unknown field '" + current.name() + "." + segments[index] + "'");
+            }
+            requireFilterAuthorization(current.name(), descriptor, actorRole);
+            if (index < segments.length - 1) {
+                if (descriptor.kind() != GraphqlFieldDescriptor.FieldKind.RELATION) {
+                    throw new GraphqlException("filter path '" + filterPath.name()
+                            + "' crosses non-relation field '" + current.name() + "." + descriptor.name() + "'");
+                }
+                current = requireType(schema, descriptor.targetTypeName());
+            }
+        }
+    }
+
+    private static void requireFilterAuthorization(
+            String typeName,
+            GraphqlFieldDescriptor descriptor,
+            String actorRole
+    ) {
+        if (!descriptor.canRead(actorRole)) {
+            throw GraphqlException.authorization("filter field '" + typeName + "." + descriptor.name()
+                    + "' is not authorized for actor role '" + actorRole + "'");
+        }
     }
 
     private static GraphqlSelection.GeneratedRootFilter validateScalarFilter(

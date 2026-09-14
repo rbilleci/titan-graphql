@@ -124,8 +124,8 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   `compiled` mode executes supported GraphQL plans through those inventory-resolved routines. The
   older `sql` route still calls the bounded `DemoBlogTitanGraphqlFunctions` whole-request entry
   point and remains only an equivalence/compiler proof. Generated carriers do not yet cover
-  arbitrary generated filters, multiple simultaneous custom order keys, or relation ordering
-  beyond a reviewed non-null to-one hop,
+  composed or relation-hop generated filters, multiple simultaneous custom order keys, or
+  relation ordering beyond a reviewed non-null to-one hop,
   protected-field policy branches, relation-hop filters, or nested multi-level batching.
   Relay relation connections support forward/backward windows, cursors, and exact counts under
   both point and collection roots. Direct relation and relation-connection reads immediately
@@ -179,6 +179,8 @@ the public Java projection builder in [docs/projection-api.md](docs/projection-a
 the compiled carrier contract in [docs/generated-routines.md](docs/generated-routines.md),
 and validation report text and JSON renderings in
 [docs/validation-diagnostics.md](docs/validation-diagnostics.md).
+Deployment trust, package binding, request-context, and current policy boundaries are documented
+in [SECURITY.md](SECURITY.md).
 The minimal mutation runtime lowering boundary is documented in
 [docs/mutation-runtime-lowering-boundary.md](docs/mutation-runtime-lowering-boundary.md).
 

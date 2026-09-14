@@ -26,3 +26,21 @@ Keep the admin token in a secret manager or environment variable; never commit i
 The bearer-token guard is deliberately small and appropriate only for a tightly controlled
 administrative surface. Production deployments needing multiple users, roles, rotation, or
 audit identities must integrate an external identity provider or an authenticated gateway.
+
+## Model and compiled-query boundary
+
+Treat the reviewed `titan.graphql.yaml`, its generated package, and the package binding as one
+deployment unit. Compiled mode verifies the normalized model hash against both the sidecar and the
+installed attestation routine before serving reads. Never deploy generated SQL with a different
+model document or bypass `titanGraphqlBindPackage`.
+
+Generated SQL uses model-approved identifiers and prepared values. Generated filters perform the
+same field authorization checks as selected output fields, including every segment of a relation
+path. Protected fields are omitted from unguarded read and filter carriers. Unsupported filter
+composition, policy expressions, relation policies, or missing fail-closed context values reject
+the request before database I/O; compiled mode does not fall back to a less restrictive runtime.
+
+The only currently executable named field policy is `adminOnly`. It relies on the authenticated
+`actorRole` supplied by the application boundary. Do not treat user-provided role or policy headers
+as trusted identity. Root, row, field, and relation policy compilation is not complete, so models
+requiring broader authorization semantics must not be promoted to compiled production serving yet.

@@ -38,6 +38,12 @@ class TitanGraphqlRoutineSourceGeneratorTest {
                 + "tgql_root.author_id = tgql_sort.id"), source);
         assertTrue(source.contains("tgql_sort.name AS author_name"), source);
         assertTrue(source.contains("ORDER BY tgql_sort.name ASC, tgql_root.id ASC LIMIT ?"), source);
+        assertTrue(source.contains("readRootArticlesFilterTitleContainsForward"), source);
+        assertTrue(source.contains("title LIKE ? ESCAPE '!'"), source);
+        assertTrue(source.contains("readRootArticlesFilterIdIn16Forward"), source);
+        assertTrue(source.contains("countRootArticlesFilterTitleEq"), source);
+        assertTrue(source.contains("CASE WHEN ? = TRUE THEN title IS NULL ELSE title = ? END"), source);
+        assertFalse(source.contains("FilterEmail"), source);
         assertTrue(source.contains("author_id AS __titan_relation_author"), source);
         assertTrue(source.contains("id AS __titan_relation_comments"), source);
         assertTrue(source.contains("(? = FALSE OR (? = TRUE AND published = ?))"), source);

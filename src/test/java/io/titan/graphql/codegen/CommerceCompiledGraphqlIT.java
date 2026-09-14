@@ -110,6 +110,15 @@ class CommerceCompiledGraphqlIT {
                     GraphqlRequestContext.legacy(1L, "reader")).json());
             assertEquals(8, continued.at("/data/customers/edges/0/node/id").asInt(), target.name());
 
+            JsonNode generatedFilter = JSON.readTree(execute(runtime,
+                    "{ customers(first: 10, filter: { name: { startsWith: \"North\" } }) { "
+                            + "edges { node { id name } } totalCount } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertEquals(2, generatedFilter.at("/data/customers/edges").size(), target.name());
+            assertEquals(2, generatedFilter.at("/data/customers/totalCount").asInt(), target.name());
+            assertEquals("Northwind", generatedFilter.at(
+                    "/data/customers/edges/0/node/name").asText(), target.name());
+
             JsonNode relatedOrder = JSON.readTree(execute(runtime,
                     "{ orders(first: 1, orderBy: [{ customerName: ASC }]) { "
                             + "edges { cursor node { id reference } } pageInfo { hasNextPage } } }",

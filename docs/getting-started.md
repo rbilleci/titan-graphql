@@ -312,8 +312,11 @@ calls instead of N calls. Relation connection windows are currently assembled fr
 compiled carrier rows after any reviewed local integer equality arguments are applied in SQL;
 SQL-side per-parent limiting remains to be added. Reviewed root order paths support local scalar
 or computed values and one non-null to-one relation hop, with stable cursor continuation in both
-directions. Arbitrary generated filters, multiple simultaneous order keys, nullable/to-many or
-multi-hop relation ordering, protected carrier branches, relation-hop filters, and deeper nested
+directions. One declared local scalar filter predicate is compiled into a static carrier; equality,
+null checks, numeric comparisons, escaped string matching, and `in` lists of at most 16 values keep
+pagination and exact counts inside the database. Composed filters, filter/order combinations,
+multiple simultaneous order keys, nullable/to-many or multi-hop relation ordering, protected
+carrier branches, relation-hop filters, and deeper nested
 collection batching return explicit GraphQL errors; they never fall back to `jdbc`, `java`, or the
 demo `sql` kernel.
 

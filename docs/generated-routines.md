@@ -23,8 +23,11 @@ For each supported reviewed model the generator emits:
 - `readRoot<Name>Forward(...)` and `readRoot<Name>Backward(...)` for Relay roots;
 - direction-specific forward/backward carriers for each reviewed local root sort path, with the
   declared stable tie-breaker included in both ordering and cursor predicates;
+- per-predicate forward/backward carriers for every declared local scalar filter operator, plus
+  arity-specific `in` carriers for 0, 1, 2, 4, 8, and 16 values;
 - `countRoot<Name>(...)` for roots declaring exact visible counts;
-- `readRelation<Owner><Name>(...)` for unprotected direct relations.
+- filter-specific count carriers so `totalCount` observes the same local predicate;
+- `readRelation<Owner><Name>(...)` for unprotected direct relations;
 - `readRelation<Owner><Name>Batch<N>(...)` at fixed arities 2, 4, 8, 16, 32, and 64,
   allowing a 100-parent page to batch in at most two static calls. Both forms include optional
   parameters for reviewed local integer equality arguments.
@@ -57,9 +60,10 @@ isolated output tree for an unrelated customers/orders model. It asserts that ev
 entry point belongs to the generated carrier class and that no demo-blog or article routine is
 present, then proves integer, string, native UUID, and composite point keys; nested reads;
 batching; root and relation counts; root and relation cursor continuation; relation backward
-windows; fail-closed context filtering; live mutations; and restart visibility on PostgreSQL and
-MySQL. Both schemas also prove stable one-hop root ordering through reviewed non-null to-one
-relations. Both schemas prove relation connections below collection roots with one generated
+windows; fail-closed context filtering; generated local scalar filtering with exact counts; live
+mutations; and restart visibility on PostgreSQL and MySQL. Both schemas also prove stable one-hop
+root ordering through reviewed non-null to-one relations. Both schemas prove relation connections
+below collection roots with one generated
 batch read rather than one child read per parent.
 
 ## Deliberate Remaining Boundary
@@ -70,9 +74,9 @@ corpus remains useful while carrier coverage grows. Compiled mode has no fallbac
 
 Before the carrier route can replace it, generation and generic runtime invocation must cover:
 
-- all generated scalar filters, multiple simultaneous custom order keys, and relation ordering
-  beyond a non-null to-one hop;
-- exact visible counts for generated filters and policy-specific branches;
+- composed and relation-hop generated filters, multiple simultaneous custom order keys, and
+  relation ordering beyond a non-null to-one hop;
+- exact visible counts for policy-specific branches;
 - protected-field and protected-relation policy-specific branches;
 - relation-hop filter arguments and SQL-side per-parent connection limiting;
 - nested multi-level relation batching;
