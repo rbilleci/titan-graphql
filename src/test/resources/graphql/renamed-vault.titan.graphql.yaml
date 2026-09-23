@@ -1,0 +1,53 @@
+apiVersion: titan.graphql/v1alpha1
+kind: ProjectionModel
+metadata:
+  name: renamed-vault-proof
+  version: 1
+  owner: test
+  description: Physically renamed model proving generated read bindings contain no fixture dispatch.
+
+database:
+  catalog: vault_catalog_x7
+  defaultSchema: archive_x7
+  tables:
+    storedRecords:
+      physicalName: physical_records_x7
+      schema: archive_x7
+      primaryKey: record_key_x7
+
+types:
+  VaultRecordX7:
+    table: storedRecords
+    schema: archive_x7
+    physicalTable: physical_records_x7
+    primaryKey: record_key_x7
+    fields:
+      recordKeyX7:
+        column: record_key_x7
+        type: Int
+        nullable: false
+      displayCaptionX7:
+        column: display_caption_x7
+        type: String
+        nullable: false
+
+roots:
+  archivedRecordsX7:
+    type: VaultRecordX7
+    operation: connection
+    pagination:
+      mode: relay
+      defaultPageSize: 7
+      maxPageSize: 19
+      totalCount: exact
+      cursor:
+        path: recordKeyX7
+        column: record_key_x7
+        direction: asc
+        tieBreaker: record_key_x7
+    sortPaths:
+      recordKeyX7:
+        column: record_key_x7
+        path: recordKeyX7
+        direction: asc
+        tieBreaker: record_key_x7

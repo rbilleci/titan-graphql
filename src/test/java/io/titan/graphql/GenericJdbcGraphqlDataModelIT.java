@@ -90,8 +90,8 @@ class GenericJdbcGraphqlDataModelIT {
 
         try (Connection connection = dataSource.getConnection(); Statement statement = connection.createStatement()) {
             statement.executeUpdate("UPDATE commerce.customers SET name = 'Contoso' WHERE id = 7");
-            statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference) "
-                    + "VALUES (72, 7, 'CT-003')");
+            statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference, status) "
+                    + "VALUES (72, 7, 'CT-003', 'OPEN')");
         }
 
         GraphqlExecution changed = execute(runtime);
@@ -142,25 +142,26 @@ class GenericJdbcGraphqlDataModelIT {
             statement.execute("DROP TABLE IF EXISTS commerce.inventory_items");
             statement.execute("DROP TABLE IF EXISTS commerce.api_clients");
             statement.execute("DROP TABLE IF EXISTS commerce.countries");
-            statement.execute("CREATE TABLE commerce.customers (id BIGINT PRIMARY KEY, name VARCHAR(120) NOT NULL, "
+            statement.execute("CREATE TABLE commerce.customers (id BIGINT PRIMARY KEY, sort_rank BIGINT NOT NULL, tenant_key VARCHAR(80) NOT NULL, name VARCHAR(120) NOT NULL, "
                     + "active BOOLEAN NOT NULL)");
             statement.execute("CREATE TABLE commerce.orders (id BIGINT PRIMARY KEY, customer_id BIGINT NOT NULL, "
-                    + "reference VARCHAR(120) NOT NULL, FOREIGN KEY (customer_id) REFERENCES commerce.customers(id))");
+                    + "reference VARCHAR(120) NOT NULL, status VARCHAR(24) NOT NULL, "
+                    + "FOREIGN KEY (customer_id) REFERENCES commerce.customers(id))");
             statement.execute("CREATE TABLE commerce.countries (code VARCHAR(8) PRIMARY KEY, "
                     + "name VARCHAR(120) NOT NULL)");
             statement.execute("CREATE TABLE commerce.api_clients (id "
                     + (target == Target.POSTGRESQL ? "UUID" : "CHAR(36)")
-                    + " PRIMARY KEY, label VARCHAR(120) NOT NULL)");
+                    + " PRIMARY KEY, sort_rank BIGINT NOT NULL, label VARCHAR(120) NOT NULL)");
             statement.execute("CREATE TABLE commerce.inventory_items (warehouse_code VARCHAR(16) NOT NULL, "
                     + "sku VARCHAR(40) NOT NULL, quantity INTEGER NOT NULL, "
                     + "PRIMARY KEY (warehouse_code, sku))");
-            statement.executeUpdate("INSERT INTO commerce.customers (id, name, active) "
-                    + "VALUES (7, 'Northwind', true), (8, 'Adventure Works', false)");
-            statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference) VALUES "
-                    + "(70, 7, 'NW-001'), (71, 7, 'NW-002')");
+            statement.executeUpdate("INSERT INTO commerce.customers (id, sort_rank, tenant_key, name, active) "
+                    + "VALUES (7, 10, 'tenant-a', 'Northwind', true), (8, 10, 'tenant-b', 'Adventure Works', false)");
+            statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference, status) VALUES "
+                    + "(70, 7, 'NW-001', 'OPEN'), (71, 7, 'NW-002', 'CLOSED')");
             statement.executeUpdate("INSERT INTO commerce.countries (code, name) VALUES ('NL', 'Netherlands')");
-            statement.executeUpdate("INSERT INTO commerce.api_clients (id, label) VALUES ('"
-                    + CLIENT_ID + "', 'public-client')");
+            statement.executeUpdate("INSERT INTO commerce.api_clients (id, sort_rank, label) VALUES ('"
+                    + CLIENT_ID + "', 7, 'public-client')");
             statement.executeUpdate("INSERT INTO commerce.inventory_items "
                     + "(warehouse_code, sku, quantity) VALUES ('AMS', 'TG-42', 17)");
         }

@@ -60,13 +60,84 @@ public final class TitanGraphqlModelDocumentJson {
                         .stream()
                         .map(TitanGraphqlModelDocumentJson::normalizeType)
                         .toList(),
+                sorted(document.interfaces(), Comparator.comparing(TitanGraphqlInterfaceDocument::name))
+                        .stream()
+                        .map(TitanGraphqlModelDocumentJson::normalizeInterface)
+                        .toList(),
+                sorted(document.unions(), Comparator.comparing(TitanGraphqlUnionDocument::name))
+                        .stream()
+                        .map(TitanGraphqlModelDocumentJson::normalizeUnion)
+                        .toList(),
+                sorted(document.enums(), Comparator.comparing(TitanGraphqlEnumDocument::name))
+                        .stream()
+                        .map(TitanGraphqlModelDocumentJson::normalizeEnum)
+                        .toList(),
+                sorted(document.inputObjects(), Comparator.comparing(TitanGraphqlInputObjectDocument::name))
+                        .stream()
+                        .map(TitanGraphqlModelDocumentJson::normalizeInputObject)
+                        .toList(),
+                sorted(document.directives(), Comparator.comparing(TitanGraphqlDirectiveDocument::name))
+                        .stream()
+                        .map(TitanGraphqlModelDocumentJson::normalizeDirective)
+                        .toList(),
                 sorted(document.policies(), Comparator.comparing(TitanGraphqlPolicyDocument::name))
                         .stream()
                         .map(TitanGraphqlModelDocumentJson::normalizePolicy)
                         .toList(),
+                sorted(document.mutations(), Comparator.comparing(TitanGraphqlMutationDocument::name))
+                        .stream()
+                        .map(TitanGraphqlModelDocumentJson::normalizeMutation)
+                        .toList(),
                 sorted(document.contextFilters(), Comparator.comparing(TitanGraphqlContextFilterDocument::name)),
                 document.artifacts(),
                 normalizeDeployment(document.deployment())
+        );
+    }
+
+    private static TitanGraphqlDirectiveDocument normalizeDirective(
+            TitanGraphqlDirectiveDocument directive
+    ) {
+        return new TitanGraphqlDirectiveDocument(
+                directive.name(),
+                directive.description(),
+                sorted(directive.locations(), Comparator.comparing(Enum::name)),
+                directive.behavior()
+        );
+    }
+
+    private static TitanGraphqlInputObjectDocument normalizeInputObject(
+            TitanGraphqlInputObjectDocument inputObject
+    ) {
+        return new TitanGraphqlInputObjectDocument(
+                inputObject.name(),
+                inputObject.description(),
+                sorted(inputObject.fields(), Comparator.comparing(
+                        TitanGraphqlInputObjectDocument.InputField::name))
+        );
+    }
+
+    private static TitanGraphqlEnumDocument normalizeEnum(TitanGraphqlEnumDocument enumType) {
+        return new TitanGraphqlEnumDocument(
+                enumType.name(),
+                sortedStrings(enumType.values()),
+                sorted(enumType.valueMetadata(), Comparator.comparing(
+                        TitanGraphqlEnumDocument.EnumValueMetadata::name))
+        );
+    }
+
+    private static TitanGraphqlMutationDocument normalizeMutation(TitanGraphqlMutationDocument mutation) {
+        return new TitanGraphqlMutationDocument(
+                mutation.name(),
+                mutation.operation(),
+                mutation.type(),
+                sorted(mutation.arguments(), Comparator.comparing(
+                        TitanGraphqlMutationDocument.MutationDocumentArgument::name)),
+                mutation.input(),
+                sorted(mutation.inputBindings(), Comparator.comparing(
+                        TitanGraphqlMutationDocument.MutationDocumentInputBinding::name)),
+                sortedStrings(mutation.policies()),
+                sorted(mutation.payload(), Comparator.comparing(
+                        TitanGraphqlMutationDocument.MutationDocumentPayloadField::name))
         );
     }
 
@@ -114,7 +185,8 @@ public final class TitanGraphqlModelDocumentJson {
                         .toList(),
                 sorted(root.sortPaths(), Comparator.comparing(TitanGraphqlRootDocument.RootDocumentSortPath::name)),
                 sortedStrings(root.contextFilters()),
-                sortedStrings(root.policies())
+                sortedStrings(root.policies()),
+                root.outputType()
         );
     }
 
@@ -146,8 +218,20 @@ public final class TitanGraphqlModelDocumentJson {
                         .stream()
                         .map(TitanGraphqlModelDocumentJson::normalizeRelation)
                         .toList(),
-                sortedStrings(type.policies())
+                sortedStrings(type.policies()),
+                type.description(),
+                sortedStrings(type.interfaces())
         );
+    }
+
+    private static TitanGraphqlInterfaceDocument normalizeInterface(TitanGraphqlInterfaceDocument type) {
+        return new TitanGraphqlInterfaceDocument(
+                type.name(), type.description(),
+                sorted(type.fields(), Comparator.comparing(TitanGraphqlInterfaceDocument.InterfaceField::name)));
+    }
+
+    private static TitanGraphqlUnionDocument normalizeUnion(TitanGraphqlUnionDocument type) {
+        return new TitanGraphqlUnionDocument(type.name(), type.description(), sortedStrings(type.members()));
     }
 
     private static TitanGraphqlFieldDocument normalizeField(TitanGraphqlFieldDocument field) {
@@ -159,7 +243,11 @@ public final class TitanGraphqlModelDocumentJson {
                 sortedStrings(field.policies()),
                 sortedStrings(field.filterOperators()),
                 field.sort(),
-                normalizeComputed(field.computed())
+                normalizeComputed(field.computed()),
+                field.idStorage(),
+                field.description(),
+                field.deprecated(),
+                field.deprecationReason()
         );
     }
 
@@ -191,7 +279,10 @@ public final class TitanGraphqlModelDocumentJson {
                 relation.pagination(),
                 sorted(relation.arguments(), Comparator.comparing(TitanGraphqlRelationDocument.RelationDocumentArgument::name)),
                 sorted(relation.sortPaths(), Comparator.comparing(TitanGraphqlRelationDocument.RelationDocumentSortPath::name)),
-                sortedStrings(relation.policies())
+                sortedStrings(relation.policies()),
+                relation.selectionHopBudget(),
+                relation.selectable(),
+                relation.batchable()
         );
     }
 

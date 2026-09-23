@@ -1,19 +1,20 @@
 # titan-graphql
 
 Titan GraphQL is a schema-driven GraphQL layer built around Titan. Titan codegen discovers
-database structure, a reviewed projection document controls exposure and policy, and a generic
-executor turns validated selections into parameterized Titan DSL reads. The project also
-stress-tests Titan by transpiling its bounded GraphQL kernel into database-resident functions.
+database structure, a reviewed projection document controls exposure and policy, and a shared
+GraphQL engine plus generated schema bindings are transpiled into database-resident routines.
 
 This project is licensed under [GPL-3.0-or-later](LICENSE). It is a pre-1.0 library and reference service;
 read [SECURITY.md](SECURITY.md) before exposing either HTTP endpoint.
 
 The product goal is to put GraphQL over supported schemas without handwritten read resolvers or
-queries. Custom mutations remain explicit application code. Model-driven database read carriers
-compile and install in generated-only production packages; routing validated GraphQL plans through
-those carriers is the fail-closed default `compiled` runtime. Two independently generated packages
-prove that route against unrelated blog and commerce models. The fixed demo kernel is isolated in
-an optional legacy equivalence package. Unsupported plan shapes fail closed and are listed below.
+queries. Custom mutations are explicit model-registered database operations. The default
+`database` runtime forwards each complete request once to a bound, generated whole-request package;
+it does not load a JVM GraphQL parser, planner, resolver, or JSON assembler. Two independently
+generated packages prove that route against unrelated blog and commerce models. Legacy runtime
+paths remain only as temporary migration/reference code and are tracked for removal in the plan.
+The standard serving configuration rejects them even if `execution.mode` is overridden; only an
+explicit test/reference configuration may set `titan.graphql.allow-legacy-execution-modes=true`.
 
 New developers should start with [docs/getting-started.md](docs/getting-started.md).
 
@@ -21,13 +22,22 @@ New developers should start with [docs/getting-started.md](docs/getting-started.
 
 The full pipeline is automated and green on both supported dialects:
 
-- **Serve a reviewed model generically:** `titan.graphql.execution.mode=jdbc` loads a
+- **Serve a reviewed model generically (reference only):** with the explicit
+  `titan.graphql.allow-legacy-execution-modes=true` test/reference opt-in,
+  `titan.graphql.execution.mode=jdbc` loads a
   `titan.graphql.yaml` projection and executes supported point reads, direct relations, and
   forward collection pages against live data. Declared fail-closed context predicates are
   applied in SQL before client filters. Titan DSL renders bound SQL and Titan's JDBC
   runtime executes it. A customers/orders integration fixture proves the same runtime on
   PostgreSQL and MySQL and verifies that database changes appear immediately without generated
   or handwritten schema-specific execution code.
+- **Exercise the full document in the database:** `titan.graphql.execution.mode=database` is the
+  fail-closed default. It requires a reviewed model, its exact bound generated
+  whole-request package, and an explicit PostgreSQL or MySQL dialect; the HTTP resource forwards
+  the complete document and trusted context once without a JVM GraphQL parser/planner fallback.
+  The unrelated commerce package is generated, installed, bound, and served through that JAX-RS
+  resource on both dialects. The broader database-engine feature and legacy-removal gates in
+  `docs/database-engine-execution-plan.md` remain incomplete.
 - **Start from Titan codegen metadata:** `TitanGraphqlSchemaInference` consumes the
   `build/titan/schema.json` emitted by `titanIntrospect`, preserving tables, scalar columns,
   keys, and foreign-key relation candidates in a fail-closed review draft. Public roots and
@@ -40,7 +50,8 @@ The full pipeline is automated and green on both supported dialects:
   for PostgreSQL and MySQL; live tests prove that they read current rows, expose a reviewed
   computed expression, enforce the first fail-closed context predicate, and expose a protected
   scalar only through a reviewed SQL policy guard. See [docs/generated-routines.md](docs/generated-routines.md).
-- **Execute GraphQL through generated routines:** `titan.graphql.execution.mode=compiled` uses the
+- **Legacy compiled reference path:** with that same explicit test/reference opt-in,
+  `titan.graphql.execution.mode=compiled` uses the
   generic parser, validator, and planner, resolves generated entry points from the verified package
   inventory, and normalizes PostgreSQL JSONB functions and MySQL result-set procedures behind one
   data model. The dual-dialect live proof covers aliases, a point root, a direct relation, computed
@@ -92,12 +103,13 @@ The full pipeline is automated and green on both supported dialects:
   real `titanPackage`/`titanVerifyInstall` outputs (no fixture strings, no placeholder
   metadata, no kernel reflection); deployment activation is gated on a passed install
   verification, and rollback scripts are discovered and surfaced.
-- **Retain the historical database equivalence proof (opt-in)**: with
-  `titan.graphql.execution.mode=sql` (production default `compiled`), the Quarkus `/graphql`
+- **Retain the historical database equivalence proof (reference-only opt-in)**: with
+  `titan.graphql.execution.mode=sql` and
+  `titan.graphql.allow-legacy-execution-modes=true` (a transitional Quarkus reference mode), the Quarkus `/graphql`
   endpoint answers every request by calling the
   DEPLOYED stored functions over the configured datasource instead of the Java kernel —
   the proof as a demonstrable runtime. Every response names its engine
-  (`X-Titan-Execution-Mode`, plus the package fingerprint in compiled/SQL modes), execution
+  (`X-Titan-Execution-Mode`, plus the package fingerprint in compiled/SQL/database modes), execution
   telemetry lands in the serving database's `titan_runtime.telemetry`, and an
   unreachable/undeployed database answers a descriptive 503 GraphQL error — never a
   silent fallback to Java mode. Demo walkthrough: see
@@ -126,7 +138,8 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   roots, direct one/many relations from point results, scalar and context filters, and the first
   forward page of root Relay connections. Cursor continuation, backward pagination, relation
   connections, computed SQL expressions, and batched relations beneath collection roots fail explicitly.
-  Production deployments should use compiled mode; JDBC does not inherit compiled-mode coverage.
+  Production deployments must use the standalone database HTTP ZIP; JDBC does not inherit
+  database-engine coverage.
 - **Compiled mode is generic but still bounded; legacy SQL mode is demo-specific.** A reviewed model
   now becomes Titan-compiled point, page, relation, computed-field, and attestation routines, and
   `compiled` mode executes supported GraphQL plans through those inventory-resolved routines. The
@@ -146,7 +159,7 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   beneath collection roots use fixed generated batch arities and do not issue one query per
   parent. Nested collection paths recursively batch once per selected relation level within the
   configured selection-depth budget. The current relation connection window is assembled from the ordered compiled carrier
-  result; reviewed local integer equality arguments are applied inside the carrier before counts
+  result; reviewed local integer or declared-enum equality arguments are applied inside the carrier before counts
   and windows, while SQL-side per-parent limiting remains an optimization boundary. A separately packaged
   unrelated commerce model proves the same path independently of the demo package. The demo
   whole-request kernel is already absent from production dispatch and retained only as compiler
@@ -164,8 +177,9 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   `test` and dev), so durable-JDBC claims are scoped to jdbc mode. Two recorded routine-design
   gaps are known and non-blocking (adapter-side `activate_deployment` typed preconditions; the
   import routine's collapsed hash column).
-- **SQL serving mode is opt-in and bounded.** The default `/graphql` engine is now the generic,
-  fail-closed `compiled` runtime; `titan.graphql.execution.mode=sql` serves the same demo
+- **SQL serving mode is reference-only and bounded.** The root Quarkus `/graphql` process is a transitional
+  compatibility seam; `titan.graphql.execution.mode=sql` together with the explicit
+  `titan.graphql.allow-legacy-execution-modes=true` test/reference opt-in serves the same demo
   schema and entry points from the deployed stored functions — no new GraphQL features, and
   the `/admin/graphql` management plane always executes in Java (only the application kernel
   is transpiled). Plan-level execution (`executeWithPlan`) stays a Java-mode surface.
@@ -214,6 +228,9 @@ The minimal mutation runtime lowering boundary is documented in
 [docs/mutation-runtime-lowering-boundary.md](docs/mutation-runtime-lowering-boundary.md).
 Explicit application mutation registration is documented in
 [docs/custom-mutations.md](docs/custom-mutations.md).
+The standalone database-only serving artifact and its transport contract are documented in
+[docs/database-http-frontend.md](docs/database-http-frontend.md); the executable migration plan is
+[docs/database-engine-execution-plan.md](docs/database-engine-execution-plan.md).
 
 This repo vendors pinned Titan sources as Git submodules. Initialize them with
 `git submodule update --init --recursive` before building.

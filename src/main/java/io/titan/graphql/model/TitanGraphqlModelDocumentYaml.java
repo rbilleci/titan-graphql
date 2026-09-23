@@ -23,7 +23,13 @@ public final class TitanGraphqlModelDocumentYaml {
             "modules",
             "roots",
             "types",
+            "interfaces",
+            "unions",
+            "enums",
+            "inputObjects",
+            "directives",
             "policies",
+            "mutations",
             "contextFilters",
             "artifacts",
             "deployment"
@@ -62,7 +68,13 @@ public final class TitanGraphqlModelDocumentYaml {
                     modules(root.path("modules")),
                     roots(root.path("roots")),
                     types(root.path("types")),
+                    interfaces(root.path("interfaces")),
+                    unions(root.path("unions")),
+                    enums(root.path("enums")),
+                    inputObjects(root.path("inputObjects")),
+                    directives(root.path("directives")),
                     policies(root.path("policies")),
+                    mutations(root.path("mutations")),
                     contextFilters(root.path("contextFilters")),
                     artifacts(root.path("artifacts")),
                     deployment(root.path("deployment"))
@@ -143,7 +155,8 @@ public final class TitanGraphqlModelDocumentYaml {
                     rootFilterPaths(value.path("filterPaths")),
                     rootSortPaths(value.path("sortPaths")),
                     stringList(value.path("contextFilters")),
-                    stringList(value.path("policies"))
+                    stringList(value.path("policies")),
+                    text(value, "outputType")
             ));
         });
         return roots;
@@ -189,7 +202,8 @@ public final class TitanGraphqlModelDocumentYaml {
                 enumValue(TitanGraphqlRootDocument.RootDocumentArgumentKind.class, defaultText(text(node, "kind"), canonical(defaultKind.name())), "root.argument.kind"),
                 text(node, "column"),
                 text(node, "path"),
-                intValue(node, "hops")
+                intValue(node, "hops"),
+                text(node, "defaultValue")
         );
     }
 
@@ -200,7 +214,8 @@ public final class TitanGraphqlModelDocumentYaml {
                 enumValue(TitanGraphqlRootDocument.RootDocumentArgumentKind.class, text(node, "kind"), "root.argument.kind"),
                 text(node, "column"),
                 text(node, "path"),
-                intValue(node, "hops")
+                intValue(node, "hops"),
+                text(node, "defaultValue")
         );
     }
 
@@ -241,9 +256,97 @@ public final class TitanGraphqlModelDocumentYaml {
                 text(entry.getValue(), "primaryKey"),
                 fieldsDocuments(entry.getValue().path("fields")),
                 relations(entry.getValue().path("relations")),
-                stringList(entry.getValue().path("policies"))
+                stringList(entry.getValue().path("policies")),
+                text(entry.getValue(), "description"),
+                stringList(entry.getValue().path("interfaces"))
         )));
         return types;
+    }
+
+    private static List<TitanGraphqlInterfaceDocument> interfaces(JsonNode node) {
+        List<TitanGraphqlInterfaceDocument> interfaces = new ArrayList<>();
+        fields(node).forEach(entry -> {
+            List<TitanGraphqlInterfaceDocument.InterfaceField> interfaceFields = new ArrayList<>();
+            fields(entry.getValue().path("fields")).forEach(field -> interfaceFields.add(
+                    new TitanGraphqlInterfaceDocument.InterfaceField(
+                            field.getKey(),
+                            text(field.getValue(), "type"),
+                            text(field.getValue(), "description"),
+                            boolValue(field.getValue(), "deprecated"),
+                            text(field.getValue(), "deprecationReason")
+                    )));
+            interfaces.add(new TitanGraphqlInterfaceDocument(
+                    entry.getKey(), text(entry.getValue(), "description"), interfaceFields));
+        });
+        return interfaces;
+    }
+
+    private static List<TitanGraphqlUnionDocument> unions(JsonNode node) {
+        List<TitanGraphqlUnionDocument> unions = new ArrayList<>();
+        fields(node).forEach(entry -> unions.add(new TitanGraphqlUnionDocument(
+                entry.getKey(), text(entry.getValue(), "description"),
+                stringList(entry.getValue().path("members")))));
+        return unions;
+    }
+
+    private static List<TitanGraphqlEnumDocument> enums(JsonNode node) {
+        List<TitanGraphqlEnumDocument> enums = new ArrayList<>();
+        fields(node).forEach(entry -> enums.add(new TitanGraphqlEnumDocument(
+                entry.getKey(),
+                stringList(entry.getValue().path("values")),
+                enumValueMetadata(entry.getValue().path("valueMetadata"))
+        )));
+        return enums;
+    }
+
+    private static List<TitanGraphqlDirectiveDocument> directives(JsonNode node) {
+        List<TitanGraphqlDirectiveDocument> directives = new ArrayList<>();
+        fields(node).forEach(entry -> {
+            List<TitanGraphqlDirectiveDocument.ExecutableLocation> locations = new ArrayList<>();
+            for (String location : stringList(entry.getValue().path("locations"))) {
+                locations.add(enumValue(TitanGraphqlDirectiveDocument.ExecutableLocation.class,
+                        location, "directive.location"));
+            }
+            directives.add(new TitanGraphqlDirectiveDocument(
+                    entry.getKey(),
+                    text(entry.getValue(), "description"),
+                    locations,
+                    enumValue(TitanGraphqlDirectiveDocument.Behavior.class,
+                            text(entry.getValue(), "behavior"), "directive.behavior")
+            ));
+        });
+        return directives;
+    }
+
+    private static List<TitanGraphqlInputObjectDocument> inputObjects(JsonNode node) {
+        List<TitanGraphqlInputObjectDocument> inputObjects = new ArrayList<>();
+        fields(node).forEach(entry -> {
+            List<TitanGraphqlInputObjectDocument.InputField> inputFields = new ArrayList<>();
+            fields(entry.getValue().path("fields")).forEach(field -> inputFields.add(
+                    new TitanGraphqlInputObjectDocument.InputField(
+                            field.getKey(),
+                            text(field.getValue(), "type"),
+                            text(field.getValue(), "description"),
+                            text(field.getValue(), "defaultValue"),
+                            boolValue(field.getValue(), "deprecated"),
+                            text(field.getValue(), "deprecationReason")
+                    )
+            ));
+            inputObjects.add(new TitanGraphqlInputObjectDocument(
+                    entry.getKey(), text(entry.getValue(), "description"), inputFields));
+        });
+        return inputObjects;
+    }
+
+    private static List<TitanGraphqlEnumDocument.EnumValueMetadata> enumValueMetadata(JsonNode node) {
+        List<TitanGraphqlEnumDocument.EnumValueMetadata> metadata = new ArrayList<>();
+        fields(node).forEach(entry -> metadata.add(new TitanGraphqlEnumDocument.EnumValueMetadata(
+                entry.getKey(),
+                text(entry.getValue(), "description"),
+                boolValue(entry.getValue(), "deprecated"),
+                text(entry.getValue(), "deprecationReason")
+        )));
+        return metadata;
     }
 
     private static List<TitanGraphqlFieldDocument> fieldsDocuments(JsonNode node) {
@@ -261,7 +364,12 @@ public final class TitanGraphqlModelDocumentYaml {
                 fieldPolicies(node),
                 stringList(node.path("filter").path("operators")),
                 fieldSort(node.path("sort"), name),
-                computed(node)
+                computed(node),
+                enumValue(TitanGraphqlFieldDocument.FieldDocumentIdStorage.class, text(node, "idStorage"),
+                        "field.idStorage"),
+                text(node, "description"),
+                boolValue(node, "deprecated"),
+                text(node, "deprecationReason")
         );
     }
 
@@ -321,7 +429,10 @@ public final class TitanGraphqlModelDocumentYaml {
                     relationPagination(capabilities),
                     relationArguments(value.path("arguments")),
                     relationSortPaths(value.path("sortPaths")),
-                    stringList(value.path("policies"))
+                    stringList(value.path("policies")),
+                    optionalIntValue(capabilities, "selectionHopBudget"),
+                    !capabilities.has("selectable") || boolValue(capabilities, "selectable"),
+                    boolValue(capabilities, "batchable")
             ));
         });
         return relations;
@@ -339,6 +450,10 @@ public final class TitanGraphqlModelDocumentYaml {
         );
     }
 
+    private static Integer optionalIntValue(JsonNode node, String field) {
+        return missing(node) || missing(node.path(field)) ? null : intValue(node, field);
+    }
+
     private static List<TitanGraphqlRelationDocument.RelationDocumentArgument> relationArguments(JsonNode node) {
         List<TitanGraphqlRelationDocument.RelationDocumentArgument> arguments = new ArrayList<>();
         fields(node).forEach(entry -> arguments.add(new TitanGraphqlRelationDocument.RelationDocumentArgument(
@@ -347,7 +462,8 @@ public final class TitanGraphqlModelDocumentYaml {
                 enumValue(TitanGraphqlRelationDocument.RelationDocumentArgumentKind.class, text(entry.getValue(), "kind"), "relation.argument.kind"),
                 text(entry.getValue(), "column"),
                 text(entry.getValue(), "path"),
-                intValue(entry.getValue(), "hops")
+                intValue(entry.getValue(), "hops"),
+                text(entry.getValue(), "defaultValue")
         )));
         return arguments;
     }
@@ -377,6 +493,53 @@ public final class TitanGraphqlModelDocumentYaml {
                 policyExpression(entry.getValue().path("expression"))
         )));
         return policies;
+    }
+
+    private static List<TitanGraphqlMutationDocument> mutations(JsonNode node) {
+        List<TitanGraphqlMutationDocument> mutations = new ArrayList<>();
+        fields(node).forEach(entry -> {
+            JsonNode value = entry.getValue();
+            List<TitanGraphqlMutationDocument.MutationDocumentArgument> arguments = new ArrayList<>();
+            fields(value.path("arguments")).forEach(argument -> arguments.add(
+                    new TitanGraphqlMutationDocument.MutationDocumentArgument(
+                            argument.getKey(),
+                            text(argument.getValue(), "type"),
+                            text(argument.getValue(), "column"),
+                            boolValue(argument.getValue(), "key"),
+                            text(argument.getValue(), "defaultValue")
+                    )));
+            List<TitanGraphqlMutationDocument.MutationDocumentPayloadField> payload = new ArrayList<>();
+            fields(value.path("payload")).forEach(field -> payload.add(
+                    new TitanGraphqlMutationDocument.MutationDocumentPayloadField(
+                            field.getKey(), text(field.getValue(), "argument")
+                    )));
+            JsonNode inputNode = value.path("input");
+            TitanGraphqlMutationDocument.MutationDocumentInput input = missing(inputNode) ? null
+                    : new TitanGraphqlMutationDocument.MutationDocumentInput(
+                            text(inputNode, "name"), text(inputNode, "type"),
+                            text(inputNode, "defaultValue"));
+            List<TitanGraphqlMutationDocument.MutationDocumentInputBinding> inputBindings = new ArrayList<>();
+            fields(value.path("inputBindings")).forEach(binding -> inputBindings.add(
+                    new TitanGraphqlMutationDocument.MutationDocumentInputBinding(
+                            binding.getKey(),
+                            text(binding.getValue(), "path"),
+                            text(binding.getValue(), "type"),
+                            text(binding.getValue(), "column"),
+                            boolValue(binding.getValue(), "key")
+                    )));
+            mutations.add(new TitanGraphqlMutationDocument(
+                    entry.getKey(),
+                    enumValue(TitanGraphqlMutationDocument.MutationDocumentOperation.class,
+                            text(value, "operation"), "mutation.operation"),
+                    text(value, "type"),
+                    arguments,
+                    input,
+                    inputBindings,
+                    stringList(value.path("policies")),
+                    payload
+            ));
+        });
+        return mutations;
     }
 
     private static String policyExpression(JsonNode node) {

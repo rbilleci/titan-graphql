@@ -63,6 +63,24 @@ public final class DemoBlogSqlDeployment {
     }
 
     /**
+     * Deploys the generated database-resident whole-request engine used by the database HTTP
+     * cutover test. This is intentionally separate from {@link #deployPackagedKernel(Connection)}:
+     * the latter is the historical SQL-mode package and must not accidentally satisfy a test of
+     * the new manifest-bound entry point.
+     */
+    public static void deployPackagedDatabaseEngine(Connection connection) throws IOException, SQLException {
+        executeScript(connection, Path.of("ddl", "postgres", "titan_graphql_postgres.sql"));
+        Path migrationsDir = Path.of(System.getProperty(
+                "titan.graphql.database-engine.migrations.dir",
+                "build/generated/proofs/database-engine/package/postgresql"));
+        executeScript(connection, migrationsDir.resolve("R__titan_010_runtime.sql"));
+        executeScript(connection, migrationsDir.resolve("R__titan_020_routines.sql"));
+        try (Statement statement = connection.createStatement()) {
+            statement.execute(FIXTURE_SEED_SQL);
+        }
+    }
+
+    /**
      * MySQL leg (completion plan W5.2): deploys the MySQL demo DDL
      * ({@code ddl/mysql/titan_graphql_mysql.sql}), the packaged MySQL migrations, and the fixture
      * seed onto a live MySQL connection.
@@ -79,6 +97,13 @@ public final class DemoBlogSqlDeployment {
      */
     public static void deployPackagedKernelMySql(Connection connection) throws IOException, SQLException {
         executeScriptStatementWise(connection, Path.of("ddl", "mysql", "titan_graphql_mysql.sql"));
+        // Runtime helpers in R__titan_010_runtime.sql are intentionally unqualified and must be
+        // created in the same `public` database as the generated routines. The test connection
+        // defaults to the harness database, so make the package-install target explicit before
+        // applying either migration.
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("USE public");
+        }
         Path migrationsDir = Path.of(System.getProperty(
                 "titan.graphql.migrations.dir.mysql",
                 "build/generated/migrations/titan/mysql"));

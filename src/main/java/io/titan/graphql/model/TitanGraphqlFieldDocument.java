@@ -10,7 +10,11 @@ public record TitanGraphqlFieldDocument(
         List<String> policies,
         List<String> filterOperators,
         Sort sort,
-        Computed computed
+        Computed computed,
+        FieldDocumentIdStorage idStorage,
+        String description,
+        boolean deprecated,
+        String deprecationReason
 ) {
     public TitanGraphqlFieldDocument {
         name = ModelDocumentSupport.requireText(name, "field.name");
@@ -18,6 +22,42 @@ public record TitanGraphqlFieldDocument(
         column = ModelDocumentSupport.textOrEmpty(column);
         policies = ModelDocumentSupport.listOrEmpty(policies);
         filterOperators = ModelDocumentSupport.listOrEmpty(filterOperators);
+        idStorage = "ID".equals(type) && idStorage == null ? FieldDocumentIdStorage.INTEGRAL : idStorage;
+        description = ModelDocumentSupport.textOrEmpty(description);
+        deprecationReason = ModelDocumentSupport.textOrEmpty(deprecationReason);
+    }
+
+    /** Compatibility constructor for fields authored before output metadata was retained. */
+    public TitanGraphqlFieldDocument(
+            String name,
+            String type,
+            String column,
+            boolean nullable,
+            List<String> policies,
+            List<String> filterOperators,
+            Sort sort,
+            Computed computed,
+            FieldDocumentIdStorage idStorage
+    ) {
+        this(name, type, column, nullable, policies, filterOperators, sort, computed, idStorage,
+                "", false, "");
+    }
+
+    /**
+     * Compatibility constructor for existing v1alpha1 documents. An ID without an explicit
+     * storage declaration retains the original integral-column behavior.
+     */
+    public TitanGraphqlFieldDocument(
+            String name,
+            String type,
+            String column,
+            boolean nullable,
+            List<String> policies,
+            List<String> filterOperators,
+            Sort sort,
+            Computed computed
+    ) {
+        this(name, type, column, nullable, policies, filterOperators, sort, computed, null);
     }
 
     public static TitanGraphqlFieldDocument column(
@@ -27,7 +67,8 @@ public record TitanGraphqlFieldDocument(
             List<String> filterOperators,
             Sort sort
     ) {
-        return new TitanGraphqlFieldDocument(name, type, column, false, List.of(), filterOperators, sort, null);
+        return new TitanGraphqlFieldDocument(name, type, column, false, List.of(), filterOperators, sort, null,
+                null, "", false, "");
     }
 
     // Renamed from ExpressionKind under TG-BLK-005 (closed by titan 705180d — SQL names now qualify by
@@ -59,6 +100,12 @@ public record TitanGraphqlFieldDocument(
     public enum FieldDocumentNullOrdering {
         FIRST,
         LAST
+    }
+
+    /** Physical storage for a GraphQL {@code ID} field. */
+    public enum FieldDocumentIdStorage {
+        INTEGRAL,
+        STRING
     }
 
     public record Sort(

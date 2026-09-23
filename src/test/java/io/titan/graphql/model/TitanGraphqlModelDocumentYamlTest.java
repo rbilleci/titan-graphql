@@ -46,6 +46,9 @@ final class TitanGraphqlModelDocumentYamlTest {
         assertEquals(TitanGraphqlRelationDocument.RelationDocumentCardinality.MANY, comments.cardinality());
         assertEquals(TitanGraphqlRelationDocument.RelationDocumentPaginationMode.RELAY, comments.pagination().mode());
         assertTrue(comments.pagination().totalCount());
+        assertEquals(2, comments.selectionHopBudget());
+        assertTrue(comments.selectable());
+        assertTrue(comments.batchable());
         assertEquals(4, comments.arguments().size());
 
         assertEquals(TitanGraphqlPolicyDocument.Effect.DENY, document.policies().get(0).effect());
@@ -105,6 +108,228 @@ final class TitanGraphqlModelDocumentYamlTest {
         );
 
         assertEquals("UNKNOWN_ENUM_VALUE", error.code());
+    }
+
+    @Test
+    void parsesRegisteredConditionalDirectivesIntoCanonicalIdentity() {
+        TitanGraphqlModelDocument document = TitanGraphqlModelDocumentYaml.parse("""
+                apiVersion: titan.graphql/v1alpha1
+                kind: ProjectionModel
+                metadata: { name: directives-model }
+                roots: {}
+                types: {}
+                directives:
+                  visible:
+                    description: Conditionally expose this selection.
+                    behavior: includeIf
+                    locations: [INLINE_FRAGMENT, FIELD, FRAGMENT_SPREAD]
+                """);
+
+        assertEquals(1, document.directives().size());
+        TitanGraphqlDirectiveDocument directive = document.directives().get(0);
+        assertEquals("visible", directive.name());
+        assertEquals(TitanGraphqlDirectiveDocument.Behavior.INCLUDE_IF, directive.behavior());
+        assertEquals(3, directive.locations().size());
+        String canonical = TitanGraphqlModelDocumentJson.canonicalJson(document);
+        assertTrue(canonical.contains("\"directives\":[{\"behavior\":\"INCLUDE_IF\""), canonical);
+        assertTrue(canonical.indexOf("FIELD") < canonical.indexOf("FRAGMENT_SPREAD"), canonical);
+    }
+
+    @Test
+    void parsesDeclaredSchemaEnumAndFieldReference() {
+        TitanGraphqlModelDocument document = TitanGraphqlModelDocumentYaml.parse("""
+                apiVersion: titan.graphql/v1alpha1
+                kind: ProjectionModel
+                metadata:
+                  name: enum-model
+                roots: {}
+                enums:
+                  CustomerStatus:
+                    values: [ACTIVE, INACTIVE, LEGACY]
+                    valueMetadata:
+                      ACTIVE:
+                        description: Customer can place orders.
+                      LEGACY:
+                        deprecated: true
+                        deprecationReason: Use INACTIVE.
+                types:
+                  Customer:
+                    fields:
+                      status:
+                        column: status
+                        type: CustomerStatus
+                        nullable: false
+                """);
+
+        assertEquals(1, document.enums().size());
+        assertEquals("CustomerStatus", document.enums().getFirst().name());
+        assertEquals(java.util.List.of("ACTIVE", "INACTIVE", "LEGACY"), document.enums().getFirst().values());
+        assertEquals(2, document.enums().getFirst().valueMetadata().size());
+        assertEquals("Customer can place orders.",
+                document.enums().getFirst().valueMetadata().getFirst().description());
+        assertTrue(document.enums().getFirst().valueMetadata().get(1).deprecated());
+        assertEquals("Use INACTIVE.", document.enums().getFirst().valueMetadata().get(1).deprecationReason());
+        assertEquals("CustomerStatus", document.types().getFirst().fields().getFirst().type());
+    }
+
+    @Test
+    void parsesAuthoredInputObjectsDefaultsAndMutationBindings() {
+        TitanGraphqlModelDocument document = TitanGraphqlModelDocumentYaml.parse("""
+                apiVersion: titan.graphql/v1alpha1
+                kind: ProjectionModel
+                metadata:
+                  name: input-model
+                roots: {}
+                inputObjects:
+                  RenameInput:
+                    description: Rename request.
+                    fields:
+                      id:
+                        type: Int!
+                      name:
+                        type: String!
+                        defaultValue: '"Default"'
+                mutations:
+                  rename:
+                    operation: update
+                    type: Customer
+                    input:
+                      name: input
+                      type: RenameInput
+                    inputBindings:
+                      id:
+                        path: id
+                        type: Int
+                        column: id
+                        key: true
+                      name:
+                        path: name
+                        type: String
+                        column: name
+                    payload:
+                      name:
+                        argument: name
+                types:
+                  Customer:
+                    table: customers
+                    fields:
+                      id:
+                        type: Int
+                        column: id
+                      name:
+                        type: String
+                        column: name
+                """);
+
+        assertEquals("RenameInput", document.inputObjects().getFirst().name());
+        assertEquals("\"Default\"",
+                document.inputObjects().getFirst().fields().get(1).defaultValue());
+        assertEquals("input", document.mutations().getFirst().input().name());
+        assertEquals("name", document.mutations().getFirst().inputBindings().get(1).path());
+        assertFalse(TitanGraphqlModelDocumentJson.semanticHash(document).isBlank());
+    }
+
+    @Test
+    void parsesDefaultsOnGeneratedFieldArguments() {
+        TitanGraphqlModelDocument document = TitanGraphqlModelDocumentYaml.parse("""
+                apiVersion: titan.graphql/v1alpha1
+                kind: ProjectionModel
+                metadata: { name: argument-defaults }
+                roots:
+                  customer:
+                    type: Customer
+                    operation: point
+                    argument:
+                      name: id
+                      type: Int
+                      column: id
+                      defaultValue: 7
+                mutations:
+                  rename:
+                    operation: update
+                    type: Customer
+                    arguments:
+                      id: { type: Int, column: id, key: true, defaultValue: 7 }
+                      name: { type: String, column: name, defaultValue: '\"Default, =; name\"' }
+                    payload:
+                      name: { argument: name }
+                types:
+                  Customer:
+                    fields:
+                      id: { type: Int, column: id }
+                      name: { type: String, column: name }
+                    relations:
+                      orders:
+                        target: Customer
+                        localColumn: id
+                        targetColumn: id
+                        arguments:
+                          id: { type: Int, kind: equals, column: id, defaultValue: 7 }
+                """);
+
+        assertEquals("7", document.roots().getFirst().argument().defaultValue());
+        assertEquals("\"Default, =; name\"",
+                document.mutations().getFirst().arguments().get(1).defaultValue());
+        assertEquals("7", document.types().getFirst().relations().getFirst()
+                .arguments().getFirst().defaultValue());
+        assertTrue(TitanGraphqlModelDocumentJson.canonicalJson(document).contains("defaultValue"));
+    }
+
+    @Test
+    void parsesAbstractOutputTypesAndPointRootBinding() {
+        TitanGraphqlModelDocument document = TitanGraphqlModelDocumentYaml.parse("""
+                apiVersion: titan.graphql/v1alpha1
+                kind: ProjectionModel
+                metadata:
+                  name: abstract-model
+                roots:
+                  customer:
+                    type: Customer
+                    outputType: Node
+                    operation: point
+                    argument:
+                      name: id
+                      type: Int
+                      column: id
+                interfaces:
+                  Node:
+                    description: An identifiable object.
+                    fields:
+                      id:
+                        type: Int!
+                        description: Stable identifier.
+                unions:
+                  SearchResult:
+                    description: Searchable objects.
+                    members: [Customer, Order]
+                types:
+                  Customer:
+                    description: A customer account.
+                    interfaces: [Node]
+                    fields:
+                      id:
+                        type: Int
+                        column: id
+                        description: Customer identifier.
+                        deprecated: true
+                        deprecationReason: Use nodeId.
+                  Order:
+                    interfaces: [Node]
+                    fields:
+                      id:
+                        type: Int
+                        column: id
+                """);
+
+        assertEquals("Node", document.roots().getFirst().outputType());
+        assertEquals("An identifiable object.", document.interfaces().getFirst().description());
+        assertEquals("Int!", document.interfaces().getFirst().fields().getFirst().type());
+        assertEquals(java.util.List.of("Customer", "Order"), document.unions().getFirst().members());
+        assertEquals(java.util.List.of("Node"), document.types().getFirst().interfaces());
+        assertEquals("Customer identifier.", document.types().getFirst().fields().getFirst().description());
+        assertTrue(document.types().getFirst().fields().getFirst().deprecated());
+        assertEquals("Use nodeId.", document.types().getFirst().fields().getFirst().deprecationReason());
+        assertFalse(TitanGraphqlModelDocumentJson.semanticHash(document).isBlank());
     }
 
     @Test

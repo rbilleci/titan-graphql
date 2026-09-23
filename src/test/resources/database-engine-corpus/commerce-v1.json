@@ -1,0 +1,825 @@
+{
+  "schemaVersion": "titan.graphql.database-engine-corpus/v1",
+  "model": "commerce@1",
+  "cases": [
+    {
+      "name": "named-operation-variables-aliases-and-multiple-roots",
+      "operationName": "Lookup",
+      "variables": "{\"customerId\":7,\"countryCode\":\"NL\"}",
+      "actorRole": "reader",
+      "query": "query Lookup($customerId: Int!, $countryCode: String!) { selected: customer(id: $customerId) { identifier: id displayName: name active rating verified } country(code: $countryCode) { code name } }",
+      "expected": {
+        "data": {
+          "selected": {
+            "identifier": 7,
+            "displayName": "Northwind",
+            "active": true,
+            "rating": 42,
+            "verified": null
+          },
+          "country": {
+            "code": "NL",
+            "name": "Netherlands"
+          }
+        }
+      }
+    },
+    {
+      "name": "fragments-directives-and-one-hop-relation",
+      "operationName": "Fragmented",
+      "variables": "{\"showOrders\":true}",
+      "actorRole": "reader",
+      "query": "query Fragmented($showOrders: Boolean!) { found: customer(id: 7) { ... CustomerIdentity orders @include(if: $showOrders) { ...OrderIdentity } } } fragment CustomerIdentity on Customer { id name } fragment OrderIdentity on Order { id reference }",
+      "expected": {
+        "data": {
+          "found": {
+            "id": 7,
+            "name": "Northwind",
+            "orders": [
+              {
+                "id": 70,
+                "reference": "NW-001"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "nullable-variable-default-at-required-argument",
+      "operationName": "DefaultedCustomer",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "query DefaultedCustomer($customerId: Int = 7) { customer(id: $customerId) { id name } }",
+      "expected": {
+        "data": {
+          "customer": {
+            "id": 7,
+            "name": "Northwind"
+          }
+        }
+      }
+    },
+    {
+      "name": "selected-operation-uses-only-its-reachable-fragments",
+      "operationName": "Selected",
+      "variables": "{\"id\":7}",
+      "actorRole": "reader",
+      "query": "query First($show: Boolean!) { customer(id: 7) { ... StaleCustomerFragment } } query Selected($id: Int!) { selected: customer(id: $id) { id name } } fragment StaleCustomerFragment on Customer { name @include(if: $show) }",
+      "expected": {
+        "data": {
+          "selected": {
+            "id": 7,
+            "name": "Northwind"
+          }
+        }
+      }
+    },
+    {
+      "name": "root-typename-and-nullable-scalars",
+      "operationName": "",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "{ queryType: __typename customer(id: 8) { customerType: __typename rating verified } }",
+      "expected": {
+        "data": {
+          "queryType": "Query",
+          "customer": {
+            "customerType": "Customer",
+            "rating": null,
+            "verified": true
+          }
+        }
+      }
+    },
+    {
+      "name": "declared-output-enum",
+      "operationName": "",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "{ customer(id: 7) { status nullableStatus } }",
+      "expected": {
+        "data": {
+          "customer": {
+            "status": "ACTIVE",
+            "nullableStatus": "ACTIVE"
+          }
+        }
+      }
+    },
+    {
+      "name": "repeated-connection-root-merges-nested-children",
+      "operationName": "",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "{ customerFeed(first: 1) { edges { node { id } } } customerFeed(first: 1) { edges { node { name } } pageInfo { hasNextPage } } }",
+      "expected": {
+        "data": {
+          "customerFeed": {
+            "edges": [
+              {
+                "node": {
+                  "id": 7,
+                  "name": "Northwind"
+                }
+              }
+            ],
+            "pageInfo": {
+              "hasNextPage": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "connection-scalar-wrapper-aliases",
+      "operationName": "",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "{ customerFeed(first: 1) { visibleTotal: totalCount exportedTotal: totalCount connectionKind: __typename exportedConnectionKind: __typename pageInfo { firstNext: hasNextPage secondNext: hasNextPage pageKind: __typename exportedPageKind: __typename } edges { firstCursor: cursor secondCursor: cursor edgeKind: __typename exportedEdgeKind: __typename node { id } } } }",
+      "expected": {
+        "data": {
+          "customerFeed": {
+            "visibleTotal": 2,
+            "exportedTotal": 2,
+            "connectionKind": "CustomerConnection",
+            "exportedConnectionKind": "CustomerConnection",
+            "pageInfo": {
+              "firstNext": true,
+              "secondNext": true,
+              "pageKind": "PageInfo",
+              "exportedPageKind": "PageInfo"
+            },
+            "edges": [
+              {
+                "firstCursor": "tgqlc1.aWQ.aWQ.QVND.Nw.aWQ.Nw",
+                "secondCursor": "tgqlc1.aWQ.aWQ.QVND.Nw.aWQ.Nw",
+                "edgeKind": "CustomerEdge",
+                "exportedEdgeKind": "CustomerEdge",
+                "node": {
+                  "id": 7
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "relation-connection-invalid-node-field-with-absent-parent",
+      "operationName": "InvalidRelationSelection",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "query InvalidRelationSelection {\n  customer(id: 999) {\n    orderConnection(first: 1) {\n      edges {\n        node {\n          missingField\n        }\n      }\n    }\n  }\n}",
+      "expected": {
+        "errors": [
+          {
+            "message": "field 'Order.missingField' is not defined by the installed schema",
+            "locations": [
+              {
+                "line": 6,
+                "column": 11
+              }
+            ],
+            "extensions": { "code": "VALIDATION_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "declared-enum-generated-filter-variable",
+      "operationName": "InactiveCustomers",
+      "variables": "{\"filter\":{\"status\":{\"in\":[\"INACTIVE\"]}}}",
+      "actorRole": "reader",
+      "query": "query InactiveCustomers($filter: CustomerFilter!) { customerFeed(first: 10, filter: $filter) { edges { node { id status } } totalCount } }",
+      "expected": {
+        "data": {
+          "customerFeed": {
+            "edges": [
+              {
+                "node": {
+                  "id": 8,
+                  "status": "INACTIVE"
+                }
+              }
+            ],
+            "totalCount": 1
+          }
+        }
+      }
+    },
+    {
+      "name": "declared-enum-root-and-relation-connection-arguments",
+      "operationName": "EnumConnections",
+      "variables": "{\"customerStatus\":\"ACTIVE\",\"orderStatus\":\"OPEN\"}",
+      "actorRole": "reader",
+      "query": "query EnumConnections($customerStatus: CustomerStatus!, $orderStatus: OrderStatus!) { customerFeed(first: 10, status: $customerStatus) { edges { node { id status } } totalCount } customer(id: 7) { orderConnection(first: 10, status: $orderStatus) { edges { node { id status } } totalCount } } }",
+      "expected": {
+        "data": {
+          "customerFeed": {
+            "edges": [
+              {
+                "node": {
+                  "id": 7,
+                  "status": "ACTIVE"
+                }
+              }
+            ],
+            "totalCount": 1
+          },
+          "customer": {
+            "orderConnection": {
+              "edges": [
+                {
+                  "node": {
+                    "id": 70,
+                    "status": "OPEN"
+                  }
+                }
+              ],
+              "totalCount": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "declared-enum-mutation-variable",
+      "operationName": "SetStatus",
+      "variables": "{\"status\":\"INACTIVE\"}",
+      "actorRole": "editor",
+      "allowMutations": true,
+      "query": "mutation SetStatus($status: CustomerStatus!) { setCustomerStatus(id: 7, status: $status) { id status } }",
+      "expected": {
+        "data": {
+          "setCustomerStatus": {
+            "id": 7,
+            "status": "INACTIVE"
+          }
+        }
+      }
+    },
+    {
+      "name": "declared-enum-point-root-variable",
+      "operationName": "CustomerByStatus",
+      "variables": "{\"status\":\"INACTIVE\"}",
+      "actorRole": "reader",
+      "query": "query CustomerByStatus($status: CustomerStatus!) { customerByIdAndStatus(id: 8, status: $status) { id status } }",
+      "expected": {
+        "data": {
+          "customerByIdAndStatus": {
+            "id": 8,
+            "status": "INACTIVE"
+          }
+        }
+      }
+    },
+    {
+      "name": "declared-enum-value-metadata",
+      "operationName": "EnumMetadata",
+      "variables": "{}",
+      "actorRole": "reader",
+      "allowIntrospection": true,
+      "query": "query EnumMetadata { current: __type(name: \"CustomerStatus\") { enumValues { name description isDeprecated deprecationReason } } all: __type(name: \"CustomerStatus\") { enumValues(includeDeprecated: true) { name description isDeprecated deprecationReason } } }",
+      "expected": {
+        "data": {
+          "current": {
+            "enumValues": [
+              {
+                "name": "ACTIVE",
+                "description": "Customer can place orders.",
+                "isDeprecated": false,
+                "deprecationReason": null
+              },
+              {
+                "name": "INACTIVE",
+                "description": null,
+                "isDeprecated": false,
+                "deprecationReason": null
+              }
+            ]
+          },
+          "all": {
+            "enumValues": [
+              {
+                "name": "ACTIVE",
+                "description": "Customer can place orders.",
+                "isDeprecated": false,
+                "deprecationReason": null
+              },
+              {
+                "name": "INACTIVE",
+                "description": null,
+                "isDeprecated": false,
+                "deprecationReason": null
+              },
+              {
+                "name": "LEGACY",
+                "description": "Historic status retained for compatibility.",
+                "isDeprecated": true,
+                "deprecationReason": "Use INACTIVE."
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "abstract-interface-and-union-fragments",
+      "operationName": "AbstractLookup",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "query AbstractLookup { nodeCustomer(id: 7) { __typename id ... on Customer { detail: name orders { ... on Node { id } ... on Order { detail: reference } } } ... on Order { detail: reference } } searchCustomer(id: 7) { __typename ... on Node { id } ... on Customer { detail: name } ... on Order { detail: reference } } customerFeed(first: 1) { edges { node { ... on Node { id } ... on Customer { detail: name } } } } }",
+      "expected": {
+        "data": {
+          "nodeCustomer": {
+            "__typename": "Customer",
+            "id": 7,
+            "detail": "Northwind",
+            "orders": [
+              {
+                "id": 70,
+                "detail": "NW-001"
+              }
+            ]
+          },
+          "searchCustomer": {
+            "__typename": "Customer",
+            "id": 7,
+            "detail": "Northwind"
+          },
+          "customerFeed": {
+            "edges": [
+              {
+                "node": {
+                  "id": 7,
+                  "detail": "Northwind"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "abstract-fragment-rejects-impossible-type-condition",
+      "operationName": "ImpossibleFragment",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "query ImpossibleFragment {\n  nodeCustomer(id: 7) {\n    ... on Query {\n      customer(id: 7) { id }\n    }\n  }\n}",
+      "expected": {
+        "errors": [
+          {
+            "message": "fragment type condition 'Query' cannot apply to parent type 'Node'",
+            "locations": [
+              {
+                "line": 3,
+                "column": 5
+              }
+            ],
+            "extensions": { "code": "VALIDATION_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "abstract-interface-connection",
+      "operationName": "AbstractConnection",
+      "variables": "{}",
+      "actorRole": "reader",
+      "allowIntrospection": true,
+      "query": "query AbstractConnection { customerNodes(first: 2) { __typename edges { __typename node { __typename id ... on Customer { detail: name } ... on Order { detail: reference } } } totalCount } connectionType: __type(name: \"NodeConnection\") { kind fields { name } } edgeType: __type(name: \"NodeEdge\") { kind fields { name type { kind name ofType { kind name } } } } }",
+      "expected": {
+        "data": {
+          "customerNodes": {
+            "__typename": "NodeConnection",
+            "edges": [
+              {
+                "__typename": "NodeEdge",
+                "node": {
+                  "__typename": "Customer",
+                  "id": 7,
+                  "detail": "Northwind"
+                }
+              },
+              {
+                "__typename": "NodeEdge",
+                "node": {
+                  "__typename": "Customer",
+                  "id": 8,
+                  "detail": "Adventure Works"
+                }
+              }
+            ],
+            "totalCount": 2
+          },
+          "connectionType": {
+            "kind": "OBJECT",
+            "fields": [
+              { "name": "edges" },
+              { "name": "pageInfo" },
+              { "name": "totalCount" }
+            ]
+          },
+          "edgeType": {
+            "kind": "OBJECT",
+            "fields": [
+              {
+                "name": "cursor",
+                "type": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": { "kind": "SCALAR", "name": "String" }
+                }
+              },
+              {
+                "name": "node",
+                "type": {
+                  "kind": "NON_NULL",
+                  "name": null,
+                  "ofType": { "kind": "INTERFACE", "name": "Node" }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "abstract-overlapping-fragments-reject-response-key-conflict",
+      "operationName": "OverlappingConflict",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "query OverlappingConflict {\n  searchCustomer(id: 7) {\n    ... on Node { detail: id }\n    ... on Customer { detail: name }\n  }\n}",
+      "expected": {
+        "errors": [
+          {
+            "message": "selection for type 'Customer' has conflicting fields for one response key",
+            "locations": [
+              {
+                "line": 2,
+                "column": 25
+              }
+            ],
+            "extensions": { "code": "VALIDATION_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "authored-nested-input-object-default",
+      "operationName": "RenameWithInput",
+      "variables": "{\"input\":{\"id\":7,\"patch\":{}}}",
+      "actorRole": "editor",
+      "allowMutations": true,
+      "query": "mutation RenameWithInput($input: RenameCustomerInput!) { renameCustomerWithInput(input: $input) { id name } }",
+      "expected": {
+        "data": {
+          "renameCustomerWithInput": {
+            "id": 7,
+            "name": "Defaulted by input schema"
+          }
+        }
+      }
+    },
+    {
+      "name": "registered-conditional-directive-execution",
+      "operationName": "RegisteredDirectives",
+      "variables": "{\"showRoot\":true,\"showName\":false,\"showSpread\":true,\"showInline\":false}",
+      "actorRole": "reader",
+      "query": "query RegisteredDirectives($showRoot: Boolean!, $showName: Boolean!, $showSpread: Boolean!, $showInline: Boolean!) { selected: customer(id: 7) @visible(if: $showRoot) { id @hidden(if: true) name @visible(if: $showName) ...CustomerStatus @visible(if: $showSpread) ... on Customer @visible(if: $showInline) { active } } } fragment CustomerStatus on Customer { status }",
+      "expected": {
+        "data": {
+          "selected": {
+            "status": "INACTIVE"
+          }
+        }
+      }
+    },
+    {
+      "name": "registered-conditional-directive-introspection",
+      "operationName": "DirectiveSchema",
+      "variables": "{}",
+      "actorRole": "reader",
+      "allowIntrospection": true,
+      "query": "query DirectiveSchema { __schema { directives { name description isRepeatable locations args { name type { kind name ofType { kind name } } } } } }",
+      "expected": {
+        "data": {
+          "__schema": {
+            "directives": [
+              {
+                "name": "include",
+                "description": null,
+                "isRepeatable": false,
+                "locations": ["FIELD", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"],
+                "args": [
+                  {
+                    "name": "if",
+                    "type": {
+                      "kind": "NON_NULL",
+                      "name": null,
+                      "ofType": { "kind": "SCALAR", "name": "Boolean" }
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "skip",
+                "description": null,
+                "isRepeatable": false,
+                "locations": ["FIELD", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"],
+                "args": [
+                  {
+                    "name": "if",
+                    "type": {
+                      "kind": "NON_NULL",
+                      "name": null,
+                      "ofType": { "kind": "SCALAR", "name": "Boolean" }
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "hidden",
+                "description": "Skips a field when its required Boolean condition is true.",
+                "isRepeatable": false,
+                "locations": ["FIELD"],
+                "args": [
+                  {
+                    "name": "if",
+                    "type": {
+                      "kind": "NON_NULL",
+                      "name": null,
+                      "ofType": { "kind": "SCALAR", "name": "Boolean" }
+                    }
+                  }
+                ]
+              },
+              {
+                "name": "visible",
+                "description": "Includes a selection when its required Boolean condition is true.",
+                "isRepeatable": false,
+                "locations": ["FIELD", "FRAGMENT_SPREAD", "INLINE_FRAGMENT"],
+                "args": [
+                  {
+                    "name": "if",
+                    "type": {
+                      "kind": "NON_NULL",
+                      "name": null,
+                      "ofType": { "kind": "SCALAR", "name": "Boolean" }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "generated-field-argument-default-execution",
+      "operationName": "ArgumentDefaults",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "query ArgumentDefaults { defaultPoint: customerByIdAndStatus(id: 7) { id status } defaultFeed: defaultedCustomerFeed(first: 10) { edges { node { id status } } totalCount } owner: customer(id: 7) { openOrderConnection(first: 10) { edges { node { id status } } totalCount } } }",
+      "expected": {
+        "data": {
+          "defaultPoint": { "id": 7, "status": "INACTIVE" },
+          "defaultFeed": {
+            "edges": [
+              { "node": { "id": 7, "status": "INACTIVE" } },
+              { "node": { "id": 8, "status": "INACTIVE" } }
+            ],
+            "totalCount": 2
+          },
+          "owner": {
+            "openOrderConnection": {
+              "edges": [ { "node": { "id": 70, "status": "OPEN" } } ],
+              "totalCount": 1
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "generated-mutation-argument-default-execution",
+      "operationName": "ArgumentDefaultMutation",
+      "variables": "{}",
+      "actorRole": "editor",
+      "allowMutations": true,
+      "query": "mutation ArgumentDefaultMutation { setCustomerStatus(id: 7) { id status } }",
+      "expected": {
+        "data": {
+          "setCustomerStatus": { "id": 7, "status": "ACTIVE" }
+        }
+      }
+    },
+    {
+      "name": "generated-mutation-input-argument-default-execution",
+      "operationName": "InputArgumentDefaultMutation",
+      "variables": "{}",
+      "actorRole": "editor",
+      "allowMutations": true,
+      "query": "mutation InputArgumentDefaultMutation { renameCustomerWithInput { id name } }",
+      "expected": {
+        "data": {
+          "renameCustomerWithInput": { "id": 8, "name": "Defaulted by input schema" }
+        }
+      }
+    },
+    {
+      "name": "generated-field-argument-default-introspection",
+      "operationName": "ArgumentDefaultSchema",
+      "variables": "{}",
+      "actorRole": "reader",
+      "allowIntrospection": true,
+      "query": "query ArgumentDefaultSchema { __type(name: \"Mutation\") { fields { name args { name defaultValue } } } }",
+      "expected": {
+        "data": {
+          "__type": {
+            "fields": [
+              {
+                "name": "renameCustomer",
+                "args": [
+                  { "name": "id", "defaultValue": null },
+                  { "name": "name", "defaultValue": null }
+                ]
+              },
+              {
+                "name": "renameCustomerWithInput",
+                "args": [ { "name": "input", "defaultValue": "{id: 8, patch: {}}" } ]
+              },
+              {
+                "name": "setCustomerActive",
+                "args": [
+                  { "name": "active", "defaultValue": null },
+                  { "name": "id", "defaultValue": null }
+                ]
+              },
+              {
+                "name": "setCustomerCreditLimit",
+                "args": [
+                  { "name": "creditLimit", "defaultValue": null },
+                  { "name": "id", "defaultValue": null }
+                ]
+              },
+              {
+                "name": "setCustomerStatus",
+                "args": [
+                  { "name": "id", "defaultValue": null },
+                  { "name": "status", "defaultValue": "ACTIVE" }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "name": "lexical-error-code-and-location",
+      "operationName": "Broken",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "query Broken {\n  customer(id: 7) ?\n}",
+      "expected": {
+        "errors": [
+          {
+            "message": "query contains invalid GraphQL lexical syntax or exceeds the token budget",
+            "locations": [ { "line": 2, "column": 19 } ],
+            "extensions": { "code": "PARSE_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "introspection-authorization-error-code",
+      "operationName": "HiddenSchema",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "query HiddenSchema {\n  __schema { queryType { name } }\n}",
+      "expected": {
+        "errors": [
+          {
+            "message": "introspection is disabled",
+            "locations": [ { "line": 2, "column": 3 } ],
+            "extensions": { "code": "AUTHORIZATION_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "subscription-unsupported-operation-code",
+      "operationName": "Events",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "subscription Events { customer(id: 7) { id } }",
+      "expected": {
+        "errors": [
+          {
+            "message": "subscription operations are not supported by the database engine yet",
+            "extensions": { "code": "UNSUPPORTED_OPERATION" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "known-input-fan-out-resource-limit",
+      "operationName": "OverBudget",
+      "variables": "{\"filter\":{\"name\":{\"in\":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]}}}",
+      "actorRole": "reader",
+      "query": "query OverBudget($filter: CustomerFilter!) { customerFeed(first: 10, filter: $filter) { edges { node { id } } } }",
+      "expected": {
+        "errors": [
+          {
+            "message": "variable '$filter' exceeds the input coercion work budget",
+            "locations": [ { "line": 1, "column": 18 } ],
+            "extensions": { "code": "RESOURCE_LIMIT_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "aggregate-input-work-resource-limit",
+      "operationName": "AggregateBudget",
+      "variables": "{\"first\":[\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\"],\"second\":[\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\"]}",
+      "actorRole": "reader",
+      "query": "query AggregateBudget($first: [String!]!, $second: [String!]!) { a: customerFeed(first: 1, filter: { name: { in: $first } }) { totalCount } b: customerFeed(first: 1, filter: { name: { in: $second } }) { totalCount } }",
+      "expected": {
+        "errors": [
+          {
+            "message": "variable '$second' exceeds the input coercion work budget",
+            "locations": [ { "line": 1, "column": 43 } ],
+            "extensions": { "code": "RESOURCE_LIMIT_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "aggregate-input-materialization-resource-limit",
+      "operationName": "MaterializationBudget",
+      "variables": "{\"shared\":[\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\",\"N\"]}",
+      "actorRole": "reader",
+      "query": "query MaterializationBudget($shared: [String!]!) { a: customerFeed(first: 1, filter: { name: { in: $shared } }) { totalCount } b: customerFeed(first: 1, filter: { name: { in: $shared } }) { totalCount } }",
+      "expected": {
+        "errors": [
+          {
+            "message": "selected operation exceeds the input materialization work budget",
+            "locations": [ { "line": 1, "column": 162 } ],
+            "extensions": { "code": "RESOURCE_LIMIT_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "aggregate-introspection-expansion-resource-limit",
+      "operationName": "IntrospectionBudget",
+      "variables": "{}",
+      "actorRole": "reader",
+      "allowIntrospection": true,
+      "query": "query IntrospectionBudget { a: __schema { ...SchemaCost } b: __schema { ...SchemaCost } } fragment SchemaCost on __Schema { types { fields { args { name } } inputFields { name } enumValues { name } interfaces { name } possibleTypes { name } } }",
+      "expected": {
+        "errors": [
+          {
+            "message": "selected operation exceeds the introspection expansion budget",
+            "locations": [ { "line": 1, "column": 59 } ],
+            "extensions": { "code": "RESOURCE_LIMIT_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "application-statement-resource-limit",
+      "operationName": "StatementBudget",
+      "variables": "{}",
+      "actorRole": "editor",
+      "allowMutations": true,
+      "query": "mutation StatementBudget { rename0: renameCustomer(id: 7, name: \"Budget 0\") { id } rename1: renameCustomer(id: 7, name: \"Budget 1\") { id } rename2: renameCustomer(id: 7, name: \"Budget 2\") { id } rename3: renameCustomer(id: 7, name: \"Budget 3\") { id } rename4: renameCustomer(id: 7, name: \"Budget 4\") { id } rename5: renameCustomer(id: 7, name: \"Budget 5\") { id } rename6: renameCustomer(id: 7, name: \"Budget 6\") { id } rename7: renameCustomer(id: 7, name: \"Budget 7\") { id } rename8: renameCustomer(id: 7, name: \"Budget 8\") { id } rename9: renameCustomer(id: 7, name: \"Budget 9\") { id } rename10: renameCustomer(id: 7, name: \"Budget 10\") { id } rename11: renameCustomer(id: 7, name: \"Budget 11\") { id } rename12: renameCustomer(id: 7, name: \"Budget 12\") { id } rename13: renameCustomer(id: 7, name: \"Budget 13\") { id } rename14: renameCustomer(id: 7, name: \"Budget 14\") { id } rename15: renameCustomer(id: 7, name: \"Budget 15\") { id } rename16: renameCustomer(id: 7, name: \"Budget 16\") { id } rename17: renameCustomer(id: 7, name: \"Budget 17\") { id } rename18: renameCustomer(id: 7, name: \"Budget 18\") { id } rename19: renameCustomer(id: 7, name: \"Budget 19\") { id } rename20: renameCustomer(id: 7, name: \"Budget 20\") { id } rename21: renameCustomer(id: 7, name: \"Budget 21\") { id } }",
+      "expected": {
+        "data": null,
+        "errors": [
+          {
+            "message": "request exceeds application SQL statement budget of 64",
+            "extensions": { "code": "RESOURCE_LIMIT_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "mutation-domain-execution-error-code",
+      "operationName": "MissingTarget",
+      "variables": "{}",
+      "actorRole": "editor",
+      "allowMutations": true,
+      "query": "mutation MissingTarget { renameCustomer(id: 999, name: \"Never\") { id name } }",
+      "expected": {
+        "data": null,
+        "errors": [
+          {
+            "message": "mutation 'renameCustomer' target row does not exist",
+            "extensions": { "code": "EXECUTION_ERROR" }
+          }
+        ]
+      }
+    }
+  ]
+}

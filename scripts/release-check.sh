@@ -50,7 +50,11 @@ private_authors="$(git log --all --format='%ae' | sort -u \
 
 ./gradlew test
 if [[ "$full" == true ]]; then
-  ./gradlew compiledSchemaIntegrationTest legacySqlIntegrationTest
+  # This is intentionally an on-demand local gate. It exercises the complete transpiled
+  # whole-request path directly and through the isolated HTTP distribution on both supported
+  # databases. Transitional Quarkus/compiled/SQL tests remain migration oracles but cannot
+  # approve a deployable database-serving release artifact.
+  ./gradlew titanGraphqlDatabaseEngineReleaseCheck
 fi
 
 echo "release check passed ($([[ "$full" == true ]] && echo full || echo fast))"

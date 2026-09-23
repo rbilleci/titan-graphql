@@ -6,8 +6,8 @@ Status: implemented pre-1.0 architecture and verified support boundary.
 
 Titan GraphQL exposes reviewed database projections through GraphQL without handwritten read
 resolvers or schema-specific query dispatch. Titan codegen supplies physical metadata, a reviewed
-model controls public exposure and policy, Titan GraphQL generates static read carriers, and Titan
-compiles those carriers into PostgreSQL and MySQL routines.
+model controls public exposure and policy, Titan GraphQL generates a schema binding for its shared
+whole-request engine, and Titan compiles that closed engine graph into PostgreSQL and MySQL routines.
 
 The primary path is:
 
@@ -15,11 +15,10 @@ The primary path is:
 Titan codegen schema.json
   -> conservative projection draft
   -> reviewed titan.graphql.yaml
-  -> generic parser, validator, and read planner
-  -> deterministic generated Titan DSL carriers
+  -> transpilable parser, validator, planner, and response engine plus generated schema binding
   -> Titan transpilation and package/install verification
-  -> model/package semantic binding
-  -> one generic compiled runtime
+  -> package/descriptor binding
+  -> standalone HTTP/JDBC transport and one database call
 ```
 
 Custom application mutations are the intentional code extension point. Table CRUD is never inferred
@@ -37,22 +36,25 @@ from read exposure.
 Inference is deliberately conservative. It preserves scalar and key metadata but does not
 automatically publish roots, relations, or sensitive columns.
 
-## Runtime Components
+## Target Runtime Components
 
-The application boundary is split into schema-independent components:
+The supported serving artifact is split into schema-independent components:
 
-- `GraphqlLexer` and `GraphqlParser` parse the supported document language.
-- `GraphqlValidator` validates operation shape, arguments, fields, relations, policies, limits, and
-  introspection against the adapted model.
-- `GraphqlReadPlanner` creates logical root, count, relation, and batch reads.
-- `TitanGraphqlRoutineSourceGenerator` deterministically generates static, model-bound Titan DSL
-  carriers. It contains no application fixture registry.
-- `TitanCompiledGraphqlDataModel` maps validated plans to inventory-resolved carrier entry points,
-  invokes them, normalizes dialect result shapes, batches nested relations, and renders GraphQL data.
-- `TitanGraphqlRoutineInvoker` verifies installed model attestation and invokes only routines from
-  the bound object inventory.
-- `GraphqlExecutionEngine` selects the configured mode and initializes it once with fail-closed
-  configuration behavior.
+- `DatabaseGraphqlEngine` is shared transpilable Java: it parses the document, selects the
+  operation, validates it against generated model bindings, plans reads and writes, applies policy,
+  invokes database-local access code, and renders the complete GraphQL JSON result.
+- `TitanGraphqlDatabaseEngineSourceGenerator` generates model-bound access and mutation bindings
+  while keeping the GraphQL semantics generic and schema-name independent.
+- Titan transpiles the closed engine/binding graph into the verified PostgreSQL or MySQL package;
+  the public entry point verifies its model and runtime identities before parsing or data access.
+- `DatabaseWholeRequestClient` owns one JDBC invocation and the explicit transaction-outcome
+  protocol. `DatabaseGraphqlHttpServer` performs HTTP envelope decoding, authentication-context
+  serialization, media negotiation, and response forwarding only.
+
+`GraphqlParser`, `GraphqlValidator`, `GraphqlReadPlanner`, `TitanCompiledGraphqlDataModel`, and
+`GraphqlExecutionEngine` in the root application are transitional comparison/migration code. They
+must not be included in the standalone serving ZIP and are tracked for deletion in the executable
+database-engine plan.
 
 The generic production classes and carrier generator contain no demo type, root, or table dispatch.
 A source guard and generated-only package inventory tests enforce that boundary.
@@ -89,10 +91,10 @@ checks object/signature drift. `titanGraphqlBindPackage` records a deterministic
 - the source-input hash; and
 - the reviewed routine inventory.
 
-Compiled startup verifies the local binding before opening the serving path. Every read attests the
-installed model hash before calling a carrier. Missing, stale, mismatched, or wrongly installed
-artifacts are rejected; no alternate runtime is selected as fallback. Compiled and legacy SQL HTTP
-responses expose the deployment fingerprint.
+Descriptor generation verifies the local binding before deployment. Every whole-request call attests
+the embedded model and runtime identities before parsing or data access. Missing, stale, mismatched,
+or wrongly installed artifacts are rejected; no alternate runtime is selected as fallback. The
+standalone HTTP response exposes the deployment fingerprint.
 
 ## Supported Compiled Read Shapes
 
@@ -144,10 +146,13 @@ row gates, and introspection behavior.
 
 Relations under collection roots are grouped into fixed-size carrier calls. A page larger than one
 carrier arity is chunked, so read count grows with the number of chunks, not the number of parents.
-Nested selected relations repeat this once per level. Relation connection windows are currently
-assembled in memory from ordered, policy-filtered batch rows; reviewed local integer equality
-arguments are applied in SQL before counts and windows. SQL-side per-parent limiting is an
-optimization boundary, not a correctness dependency.
+Nested selected relations repeat this once per level. An AST-backed plan carrier partitions
+different aliases, materialized arguments/defaults, merged child selections, source locations, and
+static policy contexts before any child statement executes. Relation connections use generated
+fixed-slot SQL for per-parent page windows, exact counts, and opposite-boundary probes; reviewed
+integer and declared-enum equality arguments are bound before counts and windows. The transpiled
+engine performs plan partitioning, scheduling, cursor reversal, null/error completion, and response
+replacement. The HTTP/JDBC frontend only forwards one complete request envelope.
 
 ## Mutations
 
@@ -167,14 +172,17 @@ Titan GAP-006 JDBC store. Application mutations execute only over POST; GET is q
 
 | Mode | Purpose | Production role |
 | --- | --- | --- |
-| `compiled` | Reviewed model plus installed generated Titan carriers | Default application read path |
+| `database` | Exact bound generated whole-request package with an explicit PostgreSQL/MySQL JDBC adapter | Default application path; no JVM GraphQL fallback within this mode |
+| `compiled` | Reviewed model plus installed generated Titan carriers | Legacy/reference path only |
 | `jdbc` | Direct generic Titan DSL/JDBC adapter for a smaller plan subset | Diagnostic/reference path |
 | `java` | In-memory demo reference runtime | Tests and compiler comparison |
 | `sql` | Historical whole-request demo kernel | Isolated equivalence proof only |
 
-The production `titanPackage` output contains generated carriers only. The fixed
+The default production whole-request package contains generated routines only. The fixed
 `DemoBlogTitanGraphqlFunctions` kernel is built into a separate legacy package solely by
-`legacySqlIntegrationTest`; compiled mode cannot dispatch to it.
+`legacySqlIntegrationTest`; database mode cannot dispatch to it. The separately generated
+whole-request packages are bound and JAX-RS-tested on both dialects. Legacy routes remain until
+the database engine reaches feature parity and they can be removed.
 
 ## State and Lifecycle
 

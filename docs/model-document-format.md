@@ -48,7 +48,13 @@ Fields:
 | `database` | no | Database catalog, schema, and table binding hints. |
 | `roots` | yes | Public root fields on the generated `Query` type. |
 | `types` | yes | Object projection types exposed by roots and relations. |
+| `enums` | no | Declared GraphQL enum types used by output fields, generated filters, point-root and root/relation connection equality arguments, and explicit custom-mutation arguments. |
+| `inputObjects` | no | Authored reusable GraphQL input-object declarations. |
+| `interfaces` | no | Reviewed GraphQL interface declarations implemented by object projection types. |
+| `unions` | no | Reviewed GraphQL unions whose members are object projection types. |
+| `directives` | no | Reviewed executable conditional directives implemented by the transpiled engine. |
 | `policies` | no | Named root, row, field, and relation policy declarations. |
+| `mutations` | no | Explicit reviewed mutation bindings for the database-engine proof; not yet consumed by the legacy serving runtime. |
 | `contextFilters` | no | Named request-context filters that compose into roots. |
 | `artifacts` | no | Generated output options for reviewable artifacts. |
 | `deployment` | no | Deployment and preview metadata. |
@@ -104,6 +110,36 @@ Fields:
 | `fields` | no | Fully qualified field names, such as `Article.title`. |
 | `relations` | no | Fully qualified relation names, such as `Article.author`. |
 | `policies` | no | Policy names owned by this module. |
+
+## Executable Directives
+
+The optional `directives` map registers schema-visible conditional directives that execute inside
+the transpiled database engine. v1alpha1 deliberately supports only aliases of GraphQL's bounded
+include/skip behavior; it does not expose arbitrary code hooks or HTTP/JVM callbacks.
+
+```yaml
+directives:
+  visible:
+    description: Includes a selection when its required Boolean condition is true.
+    behavior: includeIf
+    locations: [FIELD, FRAGMENT_SPREAD, INLINE_FRAGMENT]
+  hidden:
+    description: Skips a field when its required Boolean condition is true.
+    behavior: skipIf
+    locations: [FIELD]
+```
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `description` | no | Schema description returned by directive introspection. |
+| `behavior` | yes | `includeIf` includes the selection only when the condition is true; `skipIf` omits it when true. |
+| `locations` | yes | Non-empty, unique subset of `FIELD`, `FRAGMENT_SPREAD`, and `INLINE_FRAGMENT`. |
+
+Each registered directive is non-repeatable and has exactly one generated argument,
+`if: Boolean!`. Names must be valid public GraphQL names and cannot replace the built-in `include`
+or `skip` directives. Definitions on operation or fragment definitions remain unsupported. The
+canonical model identity includes names, descriptions, behaviors, and locations, so changing any
+of them requires a newly generated and bound package.
 
 ## Database Bindings
 
@@ -162,6 +198,7 @@ roots:
         type: String
         kind: equals
         column: warehouse_code
+        defaultValue: '"AMS"'
       sku:
         type: String
         kind: equals
@@ -172,15 +209,31 @@ Fields:
 
 | Field | Required | Description |
 | --- | --- | --- |
-| `type` | yes | Projection type returned by the root. |
+| `type` | yes | Concrete projection type used for physical lookup and generated database access. |
+| `outputType` | no | Interface or union exposed by a point root or by a Relay connection's `node`. The concrete `type` must implement or belong to it. |
 | `operation` | yes | `point` or `connection`. |
 | `argument` | yes for a scalar-key `point` | Single required key argument for point lookup. Mutually exclusive with `arguments`. |
 | `arguments` | yes for a composite-key `point` | One or more required key arguments. Mutually exclusive with `argument`. |
 | `argument.name` | yes | Public GraphQL argument name. |
-| `argument.type` | yes | `Int`, `Long`, `String`, `ID`, or `UUID`; it must match the bound scalar field type. |
+| `argument.type` | yes | `Int`, `Long`, `String`, `ID`, `UUID`, or a declared enum; it must match the bound scalar field type. |
 | `argument.column` | yes | Bound database column. |
 | `argument.kind` | no | Defaults to `equals`; point-key arguments must use `equals`. |
 | `argument.hops` | no | Must be `0`; point keys cannot traverse a relation. |
+| `argument.defaultValue` | no | GraphQL constant-value source used when the argument is omitted. Point arguments are publicly non-null, so their defaults must be non-null. |
+
+`defaultValue` is parsed and type-checked against the public GraphQL argument type during the build.
+It is GraphQL source rather than JSON: quote string values in the GraphQL value and, when needed,
+quote that source for YAML as shown above; enum values remain unquoted GraphQL names. Defaults may
+not contain variable references. An omitted argument receives the default inside the transpiled
+database engine, while an explicitly supplied `null` remains distinct and is rejected for a non-null
+point argument. A non-null argument with a default is optional at the call site, as required by
+GraphQL variable-location compatibility rules.
+
+For a field declared as GraphQL `ID`, `idStorage` selects its reviewed physical representation:
+`integral` (the compatibility default) or `string`. The public GraphQL value remains an ID in
+both cases: the engine accepts an integer or string input literal as GraphQL permits and always
+serializes the result as a JSON string. `idStorage` belongs to the field, never to a client
+argument, so generated JDBC binding cannot silently guess a column type.
 
 ### Relay Connection Root
 
@@ -205,6 +258,7 @@ roots:
         type: Int
         kind: equals
         column: author_id
+        defaultValue: '7'
     filterPaths:
       authorName:
         type: String
@@ -232,7 +286,7 @@ Fields:
 | `pagination.maxPageSize` | yes | Maximum requested page size. |
 | `pagination.totalCount` | no | `exact`, `estimated`, or `none`. Current behavior supports exact counts for promoted demo paths. |
 | `pagination.cursor` | yes | Stable cursor ordering. |
-| `arguments` | no | Additional scalar root arguments. |
+| `arguments` | no | Additional local equality arguments. The database engine accepts `Int`, `Long`, or a declared enum; an enum must exactly match a modeled stored field on the root type. Each equality argument may declare a typed GraphQL-source `defaultValue`. |
 | `filterPaths` | no | Generated filter input paths exposed on the root. |
 | `sortPaths` | no | Generated order input paths exposed on the root. |
 | `contextFilters` | no | Context filter names applied before client filters unless the filter says otherwise. |
@@ -280,6 +334,132 @@ target scalar; `column` must equal that relation's `localColumn`. The generator 
 qualified join and uses the root scalar `tieBreaker` for deterministic cursors. Nullable, to-many,
 and multi-hop sort paths are rejected before deployment.
 
+## Database-engine custom mutation proof
+
+`mutations` is an intentionally narrow, explicit source binding used by the in-progress
+database-resident engine. It is not generated CRUD and it is not the existing JVM application
+mutation registration API. The legacy serving runtime does not consume it.
+
+```yaml
+mutations:
+  renameCustomer:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      name:
+        type: String
+        column: name
+        defaultValue: '"Defaulted name"'
+    payload:
+      id:
+        argument: id
+      name:
+        argument: name
+```
+
+An explicit mutation may instead publish one authored input-object argument and bind reviewed leaf
+paths to columns:
+
+```yaml
+inputObjects:
+  RenameCustomerInput:
+    description: Reviewed customer rename request.
+    fields:
+      id:
+        type: Int!
+      patch:
+        type: RenameCustomerPatch!
+  RenameCustomerPatch:
+    description: Mutable customer values.
+    fields:
+      name:
+        type: String!
+        description: Replacement customer name.
+        defaultValue: '"Defaulted name"'
+
+mutations:
+  renameCustomerWithInput:
+    operation: update
+    type: Customer
+    input:
+      name: input
+      type: RenameCustomerInput
+      defaultValue: '{id: 7, patch: {}}'
+    inputBindings:
+      id:
+        path: id
+        type: Int
+        column: id
+        key: true
+      name:
+        path: patch.name
+        type: String
+        column: name
+    policies: [canRenameCustomer]
+    payload:
+      id:
+        argument: id
+      name:
+        argument: name
+```
+
+The database-engine generator currently accepts only `operation: update`. A mutation declares
+either flat `arguments` or one `input` plus `inputBindings`, never both. The public input argument
+is non-null in the generated schema. Each binding names a leaf `path` in the authored input-object
+graph; its declared `type` and bound column must agree with that leaf and the stored model field.
+`type` names the reviewed projection type and supplies its physical table binding. Every argument
+must bind a stored scalar or declared-enum field on that type with the same GraphQL type; at least one `key: true`
+argument selects the row and at least one non-key argument is an assignment. Supported proof
+scalars are `Int`, `Long`, `String`, `ID`, `UUID`, `Boolean`, `Float`, and `Decimal`. `Float` and
+`Decimal` currently use the database engine's binary64 binding, so `Decimal` is not an exact-decimal
+contract. A type declared under `enums` is also supported for an explicit mutation argument: inline
+input must use an unquoted GraphQL enum value, JSON variables carry the value as a string, and both
+forms are checked exactly against the generated enum value set before SQL. `payload` is an explicit map from selected
+response field to an argument value. Its fields are validated and shaped by the transpiled engine.
+
+Flat mutation arguments and the single authored input-object argument may declare `defaultValue` as
+GraphQL constant-value source. Their generated public types are non-null, so `null` is not a valid
+default. Omission materializes the validated default into the same canonical argument carrier used
+for supplied literals and variables before mutation prevalidation or SQL; explicit `null` does not
+select the default and fails coercion. A whole input-object default is applied before its own omitted
+fields receive any authored input-field defaults.
+
+An installed proof routine processes selected mutation roots in document order. It requires the
+transport's `allowMutations` flag, evaluates the attached reject policies in the database, and
+returns an internal `extensions.titanTransactionOutcome` value. `COMMIT` permits the connection
+owner to commit; an error after a prior root returns `ROLLBACK` and the caller must roll back the
+whole operation. The database routine never invokes Java/CDI handlers or commits itself.
+
+This is a constrained mutation surface, not the final mutation language. The installed engine
+prevalidates the whole selected operation before writes, locks the target row, and verifies target
+existence. Authored nested input objects, input-field defaults, and flat or input-object argument
+defaults are supported for explicit update bindings, but nullable/write-null bindings, arbitrary command procedures,
+durable idempotency, outbox/audit semantics, and the broader concurrency contract remain incomplete.
+Broad CRUD and nested mutation graphs remain unsupported.
+
+## Input Objects
+
+`inputObjects` declares reusable GraphQL input types for the transpiled database engine. Each object
+has an optional `description` and a non-empty `fields` map. Each field requires a GraphQL input type
+reference and may declare `description`, `defaultValue`, `deprecated`, and `deprecationReason`.
+`defaultValue` is GraphQL constant-value source—not JSON—and therefore preserves the distinction
+between enum names and JSON strings. The build validator parses and recursively coerces every
+default, rejects unknown types or fields, enforces required nested fields, and rejects an unbroken
+cycle of singular non-null input-object references.
+
+At runtime, the database-resident coercer applies the same nested object/list/scalar/enum rules to
+inline literals, JSON variables, variable defaults, and omitted fields. It materializes one canonical
+value carrier before execution, applies input-field defaults only when a field is omitted, and keeps
+an explicit `null` distinct from omission. `__schema` and `__type` expose the authored input types,
+type and field descriptions, exact wrappers, defaults, and field deprecations. Deprecated input fields
+are omitted unless `inputFields(includeDeprecated: true)` is requested. All of this processing occurs
+inside the generated database routines; the HTTP frontend forwards the original request envelope.
+
 ## Types
 
 Types map GraphQL object types to table bindings, fields, and relations.
@@ -309,6 +489,130 @@ Fields:
 | `fields` | yes | Field map for scalar and computed fields. |
 | `relations` | no | Relation map for object or connection fields. |
 | `policies` | no | Named row policies. Denied decisions filter this type from roots, exact counts, and relation reads in generated SQL. |
+| `interfaces` | no | Interface names implemented by this object type. Each required interface field must exist with the exact output type and nullability. |
+
+## Abstract Output Types
+
+The model may declare reviewed interfaces and unions without adding handwritten runtime resolvers:
+
+```yaml
+interfaces:
+  Node:
+    description: An identifiable object.
+    fields:
+      id:
+        type: Int!
+
+unions:
+  SearchResult:
+    description: A searchable object.
+    members: [Customer, Order]
+
+types:
+  Customer:
+    table: customers
+    interfaces: [Node]
+    fields:
+      id: { type: Int, column: id }
+      name: { type: String, column: name }
+  Order:
+    table: orders
+    interfaces: [Node]
+    fields:
+      id: { type: Int, column: id }
+      reference: { type: String, column: reference }
+
+roots:
+  nodeCustomer:
+    type: Customer
+    outputType: Node
+    operation: point
+    argument: { name: id, type: Int, column: id }
+  searchCustomer:
+    type: Customer
+    outputType: SearchResult
+    operation: point
+    argument: { name: id, type: Int, column: id }
+```
+
+Interface and union names share the GraphQL type namespace with objects, enums, input objects, and
+built-in scalars. An interface must declare at least one field. Every implementing object must
+provide every declared interface field with the exact type wrapper; the current projection binding
+requires those interface fields to be ordinary modeled object fields rather than relation fields.
+A union must contain at least one unique declared object type. Descriptions are optional.
+
+`root.type` always remains the concrete physical projection used to generate static SQL. A point or
+Relay connection root may set `outputType` to an interface implemented by that object or a union
+containing it. For a connection this produces abstract `<OutputType>Connection` and
+`<OutputType>Edge` wrappers whose `node` has the declared abstract type. This changes the public
+GraphQL return type without model-specific query dispatch: the installed package already knows the
+concrete row shape, validates abstract selections per possible type, and emits the concrete object's
+`__typename`. A heterogeneous connection that combines multiple physical projections is not yet
+expressible; it needs an explicit cross-source cursor, policy, ordering, and runtime-type contract.
+
+The transpiled engine validates selections against the declared abstract type and every possible
+concrete runtime type. Interface fields may be selected directly; union fields require a fragment
+apart from `__typename`. Named and inline fragments are checked for possible overlap, conflicting
+response keys are evaluated per possible runtime object, and mutually exclusive concrete branches
+may reuse an alias. The generator also carries each concrete object's interface/union memberships
+through point, relation, and Relay-node selection planning, so applicable abstract fragments are not
+limited to roots authored with `outputType`.
+
+`__schema.types` and `__type` expose `INTERFACE`/`UNION`, authored type descriptions, object
+`interfaces`, and abstract `possibleTypes`. Object- and interface-field descriptions and
+deprecations are part of the canonical model identity and are compiled into delimiter-safe
+metadata consumed by the transpiled introspection renderer. `fields` omits deprecated fields by
+default and includes their authored reason when `includeDeprecated: true` is requested.
+
+## Enums
+
+The model may declare enum types independently of its object types:
+
+```yaml
+enums:
+  CustomerStatus:
+    values: [ACTIVE, INACTIVE, LEGACY]
+    valueMetadata:
+      ACTIVE:
+        description: Customer can place orders.
+      LEGACY:
+        description: Historic status retained for compatibility.
+        deprecated: true
+        deprecationReason: Use INACTIVE.
+
+types:
+  Customer:
+    table: customers
+    fields:
+      status:
+        column: status
+        type: CustomerStatus
+        nullable: false
+```
+
+Enum type names must be valid upper-initial GraphQL names and must not collide with object types,
+built-in scalars, or introspection names. Each enum needs at least one unique GraphQL-name value;
+`true`, `false`, `null`, and names beginning with `__` are invalid enum values. Value spelling is
+preserved and database values must match it exactly. Canonical generation sorts enum types and
+values, and sorts optional `valueMetadata` entries by value name, so authoring order does not
+change semantic identity or introspection order. Metadata keys must name declared values. A
+`deprecationReason` is valid only when `deprecated: true`; a deprecated value without an authored
+reason exposes the standard `No longer supported` reason.
+
+The database-resident engine exposes declared enums through `__schema.types`, `__type`, and object
+field type metadata. It serializes valid stored values as GraphQL enum strings. An unrecognized
+stored value produces a source- and path-located execution error; a nullable field becomes `null`,
+while a non-null field follows the normal GraphQL propagation rules. The current v1alpha1 database
+engine also accepts declared enums in reviewed point-root equality arguments, root/relation Relay
+equality arguments, explicit custom-mutation arguments, and generated Relay filter input fields with `eq`, `neq`, `in`, and Boolean
+`isNull` operators. Enum argument coercion, including the distinction between unquoted GraphQL
+literals and JSON string variables, runs in the transpiled database language core; root, mutation,
+relation, and filter introspection expose the declared enum type and its exact wrappers. Enum sorts
+and enum ordering remain unsupported rather than delegated to the
+HTTP/JVM layer. Authored input-object fields may reference declared enums and may supply validated
+GraphQL constant defaults. Enum descriptions and deprecations are compiled into a delimiter-safe descriptor
+consumed by the transpiled introspection renderer. `enumValues` omits deprecated values by default
+and returns their description, `isDeprecated`, and reason when `includeDeprecated: true` is used.
 
 ## Fields
 
@@ -334,13 +638,19 @@ Field keys:
 | Field | Required | Description |
 | --- | --- | --- |
 | `column` | yes for column fields | Bound database column. |
-| `type` | yes | GraphQL scalar type. |
+| `type` | yes | Supported GraphQL scalar type or a type declared in `enums`. |
 | `description` | no | Generated field description. |
 | `nullable` | no | Whether the GraphQL field may be null. |
 | `policy` | no | Named field policy. |
-| `deprecated` | no | Deprecation metadata. |
+| `deprecated` | no | Marks the output field deprecated; defaults to `false`. |
+| `deprecationReason` | no | Authored reason returned by introspection when `deprecated: true`. |
 | `filter` | no | Generated filter capabilities. |
 | `sort` | no | Generated sort capabilities. |
+
+An output-field `deprecationReason` is invalid unless `deprecated: true`. A deprecated field with
+no authored reason exposes GraphQL's standard `No longer supported` reason. The transpiled
+introspection engine returns authored descriptions, `isDeprecated`, and `deprecationReason`, and
+filters deprecated object and interface fields unless `fields(includeDeprecated: true)` is used.
 
 Filter operators:
 
@@ -439,6 +749,7 @@ relations:
         kind: equals
         column: author_id
         path: author_id
+        defaultValue: '7'
       first:
         kind: relayFirst
       after:
@@ -465,7 +776,7 @@ Fields:
 | `localColumn` | yes | Parent-side join column. |
 | `targetColumn` | yes | Target-side join column. |
 | `capabilities` | yes | Selection, batching, pagination, and hop budget settings. |
-| `arguments` | no | Relation arguments. |
+| `arguments` | no | Relation arguments. Local `equals` arguments may declare a typed GraphQL-source `defaultValue`; generated Relay controls may not be overridden. |
 | `filterPaths` | no | Generated relation filters. Reserved until promoted. |
 | `sortPaths` | no | Generated relation order paths. |
 | `policy` | no | Named relation policy. |
@@ -478,7 +789,12 @@ Relation argument kinds:
 | `relayAfter` | Relay `after` cursor. |
 | `relayLast` | Relay `last` page size. |
 | `relayBefore` | Relay `before` cursor. |
-| `equals` | Local `Int` equality predicate. Declare `type`, `column`, and `path`; `hops` must be `0` for the compiled carrier path. |
+| `equals` | Local `Int`, `Long`, or declared-enum equality predicate. Declare `type`, `column`, and `path`; `hops` must be `0`. A declared enum must exactly match a modeled stored field on the target type. |
+
+An omitted local equality argument receives its validated model default inside the transpiled engine
+before the relation carrier executes. An explicit `null` remains null for a nullable equality
+argument and does not select the default. The standard `first`, `after`, `last`, and `before`
+arguments retain their generated Relay behavior and cannot declare model defaults.
 
 ## Policies
 
@@ -510,14 +826,16 @@ Fields:
 | `expression.kind` | yes | `named` in v1alpha1. |
 | `expression.name` | yes | Reviewed named expression: `adminOnly`, `authenticated`, `allowAll`, `denyAll`, `roleEquals:<role>`, or `roleIn:<role,...>`. Multiple attached policies are ANDed. |
 
-The same compiler is used for field and relation authorization and unknown expressions fail
-closed while adapting or generating the model. Root policies reject unauthorized operations before
-I/O and are also emitted as SQL predicates. Type policies are row gates applied to root reads,
-counts, and relation targets. In compiled mode, each protected projection is emitted with a SQL
-`CASE` guard driven by the compiled decision, and protected relation routines also require the
-decision in their row predicate. Reserved for later: row-value expression predicates beyond the
-existing reviewed context filters, arbitrary expression languages, user-defined Java snippets,
-nested write policies, and actor-shaped schema generation.
+The same compiler is used for root, type, field, and relation authorization, and unknown
+expressions fail closed while adapting or generating the model. The database package evaluates
+every policy reached by the selected operation before application I/O; generated SQL predicates
+remain defense in depth for direct carrier access. Type policies gate root reads, exact counts, and
+relation targets. Field and relation policies are request-reject policies in v1alpha1: they do not
+produce actor-specific schema variants or partial masked rows. Authorization errors retain the
+selected source location, while the pre-execution policy phase deliberately does not fabricate
+row-index paths. Reserved for later: row-value expression predicates beyond the existing reviewed
+context filters, arbitrary expression languages, user-defined Java snippets, nested write
+policies, partial field masking, and actor-shaped schema generation.
 
 ## Context Filters
 
@@ -873,7 +1191,7 @@ The canonical form:
 - treat YAML comments as source-only
 - exclude comments and whitespace from semantic hashes
 - preserve source locations separately for diagnostics
-- normalize enum casing to canonical lower camel case in JSON
+- preserve declared GraphQL enum spelling while sorting enum types and values canonically
 - make defaults explicit before hashing
 
 Behavior-affecting changes must alter the semantic hash. Source-only comments
@@ -913,8 +1231,8 @@ loading or application endpoint behavior.
 
 The adapter accepts the currently compiled subset:
 
-- point roots with local equality arguments typed as `Int`, `Long`, `String`, `ID`, or `UUID`,
-  including explicitly declared composite keys
+- point roots with local equality arguments typed as `Int`, `Long`, `String`, `ID`, `UUID`, or a
+  declared enum, including explicitly declared composite keys
 - Relay connection roots with exact `totalCount`, cursor metadata, equality
   `Int` arguments, declared filter paths, sort paths, and boolean fail-closed
   context filters
@@ -934,6 +1252,12 @@ Unsupported adapter input fails explicitly with adapter diagnostics such as
 `UNSUPPORTED_RELATION_PAGINATION`, or `UNKNOWN_CONTEXT_FILTER`. Future roadmap
 slices should promote additional IR features only when the Java reference and
 SQL/lowered behavior have matching validation and equivalence coverage.
+
+The adapter bullets above describe the migration-only JVM oracle, not the database-engine schema.
+It and the matching legacy carrier/invoker path deliberately omit optional declared-enum equality
+arguments from Relay roots and relations because its projection descriptor has only `INT_EQUALS`.
+The generated database engine exposes and executes those enum arguments; the adapter and all legacy
+carrier/runtime code are M6 deletion targets rather than a second semantic implementation.
 
 ## v1alpha1 Reserved Or Unsupported Fields
 

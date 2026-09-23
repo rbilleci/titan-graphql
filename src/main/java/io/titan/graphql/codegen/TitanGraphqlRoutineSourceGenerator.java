@@ -241,7 +241,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
             List<TitanGraphqlFilterLayout.Binding> bindings,
             String rootAlias
     ) {
-        List<String> valueTypes = TitanGraphqlFilterLayout.valueTypes(bindings);
+        List<String> valueTypes = TitanGraphqlFilterLayout.valueTypes(context.document, bindings);
         List<Parameter> parameters = new ArrayList<>();
         StringBuilder slots = new StringBuilder();
         List<String> groups = new ArrayList<>();
@@ -261,7 +261,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
                     Parameter value = context.parameter(prefix + javaTypeName(valueType), valueType,
                             bindings.getFirst().binding(), type);
                     parameters.add(value);
-                    derived.append(", ? AS ").append(valueAlias(valueType));
+                    derived.append(", ? AS ").append(valueAlias(context, valueType));
                 }
                 slots.append(derived).append(") ").append(alias);
                 String selected = selectorPredicate(context, type, root, bindings, rootAlias, alias);
@@ -285,7 +285,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
         StringBuilder sql = new StringBuilder("CASE ").append(slotAlias).append(".selector ");
         for (TitanGraphqlFilterLayout.Binding binding : bindings) {
             String expression = filterExpression(context, type, root, binding, rootAlias);
-            String value = slotAlias + "." + valueAlias(binding.graphqlType());
+            String value = slotAlias + "." + valueAlias(context, binding.graphqlType());
             String predicate = switch (binding.operator()) {
                 case "eq" -> "CASE WHEN " + slotAlias + ".null_value = TRUE THEN " + expression
                         + " IS NULL ELSE " + expression + " = " + value + " END";
@@ -374,9 +374,9 @@ public final class TitanGraphqlRoutineSourceGenerator {
         return TitanGraphqlFilterLayout.normalizeGraphqlType(type);
     }
 
-    private static String valueAlias(String graphqlType) {
+    private static String valueAlias(GenerationContext context, String graphqlType) {
         try {
-            return TitanGraphqlFilterLayout.valueKind(graphqlType) + "_value";
+            return TitanGraphqlFilterLayout.valueKind(context.document, graphqlType) + "_value";
         } catch (IllegalArgumentException failure) {
             throw unsupported(failure.getMessage());
         }
@@ -604,7 +604,7 @@ public final class TitanGraphqlRoutineSourceGenerator {
         }
         for (TitanGraphqlRootDocument.RootDocumentArgument argument : root.arguments()) {
             if (argument.kind() == TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS
-                    && argument.hops() == 0) {
+                    && argument.hops() == 0 && !context.isEnum(argument.type())) {
                 parameters.add(new Parameter("has" + javaTypeName(argument.name()), "boolean", "setBoolean"));
                 parameters.add(context.parameter(argument.name(), argument.type(), argument.column(), type));
                 clauses.add("(? = FALSE OR " + columnExpression(rootQualifier, argument.column()) + " = ?)");
@@ -770,7 +770,8 @@ public final class TitanGraphqlRoutineSourceGenerator {
         Parameter localKey = context.parameter("localKey", graphqlType, relation.localColumn(), owner);
         List<Parameter> relationParameters = new ArrayList<>();
         List<String> relationClauses = new ArrayList<>();
-        for (TitanGraphqlRelationDocument.RelationDocumentArgument argument : relationFilterArguments(relation)) {
+        for (TitanGraphqlRelationDocument.RelationDocumentArgument argument
+                : relationFilterArguments(context, relation)) {
             if (argument.hops() != 0) {
                 throw unsupported("relation '" + relation.name() + "' uses relation-hop filtering");
             }
@@ -836,11 +837,13 @@ public final class TitanGraphqlRoutineSourceGenerator {
     }
 
     private static List<TitanGraphqlRelationDocument.RelationDocumentArgument> relationFilterArguments(
+            GenerationContext context,
             TitanGraphqlRelationDocument relation
     ) {
         return relation.arguments().stream()
                 .filter(argument -> argument.kind()
                         == TitanGraphqlRelationDocument.RelationDocumentArgumentKind.EQUALS)
+                .filter(argument -> !context.isEnum(argument.type()))
                 .sorted(Comparator.comparing(TitanGraphqlRelationDocument.RelationDocumentArgument::name))
                 .toList();
     }
@@ -1257,6 +1260,9 @@ public final class TitanGraphqlRoutineSourceGenerator {
         private Parameter parameter(String name, String graphqlType, String column, TitanGraphqlTypeDocument type) {
             requireIdentifier(name, "generated parameter");
             String normalized = graphqlType == null ? "" : graphqlType.replace("!", "").trim();
+            if (document.enums().stream().anyMatch(value -> value.name().equals(normalized))) {
+                return new Parameter(name, "String", "setString");
+            }
             return switch (normalized) {
                 case "Int" -> new Parameter(name, "int", "setInt");
                 case "Long" -> new Parameter(name, "long", "setLong");
@@ -1268,6 +1274,11 @@ public final class TitanGraphqlRoutineSourceGenerator {
                 default -> throw unsupported("column '" + column + "' on type '" + type.name()
                         + "' uses unsupported GraphQL parameter type '" + graphqlType + "'");
             };
+        }
+
+        private boolean isEnum(String graphqlType) {
+            String normalized = graphqlType == null ? "" : graphqlType.replace("!", "").trim();
+            return document.enums().stream().anyMatch(value -> value.name().equals(normalized));
         }
     }
 }

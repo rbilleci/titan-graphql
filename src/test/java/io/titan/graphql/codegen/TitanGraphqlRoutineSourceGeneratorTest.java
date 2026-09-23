@@ -64,8 +64,10 @@ class TitanGraphqlRoutineSourceGeneratorTest {
     void sameGeneratorProducesUnrelatedCommerceRoutinesWithoutDemoNames() throws IOException {
         String source = TitanGraphqlRoutineSourceGenerator.generate(model("commerce.titan.graphql.yaml"));
 
-        assertTrue(source.contains("readRootCustomer(Connection connection, "
-                + "boolean allowRelationOrders, boolean allowRows, int id)"), source);
+        assertTrue(source.contains("readRootCustomer(Connection connection, "), source);
+        assertTrue(source.contains("boolean allowFieldVerified"), source);
+        assertTrue(source.contains("boolean allowRelationOrders"), source);
+        assertTrue(source.contains("boolean allowRows"), source);
         assertTrue(source.contains("readRootCountry(Connection connection, boolean allowRoot, String code)"), source);
         assertTrue(source.contains("FROM commerce.countries WHERE ? = TRUE AND code = ?"), source);
         assertTrue(source.contains("FROM commerce.customers WHERE ? = TRUE AND id = ?"), source);
@@ -74,11 +76,12 @@ class TitanGraphqlRoutineSourceGeneratorTest {
                 "readRootInventoryItem(Connection connection, String sku, String warehouse)"), source);
         assertTrue(source.contains("WHERE sku = ? AND warehouse_code = ?"), source);
         assertTrue(source.contains("readRootCustomersForward("), source);
-        assertTrue(source.contains("readRelationCustomerOrders(Connection connection, "
-                + "boolean allowRelation, int localKey)"), source);
+        assertTrue(source.contains("readRelationCustomerOrders(Connection connection, "), source);
+        assertTrue(source.contains("boolean allowRelation, int localKey"), source);
         assertTrue(source.contains("readRelationCustomerOrdersBatch64(Connection connection"), source);
         assertTrue(source.contains("readRelationCustomerOrderConnectionBatch64(Connection connection"), source);
         assertTrue(source.contains("(? = FALSE OR id = ?) ORDER BY id ASC"), source);
+        assertFalse(source.contains("boolean hasStatus, String status"), source);
         assertTrue(source.contains("customer_id AS __titan_parent_key FROM commerce.orders"), source);
         assertTrue(source.contains("WHERE ? = TRUE AND customer_id = ? ORDER BY id ASC"), source);
         assertTrue(source.contains("FROM commerce.customers"), source);

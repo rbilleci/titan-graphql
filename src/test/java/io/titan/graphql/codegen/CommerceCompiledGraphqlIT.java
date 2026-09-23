@@ -68,19 +68,27 @@ class CommerceCompiledGraphqlIT {
             assertEquals(TitanCompiledGraphqlRuntime.NAME, runtime.name(), target.name());
 
             GraphqlExecution point = execute(runtime,
-                    "{ customer(id: 7) { id name nickname active orders { id reference } } }",
+                    "{ customer(id: 7) { id name nickname active rating verified orders { id reference } } }",
                     GraphqlRequestContext.legacy(1L, "reader"));
             assertEquals(2, point.plan().readStepCount(), target.name());
             JsonNode pointJson = JSON.readTree(point.json());
             assertEquals("Northwind", pointJson.at("/data/customer/name").asText(), target.name());
             assertTrue(pointJson.at("/data/customer/nickname").isNull(),
                     "nullable database values must remain GraphQL null on " + target);
+            assertEquals(42, pointJson.at("/data/customer/rating").asInt(), target.name());
+            assertTrue(pointJson.at("/data/customer/verified").isNull(), target.name());
             assertEquals("NW-001", pointJson.at("/data/customer/orders/0/reference").asText(), target.name());
 
             JsonNode nonNullNickname = JSON.readTree(execute(runtime,
                     "{ customer(id: 8) { nickname } }",
                     GraphqlRequestContext.legacy(1L, "reader")).json());
             assertEquals("Adventure", nonNullNickname.at("/data/customer/nickname").asText(), target.name());
+
+            JsonNode nullablePrimitives = JSON.readTree(execute(runtime,
+                    "{ customer(id: 8) { rating verified } }",
+                    GraphqlRequestContext.legacy(1L, "reader")).json());
+            assertTrue(nullablePrimitives.at("/data/customer/rating").isNull(), target.name());
+            assertTrue(nullablePrimitives.at("/data/customer/verified").asBoolean(), target.name());
 
             JsonNode introspection = JSON.readTree(execute(runtime,
                     "{ __type(name: \"Customer\") { fields { name type { kind name ofType { kind name } } } } }",
@@ -313,8 +321,8 @@ class CommerceCompiledGraphqlIT {
                     target.name());
 
             try (Statement statement = connection.createStatement()) {
-                statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference) "
-                        + "VALUES (72, 7, 'CT-003')");
+                statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference, status) "
+                        + "VALUES (72, 7, 'CT-003', 'OPEN')");
             }
 
             GraphqlModelRuntime restarted = engine(connection, target).runtime();
@@ -418,16 +426,18 @@ class CommerceCompiledGraphqlIT {
             statement.execute("DROP TABLE IF EXISTS commerce.inventory_items");
             statement.execute("DROP TABLE IF EXISTS commerce.api_clients");
             statement.execute("DROP TABLE IF EXISTS commerce.countries");
-            statement.execute("CREATE TABLE commerce.customers (id BIGINT PRIMARY KEY, "
-                    + "name VARCHAR(120) NOT NULL, nickname VARCHAR(120), active BOOLEAN NOT NULL)");
+            statement.execute("CREATE TABLE commerce.customers (id BIGINT PRIMARY KEY, sort_rank BIGINT NOT NULL, "
+                    + "tenant_key VARCHAR(80) NOT NULL, name VARCHAR(120) NOT NULL, nickname VARCHAR(120), active BOOLEAN NOT NULL, "
+                    + "rating INTEGER, credit_limit DOUBLE PRECISION NOT NULL, verified BOOLEAN)");
             statement.execute("CREATE TABLE commerce.orders (id BIGINT PRIMARY KEY, "
                     + "customer_id BIGINT NOT NULL, reference VARCHAR(120) NOT NULL, "
+                    + "status VARCHAR(24) NOT NULL, "
                     + "FOREIGN KEY (customer_id) REFERENCES commerce.customers(id))");
             statement.execute("CREATE TABLE commerce.countries (code VARCHAR(8) PRIMARY KEY, "
                     + "name VARCHAR(120) NOT NULL)");
             statement.execute("CREATE TABLE commerce.api_clients (id "
                     + (target == DatabaseTarget.POSTGRESQL ? "UUID" : "CHAR(36)")
-                    + " PRIMARY KEY, label VARCHAR(120) NOT NULL)");
+                    + " PRIMARY KEY, sort_rank BIGINT NOT NULL, label VARCHAR(120) NOT NULL)");
             statement.execute("CREATE TABLE commerce.inventory_items (warehouse_code VARCHAR(16) NOT NULL, "
                     + "sku VARCHAR(40) NOT NULL, quantity INTEGER NOT NULL, "
                     + "PRIMARY KEY (warehouse_code, sku))");
@@ -438,15 +448,18 @@ class CommerceCompiledGraphqlIT {
         apply(connection, target, migrations.resolve("R__titan_010_runtime.sql"));
         apply(connection, target, migrations.resolve("R__titan_020_routines.sql"));
         try (Statement statement = connection.createStatement()) {
-            statement.executeUpdate("INSERT INTO commerce.customers (id, name, nickname, active) VALUES "
-                    + "(7, 'Northwind', NULL, true), "
-                    + "(8, 'Adventure Works', 'Adventure', false), (9, 'Northwind', NULL, true)");
-            statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference) VALUES "
-                    + "(70, 7, 'NW-001'), (71, 7, 'NW-002'), (80, 8, 'AW-001')");
+            statement.executeUpdate("INSERT INTO commerce.customers "
+                    + "(id, sort_rank, tenant_key, name, nickname, active, rating, credit_limit, verified) VALUES "
+                    + "(7, 10, 'tenant-a', 'Northwind', NULL, true, 42, 1250.5, NULL), "
+                    + "(8, 10, 'tenant-b', 'Adventure Works', 'Adventure', false, NULL, 500.0, true), "
+                    + "(9, 20, 'tenant-a', 'Northwind', NULL, true, 5, 750.0, false)");
+            statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference, status) VALUES "
+                    + "(70, 7, 'NW-001', 'OPEN'), (71, 7, 'NW-002', 'CLOSED'), "
+                    + "(80, 8, 'AW-001', 'OPEN')");
             statement.executeUpdate("INSERT INTO commerce.countries (code, name) VALUES "
                     + "('NL', 'Netherlands')");
-            statement.executeUpdate("INSERT INTO commerce.api_clients (id, label) VALUES ('"
-                    + CLIENT_ID + "', 'public-client')");
+            statement.executeUpdate("INSERT INTO commerce.api_clients (id, sort_rank, label) VALUES ('"
+                    + CLIENT_ID + "', 7, 'public-client')");
             statement.executeUpdate("INSERT INTO commerce.inventory_items "
                     + "(warehouse_code, sku, quantity) VALUES ('AMS', 'TG-42', 17)");
         }

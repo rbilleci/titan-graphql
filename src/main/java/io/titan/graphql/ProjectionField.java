@@ -214,14 +214,31 @@ public final class ProjectionField {
             boolean nullable,
             GraphqlFieldPolicy policy
     ) {
+        return column(name, columnName, graphqlType, nullable, policy,
+                "String".equals(graphqlType)
+                        ? FilterCapabilities.defaultString() : FilterCapabilities.defaultScalar());
+    }
+
+    /**
+     * Creates a physical field with the exact reviewed filter surface. Model adapters use this
+     * overload when a schema intentionally exposes a subset of a scalar's possible operators;
+     * retaining a type-wide default there would advertise operations the model did not approve.
+     */
+    public static ProjectionField column(
+            String name,
+            String columnName,
+            String graphqlType,
+            boolean nullable,
+            GraphqlFieldPolicy policy,
+            FilterCapabilities filterCapabilities
+    ) {
         return new ProjectionField(
                 name,
                 columnName,
                 graphqlType,
                 nullable,
                 policy,
-                "String".equals(graphqlType)
-                        ? FilterCapabilities.defaultString() : FilterCapabilities.defaultScalar(),
+                filterCapabilities == null ? FilterCapabilities.none() : filterCapabilities,
                 SortCapabilities.scalar(name),
                 null
         );

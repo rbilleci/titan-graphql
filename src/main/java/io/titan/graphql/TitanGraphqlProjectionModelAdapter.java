@@ -82,7 +82,7 @@ final class TitanGraphqlProjectionModelAdapter {
                 throw unsupported("UNSUPPORTED_POINT_ROOT_KEY", "point root '" + root.name()
                         + "' key argument '" + argument.name() + "' cannot traverse relations");
             }
-            requirePointKeyType(argument.type(), "point root '" + root.name()
+            requirePointKeyType(argument.type(), context, "point root '" + root.name()
                     + "' argument '" + argument.name() + "'");
             TitanGraphqlFieldDocument field = type.fields().stream()
                     .filter(candidate -> argument.column().equals(candidate.column()))
@@ -105,10 +105,12 @@ final class TitanGraphqlProjectionModelAdapter {
         return ProjectionRetrieval.point(root.name(), root.type(), keyArguments);
     }
 
-    private static void requirePointKeyType(String type, String context) {
-        if (!List.of("Int", "Long", "String", "ID", "UUID").contains(normalizeType(type))) {
+    private static void requirePointKeyType(String type, AdapterContext adapterContext, String context) {
+        String normalized = normalizeType(type);
+        if (!List.of("Int", "Long", "String", "ID", "UUID").contains(normalized)
+                && !adapterContext.isEnum(normalized)) {
             throw unsupported("UNSUPPORTED_ARGUMENT_TYPE", context
-                    + " must be Int, Long, String, ID, or UUID");
+                    + " must be Int, Long, String, ID, UUID, or a declared enum");
         }
     }
 
@@ -130,7 +132,7 @@ final class TitanGraphqlProjectionModelAdapter {
                 root.type(),
                 pagination.defaultPageSize(),
                 pagination.maxPageSize(),
-                rootArguments(root),
+                rootArguments(root, context),
                 cursorOrdering(root, pagination.cursor()),
                 rootFilterPaths(root),
                 rootSortPaths(root),
@@ -138,10 +140,20 @@ final class TitanGraphqlProjectionModelAdapter {
         );
     }
 
-    private static List<ProjectionRetrieval.RetrievalArgument> rootArguments(TitanGraphqlRootDocument root) {
+    private static List<ProjectionRetrieval.RetrievalArgument> rootArguments(
+            TitanGraphqlRootDocument root,
+            AdapterContext context
+    ) {
         List<ProjectionRetrieval.RetrievalArgument> arguments = new ArrayList<>();
         for (TitanGraphqlRootDocument.RootDocumentArgument argument : root.arguments()) {
             requireRootArgumentKind(argument, TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS, root.name());
+            // This adapter is a migration-only JVM oracle. Database-resident execution owns
+            // declared-enum connection inputs; omitting an optional enum here keeps the legacy
+            // schema fail-closed for callers that try to use it instead of pretending the old
+            // INT_EQUALS projection descriptor can execute the new contract.
+            if (context.isEnum(normalizeType(argument.type()))) {
+                continue;
+            }
             requireType(argument.type(), "Int", "root '" + root.name() + "' argument '" + argument.name() + "'");
             arguments.add(ProjectionRetrieval.RetrievalArgument.intEquals(argument.name(), argument.column()));
         }
@@ -207,19 +219,37 @@ final class TitanGraphqlProjectionModelAdapter {
         List<ProjectionRetrieval.RetrievalContextFilter> filters = new ArrayList<>();
         for (String name : root.contextFilters()) {
             TitanGraphqlContextFilterDocument filter = context.contextFilter(name);
-            if (filter.operator() != TitanGraphqlContextFilterDocument.Operator.BOOLEAN_EQUALS) {
+            if (filter.operator() != TitanGraphqlContextFilterDocument.Operator.BOOLEAN_EQUALS
+                    && filter.operator() != TitanGraphqlContextFilterDocument.Operator.EQUALS) {
                 throw unsupported("UNSUPPORTED_CONTEXT_FILTER",
-                        "context filter '" + name + "' must use booleanEquals");
+                        "context filter '" + name + "' must use equals or booleanEquals");
             }
             if (!filter.applyBeforeClientFilters() || !filter.failClosed()) {
                 throw unsupported("UNSUPPORTED_CONTEXT_FILTER",
                         "context filter '" + name + "' must be fail-closed before client filters");
             }
-            filters.add(ProjectionRetrieval.RetrievalContextFilter.booleanEquals(
-                    filter.name(),
-                    filter.column(),
-                    filter.contextKey()
-            ));
+            if (filter.operator() == TitanGraphqlContextFilterDocument.Operator.BOOLEAN_EQUALS) {
+                filters.add(ProjectionRetrieval.RetrievalContextFilter.booleanEquals(
+                        filter.name(), filter.column(), filter.contextKey()));
+                continue;
+            }
+            TitanGraphqlFieldDocument field = context.type(root.type()).fields().stream()
+                    .filter(candidate -> candidate.column().equals(filter.column()))
+                    .findFirst()
+                    .orElseThrow(() -> unsupported("UNSUPPORTED_CONTEXT_FILTER",
+                            "context filter '" + name + "' column '" + filter.column()
+                                    + "' is not a scalar field on type '" + root.type() + "'"));
+            ProjectionRetrieval.RetrievalContextFilterValueType valueType = switch (normalizeType(field.type())) {
+                case "String" -> ProjectionRetrieval.RetrievalContextFilterValueType.STRING;
+                case "ID" -> field.idStorage() == TitanGraphqlFieldDocument.FieldDocumentIdStorage.INTEGRAL
+                        ? ProjectionRetrieval.RetrievalContextFilterValueType.ID
+                        : ProjectionRetrieval.RetrievalContextFilterValueType.STRING;
+                default -> throw unsupported("UNSUPPORTED_CONTEXT_FILTER",
+                        "context filter '" + name + "' equals field must use String or ID storage");
+            };
+            filters.add(new ProjectionRetrieval.RetrievalContextFilter(
+                    filter.name(), filter.column(), valueType, filter.contextKey(), true,
+                    ProjectionRetrieval.RetrievalContextFilterPhase.BEFORE_CLIENT_FILTERS));
         }
         return filters;
     }
@@ -249,14 +279,11 @@ final class TitanGraphqlProjectionModelAdapter {
         if (field.computed() != null) {
             return ProjectionField.computed(computed(field), policy);
         }
+        ProjectionField.FilterCapabilities filterCapabilities = filterCapabilities(
+                field.type(), field.filterOperators(), "field '" + field.name() + "'");
         ProjectionField projectionField = ProjectionField.column(
-                field.name(), field.column(), field.type(), field.nullable(), policy);
+                field.name(), field.column(), field.type(), field.nullable(), policy, filterCapabilities);
         requireFieldType(field, projectionField);
-        requireFilterOperators(
-                projectionField.filterCapabilities(),
-                field.filterOperators(),
-                "field '" + field.name() + "'"
-        );
         requireFieldSort(field, projectionField);
         return projectionField;
     }
@@ -314,7 +341,7 @@ final class TitanGraphqlProjectionModelAdapter {
         GraphqlFieldPolicy policy = TitanGraphqlPolicyCompiler.compile(
                 relation.policies(), context::policy);
         ProjectionRelation.ProjectionRelationCapabilities capabilities = relationCapabilities(relation);
-        List<ProjectionRelation.ProjectionRelationArgument> arguments = relationArguments(relation);
+        List<ProjectionRelation.ProjectionRelationArgument> arguments = relationArguments(relation, context);
         List<ProjectionRelation.ProjectionRelationSortPath> sortPaths = relationSortPaths(relation);
         if (relation.cardinality() == TitanGraphqlRelationDocument.RelationDocumentCardinality.MANY) {
             return ProjectionRelation.many(
@@ -354,7 +381,7 @@ final class TitanGraphqlProjectionModelAdapter {
                     supportsFiltering,
                     !relation.sortPaths().isEmpty(),
                     ProjectionRelation.ProjectionRelationPaginationMode.NONE,
-                    2,
+                    relation.selectionHopBudget(),
                     0,
                     1
             );
@@ -366,7 +393,7 @@ final class TitanGraphqlProjectionModelAdapter {
         return ProjectionRelation.ProjectionRelationCapabilities.relayConnectionWithTotalCount(
                 supportsFiltering,
                 !relation.sortPaths().isEmpty(),
-                2,
+                relation.selectionHopBudget(),
                 0,
                 0,
                 pagination.defaultPageSize(),
@@ -374,9 +401,16 @@ final class TitanGraphqlProjectionModelAdapter {
         );
     }
 
-    private static List<ProjectionRelation.ProjectionRelationArgument> relationArguments(TitanGraphqlRelationDocument relation) {
+    private static List<ProjectionRelation.ProjectionRelationArgument> relationArguments(
+            TitanGraphqlRelationDocument relation,
+            AdapterContext context
+    ) {
         List<ProjectionRelation.ProjectionRelationArgument> arguments = new ArrayList<>();
         for (TitanGraphqlRelationDocument.RelationDocumentArgument argument : relation.arguments()) {
+            if (argument.kind() == TitanGraphqlRelationDocument.RelationDocumentArgumentKind.EQUALS
+                    && context.isEnum(normalizeType(argument.type()))) {
+                continue;
+            }
             arguments.add(switch (argument.kind()) {
                 case EQUALS -> {
                     requireType(argument.type(), "Int", "relation '" + relation.name() + "' argument '" + argument.name() + "'");
@@ -425,8 +459,19 @@ final class TitanGraphqlProjectionModelAdapter {
         ProjectionField.FilterCapabilities capabilities = "String".equals(type)
                 ? ProjectionField.FilterCapabilities.defaultString()
                 : ProjectionField.FilterCapabilities.defaultScalar();
-        requireFilterOperators(capabilities, operators, context);
-        return capabilities;
+        if (operators.isEmpty()) {
+            return capabilities;
+        }
+        List<ProjectionField.FilterOperator> reviewed = new ArrayList<>();
+        for (String operator : operators) {
+            ProjectionField.FilterOperator parsed = filterOperator(operator, context);
+            if (!capabilities.operators().contains(parsed) || reviewed.contains(parsed)) {
+                throw unsupported("UNSUPPORTED_FILTER_OPERATORS",
+                        context + " declares unsupported filter operators " + operators);
+            }
+            reviewed.add(parsed);
+        }
+        return new ProjectionField.FilterCapabilities(List.copyOf(reviewed));
     }
 
     private static ProjectionField.FilterCapabilities computedFilterCapabilities(String graphqlType) {
@@ -525,6 +570,7 @@ final class TitanGraphqlProjectionModelAdapter {
         private final Map<String, TitanGraphqlPolicyDocument> policies;
         private final Map<String, TitanGraphqlContextFilterDocument> contextFilters;
         private final Map<String, TitanGraphqlTypeDocument> types;
+        private final Map<String, Boolean> enums;
 
         AdapterContext(TitanGraphqlModelDocument document) {
             this.defaultSchema = defaultText(document.database().defaultSchema(), "public");
@@ -539,6 +585,8 @@ final class TitanGraphqlProjectionModelAdapter {
             document.contextFilters().forEach(filter -> contextFilters.put(filter.name(), filter));
             this.types = new LinkedHashMap<>();
             document.types().forEach(type -> types.put(type.name(), type));
+            this.enums = new LinkedHashMap<>();
+            document.enums().forEach(enumType -> enums.put(enumType.name(), true));
         }
 
         String defaultSchema() {
@@ -563,6 +611,10 @@ final class TitanGraphqlProjectionModelAdapter {
                 throw unsupported("UNKNOWN_ROOT_TYPE", "unknown root type '" + typeName + "'");
             }
             return type;
+        }
+
+        boolean isEnum(String typeName) {
+            return enums.containsKey(typeName);
         }
 
         TitanGraphqlPolicyDocument policy(String name) {

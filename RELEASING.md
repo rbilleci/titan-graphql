@@ -5,9 +5,10 @@ This project uses a maintainer-run validation process rather than GitHub Actions
 1. Start from a clean checkout with initialized submodules.
 2. Review `git status`, repository visibility, and GitHub's secret/dependency alerts.
 3. Run `scripts/release-check.sh --full` with JDK 21 and Docker. This performs the local static,
-   unit, two-schema/two-dialect compiled, and isolated legacy-equivalence checks without creating
-   or enabling a GitHub Actions workflow. Retain the reported deployment fingerprints with the
-   release evidence.
+   unit, two-schema/two-dialect database-engine, and standalone-HTTP-ZIP checks without creating
+   or enabling a GitHub Actions workflow. The transitional compiled and legacy-equivalence suites
+   remain useful migration oracles but cannot approve the shipping artifact. Retain the reported
+   deployment fingerprints with the release evidence.
 4. Run an independent credential scanner such as gitleaks across all reachable Git history and
    review its findings; the script's high-confidence scanner is a baseline, not a substitute.
 5. Confirm that no release notes, examples, or artifacts contain real credentials, customer

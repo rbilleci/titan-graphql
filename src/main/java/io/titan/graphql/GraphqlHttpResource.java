@@ -193,7 +193,8 @@ public final class GraphqlHttpResource {
                 .entity(result.body())
                 .header(EXECUTION_MODE_HEADER, engine.modeName());
         if (engine.mode() == GraphqlExecutionEngine.Mode.SQL
-                || engine.mode() == GraphqlExecutionEngine.Mode.COMPILED) {
+                || engine.mode() == GraphqlExecutionEngine.Mode.COMPILED
+                || engine.mode() == GraphqlExecutionEngine.Mode.DATABASE) {
             response.header(DEPLOYMENT_FINGERPRINT_HEADER, engine.fingerprint());
         }
         return response.build();
@@ -293,6 +294,10 @@ public final class GraphqlHttpResource {
             return errorJson(transportError);
         }
 
+        // Deny a production legacy-mode override before the request reaches any in-process
+        // GraphQL execution path. The database mode still receives the original document once.
+        engine.requireServingMode();
+
         String query = (String) request.get("query");
         String operationName = "";
         if (request.containsKey("operationName") && request.get("operationName") != null) {
@@ -301,7 +306,7 @@ public final class GraphqlHttpResource {
         String variablesJson = jsonObjectField(request, "variables");
         String extensionsJson = jsonObjectField(request, "extensions");
         return engine.runtime().execute(
-                new GraphqlRuntimeRequest(query, operationName, variablesJson, extensionsJson),
+                new GraphqlRuntimeRequest(query, operationName, variablesJson, extensionsJson, true),
                 requestContext(context)
         );
     }
@@ -316,29 +321,45 @@ public final class GraphqlHttpResource {
         if (query == null || query.isBlank()) {
             return errorJson("GraphQL GET query parameter 'query' is required");
         }
-        try {
-            if (GraphqlParser.selectedOperationType(query, operationName)
-                    != GraphqlAst.OperationType.QUERY) {
-                return errorJson(
-                        "GraphQL GET only supports query operations",
-                        GraphqlException.UNSUPPORTED_OPERATION
-                );
+        // This must precede the historical GET parser guard below: a production configuration
+        // override must not cause even operation-type parsing to happen in the HTTP JVM.
+        engine.requireServingMode();
+        // The database engine owns GraphQL parsing and operation selection. In that mode the
+        // HTTP boundary must forward the original document verbatim with only its transport
+        // policy (GET cannot authorize mutations) attached. The parse below remains temporarily
+        // for the legacy in-process runtimes until those routes are removed.
+        if (engine.mode() != GraphqlExecutionEngine.Mode.DATABASE) {
+            try {
+                if (GraphqlParser.selectedOperationType(query, operationName)
+                        != GraphqlAst.OperationType.QUERY) {
+                    return errorJson(
+                            "GraphQL GET only supports query operations",
+                            GraphqlException.UNSUPPORTED_OPERATION
+                    );
+                }
+            } catch (GraphqlException invalidDocument) {
+                return GraphqlJsonWriter.error(invalidDocument);
             }
-        } catch (GraphqlException invalidDocument) {
-            return GraphqlJsonWriter.error(invalidDocument);
         }
         return engine.runtime().execute(
                 new GraphqlRuntimeRequest(
                         query,
                         operationName == null ? "" : operationName,
                         variablesJson == null ? "" : variablesJson,
-                        extensionsJson == null ? "" : extensionsJson
+                        extensionsJson == null ? "" : extensionsJson,
+                        false
                 ),
                 requestContext(context)
         );
     }
 
-    private static GraphqlRequestContext requestContext(GraphqlHttpContext context) {
+    static GraphqlRequestContext requestContext(GraphqlHttpContext context) {
+        // The older Quarkus route still accepts its compatibility visibility header for the
+        // reference runtime. Convert it to the generic context-value contract before a database
+        // engine sees the request; the database adapter itself has no model-specific fields.
+        Map<String, Object> contextValues = context.hasArticleVisibility()
+                ? Map.of("articleVisibility", context.articleVisibility())
+                : Map.of();
         return new GraphqlRequestContext(
                 context.actorId(),
                 context.actorRole(),
@@ -351,7 +372,8 @@ public final class GraphqlHttpResource {
                 context.enableIntrospection(),
                 context.hasArticleVisibility(),
                 context.articleVisibility(),
-                context.deadlineBudgetMillis()
+                context.deadlineBudgetMillis(),
+                contextValues
         );
     }
 

@@ -130,7 +130,7 @@ final class TitanGraphqlModelDocumentTest {
 
         assertTrue(json.startsWith("{\"apiVersion\":\"titan.graphql/v1alpha1\",\"artifacts\":"));
         assertTrue(json.contains("\"metadata\":{\"description\":\"Bounded demo blog model.\",\"name\":\"demo-blog\""));
-        assertTrue(json.contains("\"types\":[{\"fields\":[{\"column\":\"id\",\"computed\":null"));
+        assertTrue(json.contains("\"types\":[{\"description\":\"\",\"fields\":[{\"column\":\"id\",\"computed\":null"));
         assertTrue(json.contains("\"generateConformance\":true"));
         assertFalse(json.contains("\n"));
     }
@@ -217,6 +217,60 @@ final class TitanGraphqlModelDocumentTest {
         assertNotEquals(
                 TitanGraphqlModelDocumentJson.semanticHash(document),
                 TitanGraphqlModelDocumentJson.semanticHash(changed)
+        );
+    }
+
+    @Test
+    void canonicalEnumOrderIsStableAndEnumValuesAffectSemanticIdentity() {
+        TitanGraphqlModelDocument first = enumDocument(List.of(
+                new TitanGraphqlEnumDocument("CustomerStatus", List.of("INACTIVE", "ACTIVE"), List.of(
+                        new TitanGraphqlEnumDocument.EnumValueMetadata(
+                                "INACTIVE", "Unavailable", true, "Use ACTIVE."),
+                        new TitanGraphqlEnumDocument.EnumValueMetadata(
+                                "ACTIVE", "Available", false, ""))),
+                new TitanGraphqlEnumDocument("CustomerTier", List.of("PREMIUM", "STANDARD"))
+        ));
+        TitanGraphqlModelDocument reordered = enumDocument(List.of(
+                new TitanGraphqlEnumDocument("CustomerTier", List.of("STANDARD", "PREMIUM")),
+                new TitanGraphqlEnumDocument("CustomerStatus", List.of("ACTIVE", "INACTIVE"), List.of(
+                        new TitanGraphqlEnumDocument.EnumValueMetadata(
+                                "ACTIVE", "Available", false, ""),
+                        new TitanGraphqlEnumDocument.EnumValueMetadata(
+                                "INACTIVE", "Unavailable", true, "Use ACTIVE.")))
+        ));
+        TitanGraphqlModelDocument changed = enumDocument(List.of(
+                new TitanGraphqlEnumDocument("CustomerStatus", List.of("ACTIVE", "INACTIVE"), List.of(
+                        new TitanGraphqlEnumDocument.EnumValueMetadata(
+                                "ACTIVE", "Available", false, ""),
+                        new TitanGraphqlEnumDocument.EnumValueMetadata(
+                                "INACTIVE", "Unavailable", true, "Use SUSPENDED."))),
+                new TitanGraphqlEnumDocument("CustomerTier", List.of("PREMIUM", "STANDARD"))
+        ));
+
+        assertEquals(TitanGraphqlModelDocumentJson.canonicalJson(first),
+                TitanGraphqlModelDocumentJson.canonicalJson(reordered));
+        assertEquals(TitanGraphqlModelDocumentJson.semanticHash(first),
+                TitanGraphqlModelDocumentJson.semanticHash(reordered));
+        assertNotEquals(TitanGraphqlModelDocumentJson.semanticHash(first),
+                TitanGraphqlModelDocumentJson.semanticHash(changed));
+        assertTrue(TitanGraphqlModelDocumentJson.canonicalJson(first).contains("valueMetadata"));
+    }
+
+    private static TitanGraphqlModelDocument enumDocument(List<TitanGraphqlEnumDocument> enums) {
+        return new TitanGraphqlModelDocument(
+                TitanGraphqlModelDocument.CURRENT_API_VERSION,
+                TitanGraphqlModelDocument.PROJECTION_MODEL_KIND,
+                new TitanGraphqlModelMetadata("enum-model"),
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                enums,
+                List.of(),
+                List.of(),
+                List.of(),
+                null,
+                null
         );
     }
 
@@ -404,7 +458,10 @@ final class TitanGraphqlModelDocumentTest {
                                         "id",
                                         0
                                 )),
-                                List.of()
+                                List.of(),
+                                2,
+                                true,
+                                true
                         )
                 )
         );
@@ -491,7 +548,10 @@ final class TitanGraphqlModelDocumentTest {
                 ),
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                2,
+                true,
+                true
         );
     }
 }

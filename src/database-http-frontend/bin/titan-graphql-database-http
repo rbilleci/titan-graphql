@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+set -eu
+SCRIPT_DIRECTORY=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+APPLICATION_HOME=$(CDPATH= cd -- "$SCRIPT_DIRECTORY/.." && pwd)
+exec java -cp "$APPLICATION_HOME/lib/*" io.titan.graphql.frontend.DatabaseGraphqlHttpServerMain "$@"

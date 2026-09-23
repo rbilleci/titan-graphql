@@ -12,7 +12,8 @@ public record TitanGraphqlRootDocument(
         List<RootDocumentFilterPath> filterPaths,
         List<RootDocumentSortPath> sortPaths,
         List<String> contextFilters,
-        List<String> policies
+        List<String> policies,
+        String outputType
 ) {
     public TitanGraphqlRootDocument {
         name = ModelDocumentSupport.requireText(name, "root.name");
@@ -25,6 +26,23 @@ public record TitanGraphqlRootDocument(
         sortPaths = ModelDocumentSupport.listOrEmpty(sortPaths);
         contextFilters = ModelDocumentSupport.listOrEmpty(contextFilters);
         policies = ModelDocumentSupport.listOrEmpty(policies);
+        outputType = ModelDocumentSupport.textOrEmpty(outputType);
+    }
+
+    public TitanGraphqlRootDocument(
+            String name,
+            String type,
+            RootDocumentOperation operation,
+            RootDocumentArgument argument,
+            RootDocumentPagination pagination,
+            List<RootDocumentArgument> arguments,
+            List<RootDocumentFilterPath> filterPaths,
+            List<RootDocumentSortPath> sortPaths,
+            List<String> contextFilters,
+            List<String> policies
+    ) {
+        this(name, type, operation, argument, pagination, arguments, filterPaths, sortPaths,
+                contextFilters, policies, "");
     }
 
     public TitanGraphqlRootDocument(
@@ -39,7 +57,7 @@ public record TitanGraphqlRootDocument(
             List<String> contextFilters
     ) {
         this(name, type, operation, argument, pagination, arguments, filterPaths, sortPaths,
-                contextFilters, List.of());
+                contextFilters, List.of(), "");
     }
 
     public static TitanGraphqlRootDocument point(String name, String type, RootDocumentArgument argument) {
@@ -53,7 +71,8 @@ public record TitanGraphqlRootDocument(
                 List.of(),
                 List.of(),
                 List.of(),
-                List.of()
+                List.of(),
+                ""
         );
     }
 
@@ -76,7 +95,8 @@ public record TitanGraphqlRootDocument(
                 filterPaths,
                 sortPaths,
                 contextFilters,
-                List.of()
+                List.of(),
+                ""
         );
     }
 
@@ -125,7 +145,8 @@ public record TitanGraphqlRootDocument(
             RootDocumentArgumentKind kind,
             String column,
             String path,
-            int hops
+            int hops,
+            String defaultValue
     ) {
         public RootDocumentArgument {
             name = ModelDocumentSupport.requireText(name, "root.argument.name");
@@ -133,10 +154,22 @@ public record TitanGraphqlRootDocument(
             kind = kind == null ? RootDocumentArgumentKind.EQUALS : kind;
             column = ModelDocumentSupport.textOrEmpty(column);
             path = ModelDocumentSupport.textOrEmpty(path);
+            defaultValue = ModelDocumentSupport.textOrEmpty(defaultValue);
+        }
+
+        public RootDocumentArgument(
+                String name,
+                String type,
+                RootDocumentArgumentKind kind,
+                String column,
+                String path,
+                int hops
+        ) {
+            this(name, type, kind, column, path, hops, "");
         }
 
         public static RootDocumentArgument equals(String name, String type, String column) {
-            return new RootDocumentArgument(name, type, RootDocumentArgumentKind.EQUALS, column, column, 0);
+            return new RootDocumentArgument(name, type, RootDocumentArgumentKind.EQUALS, column, column, 0, "");
         }
     }
 

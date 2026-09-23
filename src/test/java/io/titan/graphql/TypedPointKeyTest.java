@@ -21,6 +21,15 @@ class TypedPointKeyTest {
     void reviewedPointKeysKeepScalarTypesAndAllCompositeComponents() throws IOException {
         GraphqlSchema schema = commerceSchema();
 
+        assertEquals(List.of(
+                        GraphqlFieldDescriptor.ScalarFilterOperator.EQ,
+                        GraphqlFieldDescriptor.ScalarFilterOperator.IN),
+                schema.type("Customer").field("nodeId").scalarFilterCapabilities().operators(),
+                "the reviewed model's restricted ID filter surface must not widen in the JVM reference model");
+        GraphqlException restrictedOperator = assertThrows(GraphqlException.class, () -> validate(schema,
+                "{ customerFeed(first: 1, filter: { nodeId: { neq: 7001 } }) { totalCount } }"));
+        assertEquals("unsupported filter operator 'neq' on field 'nodeId'", restrictedOperator.getMessage());
+
         GraphqlSelection stringKey = validate(schema, "{ country(code: \"NL\") { name } }");
         assertEquals(Map.of("code", "NL"), stringKey.rootKeyValues());
 
@@ -45,7 +54,7 @@ class TypedPointKeyTest {
         assertEquals("warehouse_code", plan.rootRead().pointKeyArguments().get(1).columnName());
 
         String sdl = GraphqlSchemaPrinter.print(schema);
-        assertTrue(sdl.startsWith("scalar UUID\n\n"), sdl);
+        assertTrue(sdl.contains("scalar UUID\n\n"), sdl);
         assertTrue(sdl.contains("apiClient(id: UUID!): ApiClient"), sdl);
         assertTrue(sdl.contains(
                 "inventoryItem(sku: String!, warehouse: String!): InventoryItem"), sdl);

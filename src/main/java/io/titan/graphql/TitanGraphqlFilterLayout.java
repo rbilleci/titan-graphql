@@ -42,7 +42,7 @@ public final class TitanGraphqlFilterLayout {
                 add(bindings, new Binding(
                         field.name(), field.computed() == null ? field.column() : field.name(),
                         field.name(), field.type(), normalizeOperator(operator), 0,
-                        field.computed() != null));
+                        field.computed() != null, field.idStorage()));
             }
         }
         for (TitanGraphqlRootDocument.RootDocumentArgument argument : root.arguments()) {
@@ -51,9 +51,12 @@ public final class TitanGraphqlFilterLayout {
                 continue;
             }
             for (String operator : ROOT_ARGUMENT_OPERATORS) {
+                TitanGraphqlFieldDocument argumentField = fieldByColumn(type, argument.column());
                 add(bindings, new Binding(
                         argument.name(), argument.column(), argument.path(), argument.type(),
-                        operator, 0, false));
+                        operator, 0, false, argumentField == null
+                                ? TitanGraphqlFieldDocument.FieldDocumentIdStorage.INTEGRAL
+                                : argumentField.idStorage()));
             }
         }
         for (TitanGraphqlRootDocument.RootDocumentFilterPath path : root.filterPaths()) {
@@ -65,7 +68,8 @@ public final class TitanGraphqlFilterLayout {
                         path.name(), field != null && field.computed() != null
                                 ? field.name() : field == null ? path.column() : field.column(),
                         path.path(), path.type(), normalizeOperator(operator), path.hops(),
-                        field != null && field.computed() != null));
+                        field != null && field.computed() != null,
+                        field == null ? TitanGraphqlFieldDocument.FieldDocumentIdStorage.INTEGRAL : field.idStorage()));
             }
         }
         List<Binding> sorted = new ArrayList<>(bindings.values());
@@ -137,11 +141,19 @@ public final class TitanGraphqlFilterLayout {
     }
 
     public static List<String> valueTypes(List<Binding> bindings) {
+        return valueTypes(null, bindings);
+    }
+
+    public static List<String> valueTypes(
+            TitanGraphqlModelDocument document,
+            List<Binding> bindings
+    ) {
         List<String> result = new ArrayList<>();
         result.add("Boolean");
         bindings.stream().map(binding -> normalizeGraphqlType(binding.graphqlType())).sorted()
                 .forEach(value -> {
-                    if (result.stream().noneMatch(existing -> valueKind(existing).equals(valueKind(value)))) {
+                    if (result.stream().noneMatch(existing -> valueKind(document, existing)
+                            .equals(valueKind(document, value)))) {
                         result.add(value);
                     }
                 });
@@ -153,7 +165,15 @@ public final class TitanGraphqlFilterLayout {
     }
 
     public static String valueKind(String graphqlType) {
-        return switch (normalizeGraphqlType(graphqlType)) {
+        return valueKind(null, graphqlType);
+    }
+
+    public static String valueKind(TitanGraphqlModelDocument document, String graphqlType) {
+        String normalized = normalizeGraphqlType(graphqlType);
+        if (document != null && document.enums().stream().anyMatch(value -> value.name().equals(normalized))) {
+            return "string";
+        }
+        return switch (normalized) {
             case "Int" -> "int";
             case "Long" -> "long";
             case "Boolean" -> "boolean";
@@ -177,6 +197,10 @@ public final class TitanGraphqlFilterLayout {
                 .orElse(null);
     }
 
+    private static TitanGraphqlFieldDocument fieldByColumn(TitanGraphqlTypeDocument type, String column) {
+        return type.fields().stream().filter(field -> field.column().equals(column)).findFirst().orElse(null);
+    }
+
     private static void add(Map<String, Binding> bindings, Binding binding) {
         String key = binding.fieldName() + "\u0000" + binding.operator();
         Binding existing = bindings.putIfAbsent(key, binding);
@@ -194,6 +218,7 @@ public final class TitanGraphqlFilterLayout {
             String operator,
             int hops,
             boolean computed,
+            TitanGraphqlFieldDocument.FieldDocumentIdStorage idStorage,
             int selector
     ) {
         public Binding(
@@ -203,13 +228,29 @@ public final class TitanGraphqlFilterLayout {
                 String graphqlType,
                 String operator,
                 int hops,
-                boolean computed
+                boolean computed,
+                TitanGraphqlFieldDocument.FieldDocumentIdStorage idStorage
         ) {
-            this(fieldName, binding, path, graphqlType, operator, hops, computed, 0);
+            this(fieldName, binding, path, graphqlType, operator, hops, computed, idStorage, 0);
+        }
+
+        /** Compatibility constructor for callers that predate storage-aware ID bindings. */
+        public Binding(
+                String fieldName,
+                String binding,
+                String path,
+                String graphqlType,
+                String operator,
+                int hops,
+                boolean computed,
+                int selector
+        ) {
+            this(fieldName, binding, path, graphqlType, operator, hops, computed,
+                    TitanGraphqlFieldDocument.FieldDocumentIdStorage.INTEGRAL, selector);
         }
 
         private Binding withSelector(int value) {
-            return new Binding(fieldName, binding, path, graphqlType, operator, hops, computed, value);
+            return new Binding(fieldName, binding, path, graphqlType, operator, hops, computed, idStorage, value);
         }
 
         private boolean sameContract(Binding other) {
@@ -217,7 +258,8 @@ public final class TitanGraphqlFilterLayout {
                     && path.equals(other.path)
                     && graphqlType.equals(other.graphqlType)
                     && hops == other.hops
-                    && computed == other.computed;
+                    && computed == other.computed
+                    && idStorage == other.idStorage;
         }
     }
 }

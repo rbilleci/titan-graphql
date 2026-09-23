@@ -12,7 +12,10 @@ public record TitanGraphqlRelationDocument(
         RelationDocumentPagination pagination,
         List<RelationDocumentArgument> arguments,
         List<RelationDocumentSortPath> sortPaths,
-        List<String> policies
+        List<String> policies,
+        Integer selectionHopBudget,
+        boolean selectable,
+        boolean batchable
 ) {
     public TitanGraphqlRelationDocument {
         name = ModelDocumentSupport.requireText(name, "relation.name");
@@ -23,6 +26,27 @@ public record TitanGraphqlRelationDocument(
         arguments = ModelDocumentSupport.listOrEmpty(arguments);
         sortPaths = ModelDocumentSupport.listOrEmpty(sortPaths);
         policies = ModelDocumentSupport.listOrEmpty(policies);
+        // JSON model documents from before this capability was retained omit the member; preserve
+        // the established model default while still allowing an explicit zero to fail closed.
+        selectionHopBudget = selectionHopBudget == null ? 2 : selectionHopBudget;
+    }
+
+    /** Compatibility constructor for callers authored before relation capabilities were retained. */
+    public TitanGraphqlRelationDocument(
+            String name,
+            String targetType,
+            String localColumn,
+            String targetColumn,
+            RelationDocumentCardinality cardinality,
+            boolean nullable,
+            RelationDocumentPagination pagination,
+            List<RelationDocumentArgument> arguments,
+            List<RelationDocumentSortPath> sortPaths,
+            List<String> policies,
+            Integer selectionHopBudget
+    ) {
+        this(name, targetType, localColumn, targetColumn, cardinality, nullable, pagination,
+                arguments, sortPaths, policies, selectionHopBudget, true, false);
     }
 
     // Renamed from Cardinality under TG-BLK-005 (closed by titan 705180d — SQL names now qualify by
@@ -77,7 +101,8 @@ public record TitanGraphqlRelationDocument(
             RelationDocumentArgumentKind kind,
             String column,
             String path,
-            int hops
+            int hops,
+            String defaultValue
     ) {
         public RelationDocumentArgument {
             name = ModelDocumentSupport.requireText(name, "relation.argument.name");
@@ -85,6 +110,18 @@ public record TitanGraphqlRelationDocument(
             kind = kind == null ? RelationDocumentArgumentKind.EQUALS : kind;
             column = ModelDocumentSupport.textOrEmpty(column);
             path = ModelDocumentSupport.textOrEmpty(path);
+            defaultValue = ModelDocumentSupport.textOrEmpty(defaultValue);
+        }
+
+        public RelationDocumentArgument(
+                String name,
+                String type,
+                RelationDocumentArgumentKind kind,
+                String column,
+                String path,
+                int hops
+        ) {
+            this(name, type, kind, column, path, hops, "");
         }
     }
 

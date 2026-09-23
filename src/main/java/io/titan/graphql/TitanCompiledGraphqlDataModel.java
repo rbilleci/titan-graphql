@@ -317,7 +317,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         }
         for (TitanGraphqlRootDocument.RootDocumentArgument argument : root.arguments()) {
             if (argument.kind() != TitanGraphqlRootDocument.RootDocumentArgumentKind.EQUALS
-                    || argument.hops() != 0) continue;
+                    || argument.hops() != 0 || isDeclaredEnum(argument.type().replace("!", "").trim())) continue;
             Long value = null;
             for (GraphqlSelection.RootFilter filter : read.filters()) {
                 if (argument.name().equals(filter.argumentName())) value = filter.value();
@@ -356,7 +356,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         List<TitanGraphqlFilterLayout.Binding> bindings =
                 TitanGraphqlFilterLayout.bindings(document, type, root);
         TitanGraphqlFilterPlan.Plan plan = TitanGraphqlFilterPlan.compile(filters, bindings);
-        List<String> valueTypes = TitanGraphqlFilterLayout.valueTypes(bindings);
+        List<String> valueTypes = TitanGraphqlFilterLayout.valueTypes(document, bindings);
         List<Object> parameters = new ArrayList<>();
         for (int groupIndex = 0; groupIndex < TitanGraphqlFilterPlan.MAX_GROUPS; groupIndex++) {
             TitanGraphqlFilterPlan.Group group = groupIndex < plan.groups().size()
@@ -377,17 +377,17 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         return List.copyOf(parameters);
     }
 
-    private static Object filterSlotValue(TitanGraphqlFilterPlan.Term term, String valueType) {
-        if (term == null) return defaultValue(valueType);
-        String valueKind = TitanGraphqlFilterLayout.valueKind(valueType);
+    private Object filterSlotValue(TitanGraphqlFilterPlan.Term term, String valueType) {
+        if (term == null) return filterDefaultValue(valueType);
+        String valueKind = TitanGraphqlFilterLayout.valueKind(document, valueType);
         if (term.binding().operator().equals("isnull")) {
             return valueKind.equals("boolean")
-                    ? term.value().booleanValue() : defaultValue(valueType);
+                    ? term.value().booleanValue() : filterDefaultValue(valueType);
         }
-        if (!valueKind.equals(TitanGraphqlFilterLayout.valueKind(term.binding().graphqlType()))) {
-            return defaultValue(valueType);
+        if (!valueKind.equals(TitanGraphqlFilterLayout.valueKind(document, term.binding().graphqlType()))) {
+            return filterDefaultValue(valueType);
         }
-        if (term.value().nullValue()) return defaultValue(valueType);
+        if (term.value().nullValue()) return filterDefaultValue(valueType);
         if (List.of("contains", "startswith", "endswith").contains(term.binding().operator())) {
             String escaped = escapeLike(term.value().stringValue());
             return switch (term.binding().operator()) {
@@ -400,7 +400,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         return generatedFilterValue(term.value());
     }
 
-    private static void addGeneratedFilterParameters(
+    private void addGeneratedFilterParameters(
             List<Object> parameters,
             GraphqlSelection.GeneratedRootFilter filter
     ) {
@@ -409,7 +409,7 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                 GraphqlSelection.GeneratedRootFilterValue value = filter.values().getFirst();
                 parameters.add(value.nullValue());
                 parameters.add(value.nullValue()
-                        ? defaultValue(filter.scalarType()) : generatedFilterValue(value));
+                        ? filterDefaultValue(filter.scalarType()) : generatedFilterValue(value));
             }
             case IS_NULL -> parameters.add(filter.values().getFirst().booleanValue());
             case LT, LTE, GT, GTE -> parameters.add(generatedFilterValue(filter.values().getFirst()));
@@ -433,9 +433,20 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
         }
     }
 
-    private static Object generatedFilterValue(GraphqlSelection.GeneratedRootFilterValue value) {
+    private Object generatedFilterValue(GraphqlSelection.GeneratedRootFilterValue value) {
         if (value.nullValue()) return null;
         String type = value.scalarType().replace("!", "").trim();
+        if (isDeclaredEnum(type)) {
+            String enumValue = value.stringValue();
+            boolean allowed = document.enums().stream()
+                    .filter(candidate -> candidate.name().equals(type))
+                    .flatMap(candidate -> candidate.values().stream())
+                    .anyMatch(enumValue::equals);
+            if (!allowed) {
+                throw unsupported("generated filter enum value '" + enumValue + "' for type '" + type + "'");
+            }
+            return enumValue;
+        }
         return switch (type) {
             case "Int" -> Math.toIntExact(value.intValue());
             case "Long" -> value.intValue();
@@ -445,6 +456,15 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
             case "UUID" -> java.util.UUID.fromString(value.stringValue());
             default -> throw unsupported("generated filter scalar type '" + value.scalarType() + "'");
         };
+    }
+
+    private Object filterDefaultValue(String graphqlType) {
+        String type = graphqlType == null ? "" : graphqlType.replace("!", "").trim();
+        return isDeclaredEnum(type) ? "" : defaultValue(graphqlType);
+    }
+
+    private boolean isDeclaredEnum(String type) {
+        return document.enums().stream().anyMatch(value -> value.name().equals(type));
     }
 
     private static String escapeLike(String value) {
@@ -861,12 +881,13 @@ public final class TitanCompiledGraphqlDataModel implements GraphqlDataModel {
                 .canRead(context.actorRole());
     }
 
-    private static List<TitanGraphqlRelationDocument.RelationDocumentArgument> relationFilterArguments(
+    private List<TitanGraphqlRelationDocument.RelationDocumentArgument> relationFilterArguments(
             TitanGraphqlRelationDocument relation
     ) {
         return relation.arguments().stream()
                 .filter(argument -> argument.kind()
                         == TitanGraphqlRelationDocument.RelationDocumentArgumentKind.EQUALS)
+                .filter(argument -> !isDeclaredEnum(argument.type().replace("!", "").trim()))
                 .sorted(Comparator.comparing(TitanGraphqlRelationDocument.RelationDocumentArgument::name))
                 .toList();
     }

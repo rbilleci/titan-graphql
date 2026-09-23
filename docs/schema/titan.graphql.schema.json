@@ -34,6 +34,24 @@
     "types": {
       "$ref": "#/$defs/types"
     },
+    "interfaces": {
+      "$ref": "#/$defs/interfaces"
+    },
+    "unions": {
+      "$ref": "#/$defs/unions"
+    },
+    "enums": {
+      "$ref": "#/$defs/enums"
+    },
+    "inputObjects": {
+      "$ref": "#/$defs/inputObjects"
+    },
+    "directives": {
+      "$ref": "#/$defs/directives"
+    },
+    "mutations": {
+      "$ref": "#/$defs/mutations"
+    },
     "policies": {
       "$ref": "#/$defs/policies"
     },
@@ -183,6 +201,10 @@
           "type": "string",
           "minLength": 1
         },
+        "outputType": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Za-z0-9_]*$"
+        },
         "operation": {
           "enum": [
             "point",
@@ -258,6 +280,10 @@
         "hops": {
           "type": "integer",
           "minimum": 0
+        },
+        "defaultValue": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },
@@ -376,6 +402,355 @@
         }
       }
     },
+    "interfaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Z][A-Za-z0-9_]*$": {
+          "$ref": "#/$defs/interface"
+        }
+      }
+    },
+    "interface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fields"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "patternProperties": {
+            "^[_A-Za-z][_0-9A-Za-z]*$": {
+              "$ref": "#/$defs/interfaceField"
+            }
+          }
+        }
+      }
+    },
+    "interfaceField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "deprecationReason": {
+          "type": "string"
+        }
+      }
+    },
+    "unions": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Z][A-Za-z0-9_]*$": {
+          "$ref": "#/$defs/union"
+        }
+      }
+    },
+    "union": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "members"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "members": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Za-z0-9_]*$"
+          }
+        }
+      }
+    },
+    "enums": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Z][A-Za-z0-9_]*$": {
+          "$ref": "#/$defs/schemaEnum"
+        }
+      }
+    },
+    "schemaEnum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "values"
+      ],
+      "properties": {
+        "values": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[_A-Za-z][_0-9A-Za-z]*$"
+          }
+        },
+        "valueMetadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "patternProperties": {
+            "^[_A-Za-z][_0-9A-Za-z]*$": {
+              "$ref": "#/$defs/schemaEnumValueMetadata"
+            }
+          }
+        }
+      }
+    },
+    "schemaEnumValueMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "deprecationReason": {
+          "type": "string"
+        }
+      }
+    },
+    "inputObjects": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[A-Z][A-Za-z0-9_]*$": {
+          "$ref": "#/$defs/inputObject"
+        }
+      }
+    },
+    "inputObject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fields"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "patternProperties": {
+            "^[_A-Za-z][_0-9A-Za-z]*$": {
+              "$ref": "#/$defs/inputField"
+            }
+          }
+        }
+      }
+    },
+    "inputField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "defaultValue": {
+          "type": "string",
+          "minLength": 1
+        },
+        "deprecated": {
+          "type": "boolean"
+        },
+        "deprecationReason": {
+          "type": "string"
+        }
+      }
+    },
+    "directives": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[_A-Za-z][_0-9A-Za-z]*$": {
+          "$ref": "#/$defs/directive"
+        }
+      }
+    },
+    "directive": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "behavior",
+        "locations"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "behavior": {
+          "enum": [
+            "includeIf",
+            "skipIf"
+          ]
+        },
+        "locations": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "FIELD",
+              "FRAGMENT_SPREAD",
+              "INLINE_FRAGMENT"
+            ]
+          }
+        }
+      }
+    },
+    "mutations": {
+      "type": "object",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^[_A-Za-z][_0-9A-Za-z]*$": {
+          "$ref": "#/$defs/mutation"
+        }
+      }
+    },
+    "mutation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "operation",
+        "type",
+        "payload"
+      ],
+      "properties": {
+        "operation": {
+          "const": "update"
+        },
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arguments": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "patternProperties": {
+            "^[_A-Za-z][_0-9A-Za-z]*$": {
+              "$ref": "#/$defs/mutationArgument"
+            }
+          }
+        },
+        "input": {
+          "$ref": "#/$defs/mutationInput"
+        },
+        "inputBindings": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "patternProperties": {
+            "^[_A-Za-z][_0-9A-Za-z]*$": {
+              "$ref": "#/$defs/mutationInputBinding"
+            }
+          }
+        },
+        "policies": {
+          "$ref": "#/$defs/stringList"
+        },
+        "payload": {
+          "type": "object",
+          "additionalProperties": false,
+          "minProperties": 1,
+          "patternProperties": {
+            "^[_A-Za-z][_0-9A-Za-z]*$": {
+              "$ref": "#/$defs/mutationPayloadField"
+            }
+          }
+        }
+      },
+      "oneOf": [
+        {
+          "required": ["arguments"],
+          "not": {
+            "anyOf": [
+              {"required": ["input"]},
+              {"required": ["inputBindings"]}
+            ]
+          }
+        },
+        {
+          "required": ["input", "inputBindings"],
+          "not": {"required": ["arguments"]}
+        }
+      ]
+    },
+    "mutationArgument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "column"],
+      "properties": {
+        "type": {"type": "string", "minLength": 1},
+        "column": {"type": "string", "minLength": 1},
+        "key": {"type": "boolean"},
+        "defaultValue": {"type": "string", "minLength": 1}
+      }
+    },
+    "mutationInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "type"],
+      "properties": {
+        "name": {"type": "string", "pattern": "^[_A-Za-z][_0-9A-Za-z]*$"},
+        "type": {"type": "string", "pattern": "^[_A-Za-z][_0-9A-Za-z]*$"},
+        "defaultValue": {"type": "string", "minLength": 1}
+      }
+    },
+    "mutationInputBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "type", "column"],
+      "properties": {
+        "path": {"type": "string", "pattern": "^[_A-Za-z][_0-9A-Za-z]*(\\.[_A-Za-z][_0-9A-Za-z]*)*$"},
+        "type": {"type": "string", "minLength": 1},
+        "column": {"type": "string", "minLength": 1},
+        "key": {"type": "boolean"}
+      }
+    },
+    "mutationPayloadField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["argument"],
+      "properties": {
+        "argument": {"type": "string", "minLength": 1}
+      }
+    },
     "type": {
       "type": "object",
       "additionalProperties": false,
@@ -394,6 +769,14 @@
         },
         "primaryKey": {
           "type": "string"
+        },
+        "interfaces": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Za-z0-9_]*$"
+          }
         },
         "description": {
           "type": "string"
@@ -436,6 +819,12 @@
           "type": "string",
           "minLength": 1
         },
+        "idStorage": {
+          "enum": [
+            "integral",
+            "string"
+          ]
+        },
         "description": {
           "type": "string"
         },
@@ -450,6 +839,9 @@
         },
         "deprecated": {
           "type": "boolean"
+        },
+        "deprecationReason": {
+          "type": "string"
         },
         "selectable": {
           "type": "boolean"
@@ -682,6 +1074,10 @@
         "hops": {
           "type": "integer",
           "minimum": 0
+        },
+        "defaultValue": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

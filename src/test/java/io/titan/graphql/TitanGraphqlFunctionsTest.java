@@ -479,7 +479,7 @@ class TitanGraphqlFunctionsTest {
                 new GraphqlAdminHttpResource.GraphqlAdminHttpContext("", "platform", "request-generate", "", true, "")
         );
 
-        assertTrue(generated.body().contains("\"accepted\":true"));
+        assertTrue(generated.body().contains("\"accepted\":true"), generated.body());
         assertTrue(generated.body().contains("\"artifactSetId\":\"artifact-" + draftId + "\""));
         // SDL + introspection + conformance + the four real GAP-005 package metadata files
         // (the demo-blog model requests SQL artifacts; the metadataOnly placeholder is gone).
@@ -738,6 +738,9 @@ class TitanGraphqlFunctionsTest {
         assertEquals("can-preview, trace", context.policyFlags());
         assertEquals("publishedVisibility, tenantIsolation", context.enabledContextFilters());
         assertEquals(2500L, context.deadlineBudgetMillis());
+        // The compatibility header is normalized before a database runtime sees it. The
+        // database adapter serializes only this generic map and does not know this model key.
+        assertEquals(false, GraphqlHttpResource.requestContext(context).values().get("articleVisibility"));
     }
 
     @Test

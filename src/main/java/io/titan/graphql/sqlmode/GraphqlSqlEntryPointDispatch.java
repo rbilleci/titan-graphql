@@ -141,8 +141,8 @@ public final class GraphqlSqlEntryPointDispatch {
         if (qualifiedRoutine == null || !qualifiedRoutine.matches(QUALIFIED_ROUTINE)) {
             throw new IllegalArgumentException("invalid Titan package routine identity '" + qualifiedRoutine + "'");
         }
-        if (parameterCount < 0 || parameterCount > 256) {
-            throw new IllegalArgumentException("generated carrier parameter count must be between 0 and 256");
+        if (parameterCount < 0) {
+            throw new IllegalArgumentException("generated carrier parameter count cannot be negative");
         }
         String placeholders = String.join(", ", java.util.Collections.nCopies(parameterCount, "?"));
         return (procedure ? "CALL " : "SELECT ") + qualifiedRoutine + "(" + placeholders + ")";

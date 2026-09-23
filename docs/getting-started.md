@@ -3,16 +3,16 @@
 Status: developer onboarding and local deployment guide.
 
 Titan GraphQL turns a reviewed database projection into a generated, install-verified Titan package
-and serves it through one generic compiled runtime:
+and serves it through a small HTTP/JDBC frontend:
 
 ```text
 Titan codegen schema.json
   -> conservative projection draft
   -> reviewed titan.graphql.yaml
-  -> generated static Titan DSL carriers
+  -> transpiled whole-request GraphQL engine plus generated schema binding
   -> PostgreSQL/MySQL package and install verification
-  -> semantic model/package binding
-  -> compiled GraphQL runtime
+  -> package/descriptor binding
+  -> standalone HTTP/JDBC frontend
 ```
 
 No schema-specific read resolver or handwritten read query is required for supported model/query
@@ -125,29 +125,38 @@ docker exec -i titan-graphql-demo-pg psql -q -U titan -d titan_graphql \
 Load application data through the application's normal migration/seed path. The integration tests
 own their fixture rows; generated Titan packages contain no fixture data.
 
-## 4. Serve in Compiled Mode
+## 4. Serve Through the Database Engine
 
-The default execution mode is `compiled`. Configure the exact reviewed model, bound artifact
-directory, database kind, and datasource:
+Build the deployable standalone frontend from the verified package. This ZIP—not the root Quarkus
+application JAR—is the supported serving artifact. Its deployment descriptor fixes the exact
+dialect, schema-qualified whole-request entry point, semantic model hash, runtime identity, and
+deployment fingerprint; it does not contain the JVM GraphQL engine.
 
 ```bash
-TITAN_GRAPHQL_EXECUTION_MODE=compiled \
-TITAN_GRAPHQL_MODEL_PATH=/absolute/path/to/titan.graphql.yaml \
-TITAN_GRAPHQL_ARTIFACTS_DIR=/absolute/path/to/build/generated/migrations/titan \
-QUARKUS_DATASOURCE_DB_KIND=postgresql \
-QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://localhost:5432/titan_graphql \
-QUARKUS_DATASOURCE_USERNAME=titan \
-QUARKUS_DATASOURCE_PASSWORD=titan \
-./gradlew quarkusDev
+./gradlew \
+  titanGraphqlGenerateDatabaseEngineFrontendDescriptor \
+  titanGraphqlGenerateMySqlDatabaseEngineFrontendDescriptor \
+  titanGraphqlVerifyDatabaseHttpFrontendReleaseArtifact
+
+unzip build/distributions/titan-graphql-0.1.0-database-http-frontend.zip
+export TITAN_GRAPHQL_FRONTEND_DESCRIPTOR="$PWD/build/generated/proofs/database-engine/package/titan-graphql-database-frontend.postgresql.properties"
+export TITAN_GRAPHQL_JDBC_URL=jdbc:postgresql://localhost:5432/titan_graphql
+export TITAN_GRAPHQL_JDBC_USERNAME=titan
+export TITAN_GRAPHQL_JDBC_PASSWORD=replace-with-deployment-secret
+export TITAN_GRAPHQL_HTTP_PORT=8080
+export TITAN_GRAPHQL_DATABASE_STATEMENT_TIMEOUT_SECONDS=30
+./titan-graphql-0.1.0-database-http-frontend/bin/titan-graphql-database-http
 ```
 
-Use `QUARKUS_DATASOURCE_DB_KIND=mysql` and a MySQL JDBC URL for a MySQL package. Both Quarkus JDBC
-drivers are included. Do not put real credentials in source or shell history in production; inject
-them through the deployment secret mechanism.
+For MySQL, set the MySQL descriptor and JDBC URL instead. The ZIP includes only the HTTP transport,
+JDBC invocation client, JSON-envelope library, and the PostgreSQL/MySQL drivers. Do not put real
+credentials in source or shell history; inject them through the deployment secret mechanism. See
+[database-http-frontend.md](database-http-frontend.md) for the exact environment contract.
 
-Compiled initialization verifies the local model/package binding. Before reads it calls the
-installed model-attestation routine. A missing, stale, mismatched, or wrongly installed package fails
-closed with no fallback to another engine.
+The descriptor generator verifies the local model/package binding and runtime-identity sidecar. The
+installed public routine verifies both identities before parsing or accessing application data. A
+missing, stale, mismatched, or wrongly installed package fails closed with no fallback to another
+engine.
 
 Send a query:
 
@@ -158,7 +167,7 @@ curl -si -X POST http://localhost:8080/graphql \
   -d '{"query":"{ article(id: 1) { id title author { id name } } }"}'
 ```
 
-Every response includes `X-Titan-Execution-Mode`. Compiled responses also include
+Every response includes `X-Titan-Execution-Mode`. Database responses also include
 `X-Titan-Deployment-Fingerprint`, which identifies the exact model/package binding.
 
 The default HTTP context has no actor role and ignores caller-supplied `X-Titan-*` context headers.
@@ -167,11 +176,10 @@ Configure an authenticated gateway before enabling trusted request-context heade
 
 ## 5. Application Mutations
 
-No application mutation root is published by default. Register explicit
-`GraphqlApplicationMutationProvider` beans to add reviewed command descriptors and handlers to the
-compiled runtime. Mutations execute over POST; GET remains query-only. Handlers own transactions,
-idempotency, domain rollback, and correctness-critical audit. See
-[custom-mutations.md](custom-mutations.md).
+No mutation root is published by default. Declare a reviewed `mutations` binding in the model to
+generate a database-resident custom mutation. Mutations execute over POST; GET remains query-only.
+The current proof supports direct scalar `update` bindings; durable idempotency/audit contracts are
+still migration work. See [custom-mutations.md](custom-mutations.md).
 
 ## 6. Verify the Whole Project
 
@@ -179,13 +187,13 @@ Use the focused tasks while iterating:
 
 ```bash
 ./gradlew test
-./gradlew compiledSchemaIntegrationTest
-./gradlew legacySqlIntegrationTest
+./gradlew titanGraphqlDatabaseEngineReleaseCheck
 ```
 
-`compiledSchemaIntegrationTest` independently generates, packages, installs, binds, and serves the
-demo and commerce models on PostgreSQL and MySQL. `legacySqlIntegrationTest` preserves the separate
-97-case whole-request Java/SQL compiler-equivalence proof; it is not a production runtime path.
+`titanGraphqlDatabaseEngineReleaseCheck` independently generates, packages, installs, binds, and
+directly invokes demo and commerce whole-request engines on PostgreSQL and MySQL, then launches the
+standalone ZIP on both dialects. `compiledSchemaIntegrationTest` and `legacySqlIntegrationTest`
+remain useful migration oracles but are not release approval paths.
 
 The release gate also checks origin, submodule pins, temporary files, common credential patterns,
 machine paths, author-email privacy, and GPL licensing:
@@ -198,17 +206,19 @@ scripts/release-check.sh --full
 There is intentionally no hosted GitHub Actions workflow. Maintainers run the local full gate and
 retain its output with release evidence. See [verification.md](verification.md).
 
-## Other Execution Modes
+## Transitional Reference Modes
 
 | Mode | Use |
 | --- | --- |
-| `compiled` | Default model-generated production read path; optional explicit application mutations |
+| `database` | Bound PostgreSQL/MySQL generated whole-request package; Quarkus compatibility seam only |
+| `compiled` | Model-generated JVM reference runtime while migrating tests and features |
 | `jdbc` | Smaller direct Titan DSL/JDBC diagnostic/reference path |
 | `java` | In-memory demo reference kernel |
 | `sql` | Isolated historical whole-request demo kernel |
 
-There is no cross-mode fallback. The production package contains only model-generated carriers; the
-legacy kernel is built into a separate proof package.
+There is no cross-mode fallback. The standalone frontend ZIP is the only supported serving artifact;
+these modes remain solely until their tests and retained capabilities are migrated into the
+database-resident engine.
 
 ## Management Plane
 

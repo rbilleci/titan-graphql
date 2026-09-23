@@ -29,7 +29,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Docker-free coverage for the execution-mode plumbing: mode selection (default compiled),
+ * Docker-free coverage for the execution-mode plumbing: mode selection (default database),
  * the descriptive 503 failure path of SQL mode with an absent/unreachable datasource (never a
  * silent fallback to Java mode), the telemetry listener contract, and the mode surface
  * headers. The live SQL-mode serving path itself is proven by {@code GraphqlSqlModeHttpIT}.
@@ -46,17 +46,18 @@ class GraphqlExecutionModeTest {
     // --- mode selection -------------------------------------------------------------------
 
     @Test
-    void emptyModeValueSelectsCompiledProductionDefault() {
-        assertEquals(GraphqlExecutionEngine.Mode.COMPILED, engine("").mode());
+    void emptyModeValueSelectsDatabaseProductionDefault() {
+        assertEquals(GraphqlExecutionEngine.Mode.DATABASE, engine("").mode());
     }
 
     @Test
     void modeValuesParseLenientlyOnCaseAndWhitespaceOnly() {
-        assertEquals(GraphqlExecutionEngine.Mode.COMPILED, engine("").mode());
+        assertEquals(GraphqlExecutionEngine.Mode.DATABASE, engine("").mode());
         assertEquals(GraphqlExecutionEngine.Mode.JAVA, engine(" Java ").mode());
         assertEquals(GraphqlExecutionEngine.Mode.JDBC, engine("JDBC").mode());
         assertEquals(GraphqlExecutionEngine.Mode.COMPILED, engine("COMPILED").mode());
         assertEquals(GraphqlExecutionEngine.Mode.SQL, engine("SQL").mode());
+        assertEquals(GraphqlExecutionEngine.Mode.DATABASE, engine(" Database ").mode());
     }
 
     @Test
@@ -64,7 +65,8 @@ class GraphqlExecutionModeTest {
         IllegalStateException failure = assertThrows(IllegalStateException.class, () -> engine("yaml"));
 
         assertTrue(failure.getMessage().contains(GraphqlExecutionEngine.MODE_PROPERTY), failure.getMessage());
-        assertTrue(failure.getMessage().contains("'java', 'jdbc', 'compiled', or 'sql'"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("'java', 'jdbc', 'compiled', 'sql', or 'database'"),
+                failure.getMessage());
         assertTrue(failure.getMessage().contains("yaml"), failure.getMessage());
     }
 
@@ -95,6 +97,28 @@ class GraphqlExecutionModeTest {
                 .negotiatePost(Map.<String, Object>of("query", SIMPLE_QUERY), GraphqlHttpResource.GRAPHQL_RESPONSE_JSON);
         assertEquals(200, result.status());
         assertTrue(result.body().contains("\"data\""), result.body());
+    }
+
+    @Test
+    void servingConfigurationRejectsLegacyModesBeforeTheHttpGetParserRuns() {
+        GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
+                "java",
+                () -> {
+                    throw new AssertionError("legacy runtime must not be reached");
+                },
+                "must-not-be-used",
+                "",
+                GraphqlApplicationMutationProvider.none(),
+                "",
+                false);
+
+        GraphqlHttpResource.GraphqlHttpResult result = new GraphqlHttpResource(engine).negotiateGet(
+                "this is deliberately not a valid GraphQL document", "", "", "",
+                GraphqlHttpResource.GRAPHQL_RESPONSE_JSON);
+
+        assertEquals(503, result.status());
+        assertTrue(result.body().contains(GraphqlExecutionEngine.ALLOW_LEGACY_EXECUTION_MODES_PROPERTY), result.body());
+        assertTrue(result.body().contains("legacy execution mode 'java' is disabled"), result.body());
     }
 
     @Test
@@ -221,12 +245,17 @@ class GraphqlExecutionModeTest {
                 GraphqlSqlEntryPointDispatch.carrierSql("tenant_api.read_root", 2, false));
         assertEquals("CALL tenant_api.read_root(?, ?)",
                 GraphqlSqlEntryPointDispatch.carrierSql("tenant_api.read_root", 2, true));
+        String wideCarrierCall = GraphqlSqlEntryPointDispatch.carrierSql("tenant_api.read_root", 1024, false);
+        assertTrue(wideCarrierCall.startsWith("SELECT tenant_api.read_root(?, ?, ?"), wideCarrierCall);
+        assertEquals(1024, wideCarrierCall.chars().filter(character -> character == '?').count(), wideCarrierCall);
         assertThrows(IllegalArgumentException.class,
                 () -> GraphqlSqlEntryPointDispatch.placeholderSql(invocation, "public.fn; DROP TABLE users"));
         assertThrows(IllegalArgumentException.class,
                 () -> GraphqlSqlEntryPointDispatch.noArgumentFunctionSql("public.fn; DROP TABLE users"));
         assertThrows(IllegalArgumentException.class,
                 () -> GraphqlSqlEntryPointDispatch.carrierSql("public.fn; DROP TABLE users", 0, false));
+        assertThrows(IllegalArgumentException.class,
+                () -> GraphqlSqlEntryPointDispatch.carrierSql("tenant_api.read_root", -1, false));
     }
 
     @Test
@@ -275,6 +304,49 @@ class GraphqlExecutionModeTest {
             assertTrue(result.body().contains(GraphqlExecutionEngine.QUARKUS_DATASOURCE_DESCRIPTION), result.body());
             assertFalse(result.body().contains("\"data\""), result.body());
         }
+    }
+
+    @Test
+    void databaseModeForwardsGetWithoutParsingAndRejectsANonEnginePackage() {
+        GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
+                "database",
+                () -> new FailingDataSource("connection refused: database-engine.example.test:5432"),
+                "database-engine test datasource",
+                DEMO_MODEL_PATH,
+                GraphqlApplicationMutationProvider.none(),
+                "postgresql");
+        GraphqlHttpResource resource = new GraphqlHttpResource(engine);
+
+        // A legacy runtime would parse this invalid document at the HTTP boundary. Database mode
+        // must forward it untouched; it reaches package resolution, which rejects the fixture's
+        // historical demo entry point instead of producing a JVM GraphQL syntax error.
+        GraphqlHttpResource.GraphqlHttpResult result = resource.negotiateGet(
+                "{", null, null, null, GraphqlHttpResource.GRAPHQL_RESPONSE_JSON);
+
+        assertEquals(503, result.status());
+        assertTrue(result.body().contains("does not publish the generated nine-input"), result.body());
+        assertFalse(result.body().contains("GraphQL document"), result.body());
+    }
+
+    @Test
+    void databaseModeRequiresAnExplicitSupportedDialectBeforePackageOrDatasourceAccess() {
+        GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
+                "database",
+                () -> {
+                    throw new AssertionError("dialect validation must run before datasource access");
+                },
+                "must-not-be-used",
+                "",
+                GraphqlApplicationMutationProvider.none(),
+                "oracle");
+
+        GraphqlExecutionModeUnavailableException failure = assertThrows(
+                GraphqlExecutionModeUnavailableException.class, engine::runtime);
+
+        assertTrue(failure.getMessage().contains(GraphqlExecutionEngine.DATABASE_ENGINE_DIALECT_PROPERTY),
+                failure.getMessage());
+        assertTrue(failure.getMessage().contains("postgresql"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("mysql"), failure.getMessage());
     }
 
     @Test
@@ -331,7 +403,7 @@ class GraphqlExecutionModeTest {
 
     @Test
     void databasePackageResponsesNameTheEngineAndTheDeployedArtifact() {
-        for (String mode : List.of("compiled", "sql")) {
+        for (String mode : List.of("compiled", "sql", "database")) {
             GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
                     mode, () -> new FailingDataSource("unreachable"), "stub datasource", DEMO_MODEL_PATH);
 

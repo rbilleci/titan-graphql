@@ -161,7 +161,8 @@ final class TitanGraphqlCatalogModelInference {
                             null,
                             List.of(),
                             List.of(),
-                            List.of(RELATION_REVIEW_POLICY)
+                            List.of(RELATION_REVIEW_POLICY),
+                            2
                     ));
                     hasRelationCandidates = true;
                     inferredObjects.add(new TitanGraphqlCatalogInferenceReport.InferredObject(

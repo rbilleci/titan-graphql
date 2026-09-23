@@ -31,21 +31,45 @@ database:
       schema: commerce
       primaryKey: warehouse_code
 
+directives:
+  visible:
+    description: Includes a selection when its required Boolean condition is true.
+    behavior: includeIf
+    locations: [FIELD, FRAGMENT_SPREAD, INLINE_FRAGMENT]
+  hidden:
+    description: Skips a field when its required Boolean condition is true.
+    behavior: skipIf
+    locations: [FIELD]
+
 policies:
   canReadOrders:
-    description: Customer orders are visible to reviewed reader and admin roles.
-    appliesTo: [Customer.orders]
+    description: Customer order relations are visible to reviewed reader, field-reader, and admin roles.
+    appliesTo: [Customer.orders, Customer.orderConnection, Customer.openOrderConnection]
     mode: reject
     expression:
       kind: named
-      name: "roleIn:reader,admin"
+      name: "roleIn:reader,fieldReader,admin"
   canReadCustomerRows:
-    description: Customer rows are visible to reviewed reader and admin roles.
+    description: Customer rows are visible to reviewed read roles and admins.
     appliesTo: [Customer.*]
     mode: reject
     expression:
       kind: named
-      name: "roleIn:reader,admin"
+      name: "roleIn:reader,fieldReader,relationReader,admin"
+  canReadCustomerVerified:
+    description: Customer verification state requires the reviewed protected-field role.
+    appliesTo: [Customer.verified]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:reader,relationReader,admin"
+  canReadCustomerRelations:
+    description: Order-to-customer relations are visible to reviewed reader, relation-reader, and admin roles.
+    appliesTo: [Order.customer, Order.nullableCustomer]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:reader,relationReader,admin"
   canReadCountryRoot:
     description: Country lookup is exposed only to reviewed reader and admin roles.
     appliesTo: [Query.country]
@@ -53,6 +77,107 @@ policies:
     expression:
       kind: named
       name: "roleIn:reader,admin"
+  canRenameCustomer:
+    description: Customer updates are explicit reviewed write operations.
+    appliesTo: [Mutation.renameCustomer, Mutation.renameCustomerWithInput, Mutation.setCustomerActive, Mutation.setCustomerCreditLimit, Mutation.setCustomerStatus]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:editor,admin"
+
+mutations:
+  renameCustomer:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      name:
+        type: String
+        column: name
+    payload:
+      id:
+        argument: id
+      name:
+        argument: name
+  renameCustomerWithInput:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    input:
+      name: input
+      type: RenameCustomerInput
+      defaultValue: '{id: 8, patch: {}}'
+    inputBindings:
+      id:
+        path: id
+        type: Int
+        column: id
+        key: true
+      name:
+        path: patch.name
+        type: String
+        column: name
+    payload:
+      id:
+        argument: id
+      name:
+        argument: name
+  setCustomerActive:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      active:
+        type: Boolean
+        column: active
+    payload:
+      id:
+        argument: id
+      active:
+        argument: active
+  setCustomerCreditLimit:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      creditLimit:
+        type: Float
+        column: credit_limit
+    payload:
+      id:
+        argument: id
+      creditLimit:
+        argument: creditLimit
+  setCustomerStatus:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      status:
+        type: CustomerStatus
+        column: status
+        defaultValue: ACTIVE
+    payload:
+      id:
+        argument: id
+      status:
+        argument: status
 
 contextFilters:
   activeCustomers:
@@ -63,6 +188,57 @@ contextFilters:
     valueType: Boolean
     failClosed: true
     phase: beforeClientFilters
+  tenantIsolation:
+    description: Fail-closed tenant boundary supplied by authenticated request context.
+    type: equals
+    column: tenant_key
+    contextKey: tenantKey
+    failClosed: true
+    phase: beforeClientFilters
+
+enums:
+  CustomerStatus:
+    values: [ACTIVE, INACTIVE, LEGACY]
+    valueMetadata:
+      ACTIVE:
+        description: Customer can place orders.
+      LEGACY:
+        description: Historic status retained for compatibility.
+        deprecated: true
+        deprecationReason: Use INACTIVE.
+  OrderStatus:
+    values: [OPEN, CLOSED]
+
+inputObjects:
+  RenameCustomerInput:
+    description: Reviewed customer rename request.
+    fields:
+      id:
+        type: Int!
+        description: Customer row identifier.
+      patch:
+        type: RenameCustomerPatch!
+        description: Values applied to the customer.
+  RenameCustomerPatch:
+    description: Mutable customer values.
+    fields:
+      name:
+        type: String!
+        description: Replacement customer name.
+        defaultValue: '"Defaulted by input schema"'
+
+interfaces:
+  Node:
+    description: An object with a stable integer identifier.
+    fields:
+      id:
+        type: Int!
+        description: Stable row identifier.
+
+unions:
+  SearchResult:
+    description: Objects returned by the reviewed search surface.
+    members: [Customer, Order]
 
 types:
   Customer:
@@ -70,10 +246,34 @@ types:
     schema: commerce
     physicalTable: customers
     primaryKey: id
+    description: A commerce customer.
+    interfaces: [Node]
     policies: [canReadCustomerRows]
     fields:
+      tenantKey:
+        column: tenant_key
+        type: String
+        nullable: false
       id:
         column: id
+        type: Int
+        nullable: false
+        description: Customer row identifier.
+      nodeId:
+        column: node_id
+        type: ID
+        nullable: false
+        filter:
+          operators: [eq, in]
+      externalId:
+        column: external_id
+        type: ID
+        idStorage: string
+        nullable: false
+        filter:
+          operators: [eq, in]
+      sortRank:
+        column: sort_rank
         type: Int
         nullable: false
       name:
@@ -86,11 +286,53 @@ types:
         column: nickname
         type: String
         nullable: true
+        description: Historic customer nickname.
+        deprecated: true
+        deprecationReason: Use name.
       active:
         column: active
         type: Boolean
         nullable: false
+        filter:
+          operators: [eq, in]
+      status:
+        column: status
+        type: CustomerStatus
+        nullable: false
+        filter:
+          operators: [eq, neq, in, isNull]
+      nullableStatus:
+        column: status
+        type: CustomerStatus
+        nullable: true
+      rating:
+        column: rating
+        type: Int
+        nullable: true
+        filter:
+          operators: [eq, in]
+      creditLimit:
+        column: credit_limit
+        type: Float
+        nullable: false
+        filter:
+          operators: [eq, in]
+      verified:
+        column: verified
+        type: Boolean
+        nullable: true
+        policies: [canReadCustomerVerified]
     relations:
+      rankPeers:
+        target: Customer
+        cardinality: many
+        nullable: false
+        localColumn: sort_rank
+        targetColumn: sort_rank
+        capabilities:
+          selectable: true
+          batchable: true
+          selectionHopBudget: 1
       orders:
         target: Order
         cardinality: many
@@ -108,6 +350,7 @@ types:
         nullable: false
         localColumn: id
         targetColumn: customer_id
+        policies: [canReadOrders]
         capabilities:
           selectable: true
           batchable: true
@@ -124,6 +367,49 @@ types:
             kind: equals
             column: id
             path: id
+          status:
+            type: OrderStatus
+            kind: equals
+            column: status
+            path: status
+          first:
+            kind: relayFirst
+          after:
+            kind: relayAfter
+          last:
+            kind: relayLast
+          before:
+            kind: relayBefore
+        sortPaths:
+          id:
+            column: id
+            path: id
+            direction: asc
+            tieBreaker: id
+      openOrderConnection:
+        target: Order
+        cardinality: many
+        nullable: false
+        localColumn: id
+        targetColumn: customer_id
+        policies: [canReadOrders]
+        capabilities:
+          selectable: true
+          batchable: true
+          pagination: relay
+          totalCount: exact
+          selectionHopBudget: 2
+          filterHopBudget: 0
+          sortHopBudget: 0
+          defaultPageSize: 10
+          maxPageSize: 100
+        arguments:
+          status:
+            type: OrderStatus
+            kind: equals
+            column: status
+            path: status
+            defaultValue: OPEN
           first:
             kind: relayFirst
           after:
@@ -144,6 +430,8 @@ types:
     schema: commerce
     physicalTable: orders
     primaryKey: id
+    description: A commerce order.
+    interfaces: [Node]
     fields:
       id:
         column: id
@@ -153,6 +441,10 @@ types:
         column: reference
         type: String
         nullable: false
+      status:
+        column: status
+        type: OrderStatus
+        nullable: false
     relations:
       customer:
         target: Customer
@@ -160,10 +452,64 @@ types:
         nullable: false
         localColumn: customer_id
         targetColumn: id
+        policies: [canReadCustomerRelations]
         capabilities:
           selectable: true
           batchable: true
           selectionHopBudget: 2
+      nullableCustomer:
+        target: Customer
+        cardinality: one
+        nullable: true
+        localColumn: customer_id
+        targetColumn: id
+        policies: [canReadCustomerRelations]
+        capabilities:
+          selectable: true
+          batchable: true
+          selectionHopBudget: 2
+
+  CustomerByNodeId:
+    table: customers
+    schema: commerce
+    physicalTable: customers
+    primaryKey: node_id
+    policies: [canReadCustomerRows]
+    fields:
+      nodeId:
+        column: node_id
+        type: ID
+        nullable: false
+      externalId:
+        column: external_id
+        type: ID
+        idStorage: string
+        nullable: false
+      name:
+        column: name
+        type: String
+        nullable: false
+
+  CustomerByExternalId:
+    table: customers
+    schema: commerce
+    physicalTable: customers
+    primaryKey: external_id
+    policies: [canReadCustomerRows]
+    fields:
+      nodeId:
+        column: node_id
+        type: ID
+        nullable: false
+      externalId:
+        column: external_id
+        type: ID
+        idStorage: string
+        nullable: false
+      name:
+        column: name
+        type: String
+        nullable: false
 
   Country:
     table: countries
@@ -190,6 +536,12 @@ types:
         column: id
         type: UUID
         nullable: false
+        filter:
+          operators: [eq, in]
+      sortRank:
+        column: sort_rank
+        type: Int
+        nullable: false
       label:
         column: label
         type: String
@@ -215,6 +567,28 @@ types:
         nullable: false
 
 roots:
+  nodeCustomer:
+    type: Customer
+    outputType: Node
+    operation: point
+    argument:
+      name: id
+      type: Int
+      kind: equals
+      column: id
+      path: id
+
+  searchCustomer:
+    type: Customer
+    outputType: SearchResult
+    operation: point
+    argument:
+      name: id
+      type: Int
+      kind: equals
+      column: id
+      path: id
+
   customer:
     type: Customer
     operation: point
@@ -224,6 +598,42 @@ roots:
       kind: equals
       column: id
       path: id
+
+  customerByIdAndStatus:
+    type: Customer
+    operation: point
+    arguments:
+      id:
+        type: Int
+        kind: equals
+        column: id
+        path: id
+      status:
+        type: CustomerStatus
+        kind: equals
+        column: status
+        path: status
+        defaultValue: INACTIVE
+
+  customerByNodeId:
+    type: CustomerByNodeId
+    operation: point
+    argument:
+      name: id
+      type: ID
+      kind: equals
+      column: node_id
+      path: nodeId
+
+  customerByExternalId:
+    type: CustomerByExternalId
+    operation: point
+    argument:
+      name: id
+      type: ID
+      kind: equals
+      column: external_id
+      path: externalId
 
   country:
     type: Country
@@ -245,6 +655,26 @@ roots:
       kind: equals
       column: id
       path: id
+
+  apiClients:
+    type: ApiClient
+    operation: connection
+    pagination:
+      mode: relay
+      defaultPageSize: 10
+      maxPageSize: 100
+      totalCount: exact
+      cursor:
+        path: sortRank
+        column: sort_rank
+        direction: asc
+        tieBreaker: sort_rank
+    sortPaths:
+      id:
+        column: id
+        path: id
+        direction: asc
+        tieBreaker: sort_rank
 
   inventoryItem:
     type: InventoryItem
@@ -276,13 +706,80 @@ roots:
         tieBreaker: id
     contextFilters:
       - activeCustomers
+      - tenantIsolation
     sortPaths:
+      id:
+        column: id
+        path: id
+        direction: asc
+        tieBreaker: id
+      sortRank:
+        column: sort_rank
+        path: sortRank
+        direction: asc
+        tieBreaker: id
       name:
         column: name
         path: name
         direction: asc
         nulls: last
         tieBreaker: id
+
+  customerNodes:
+    type: Customer
+    outputType: Node
+    operation: connection
+    pagination:
+      mode: relay
+      defaultPageSize: 10
+      maxPageSize: 100
+      totalCount: exact
+      cursor:
+        path: id
+        column: id
+        direction: asc
+        tieBreaker: id
+
+  customerFeed:
+    type: Customer
+    operation: connection
+    pagination:
+      mode: relay
+      defaultPageSize: 10
+      maxPageSize: 100
+      totalCount: exact
+      cursor:
+        path: id
+        column: id
+        direction: asc
+        tieBreaker: id
+    arguments:
+      status:
+        type: CustomerStatus
+        kind: equals
+        column: status
+        path: status
+
+  defaultedCustomerFeed:
+    type: Customer
+    operation: connection
+    pagination:
+      mode: relay
+      defaultPageSize: 10
+      maxPageSize: 100
+      totalCount: exact
+      cursor:
+        path: id
+        column: id
+        direction: asc
+        tieBreaker: id
+    arguments:
+      status:
+        type: CustomerStatus
+        kind: equals
+        column: status
+        path: status
+        defaultValue: INACTIVE
 
   orders:
     type: Order

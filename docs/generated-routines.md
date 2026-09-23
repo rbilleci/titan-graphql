@@ -1,7 +1,8 @@
 # Generated Titan Routine Contract
 
-Status: active compiled-read contract. Default `compiled` mode consumes the supported subset; the
-legacy `sql` route still uses the transitional demo whole-request kernel.
+Status: active generated-read compatibility contract. The standalone database engine is the serving
+target; the `compiled` and `sql` routes remain transitional references while their useful coverage is
+migrated or retired.
 
 ## Purpose
 
@@ -31,7 +32,7 @@ For each supported reviewed model the generator emits:
   when the relation is protected;
 - `readRelation<Owner><Name>Batch<N>(...)` at fixed arities 2, 4, 8, 16, 32, and 64,
   allowing a 100-parent page to batch in at most two static calls. Both forms include optional
-  parameters for reviewed local integer equality arguments.
+  parameters for reviewed local integer or declared-enum equality arguments.
 
 Every query uses prepared-statement parameters. Physical identifiers must satisfy the portable
 unquoted identifier subset and unsafe computed templates are rejected during generation. Scalar
@@ -78,11 +79,11 @@ combined with ordering.
 
 ## Deliberate Remaining Boundary
 
-The generated carriers back `titan.graphql.execution.mode=compiled`. The separate `sql` mode still
-invokes `DemoBlogTitanGraphqlFunctions` as a transitional whole-request kernel so its equivalence
-corpus remains useful while carrier coverage grows. The default production package contains only
-`GeneratedTitanGraphqlReads`; the legacy kernel has a separate package and test task. Compiled mode
-has no fallback to that kernel.
+The generated carriers back the transitional `titan.graphql.execution.mode=compiled` path. The
+separate `sql` mode still invokes `DemoBlogTitanGraphqlFunctions` as a transitional whole-request
+kernel so its equivalence corpus remains useful while carrier coverage grows. The standalone
+production ZIP contains only HTTP/JDBC transport code; runtime classes, fixture data, and demo
+handlers are excluded.
 
 The following model/query shapes remain deliberately unsupported and fail closed:
 
