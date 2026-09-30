@@ -1537,6 +1537,21 @@ class CommerceDatabaseGraphqlEngineIT {
         CommerceDatabaseEngineDeployment.addCustomers(connection, 9, 63);
         CommerceDatabaseEngineDeployment.addOneOrderPerCustomer(connection, 8, 64);
 
+        for (int parentCount : new int[] {1, 2, 64, 65}) {
+            JsonNode measured = execute(connection,
+                    "{ customers(first: " + parentCount + ") { edges { node { id orders { id } } } } }",
+                    "", "{}", "reader", false,
+                    DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml"),
+                    DatabaseEngineTestRequestContract.executionMetricsTrustedContext("reader"));
+            assertEquals(parentCount, measured.at("/data/customers/edges").size(), measured::toString);
+            assertEquals(parentCount <= 64 ? 2 : 3,
+                    measured.at("/extensions/titanExecution/applicationSqlStatements").asInt(),
+                    measured::toString);
+            assertEquals(parentCount * 2L + 1L,
+                    measured.at("/extensions/titanExecution/decodedApplicationRows").asLong(),
+                    measured::toString);
+        }
+
         JsonNode response = execute(connection,
                 "{ customers(first: 65) { edges { node { id orders { id customer { id } } } } } }",
                 "", "{}", "reader", false,
@@ -3813,10 +3828,12 @@ class CommerceDatabaseGraphqlEngineIT {
         CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
 
         DatabaseEngineExpectedResultCorpus.assertCommerceV1(
-                (query, operationName, variablesJson, actorRole, allowMutations, allowIntrospection) -> execute(
+                (query, operationName, variablesJson, actorRole, allowMutations,
+                        allowIntrospection, tenantIsolation, tenantKey) -> execute(
                         connection, query, operationName, variablesJson, actorRole, allowMutations,
                         DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml"),
-                        allowIntrospection
+                        tenantIsolation ? tenantContext(tenantKey.isBlank() ? null : tenantKey)
+                                : allowIntrospection
                                 ? DatabaseEngineTestRequestContract.introspectionTrustedContext(actorRole)
                                 : DatabaseEngineTestRequestContract.trustedContext(actorRole)));
     }

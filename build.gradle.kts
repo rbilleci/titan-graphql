@@ -114,6 +114,9 @@ tasks.test {
     useJUnitPlatform {
         excludeTags("docker")
         excludeTags("database-engine-commerce-http-restart")
+        excludeTags("database-engine-commerce-http-corpus")
+        excludeTags("database-engine-package-replacement")
+        excludeTags("database-engine-snapshot")
     }
     // Docker-free runs cannot assume titanPackage/titanVerifyInstall output exists, so plain
     // tests read GAP-005 package metadata from a checked-in, schema-faithful fixture package.
@@ -373,11 +376,15 @@ val titanGraphqlDatabaseEngineReleaseCheck = tasks.register("titanGraphqlDatabas
         "titanGraphqlVerifyDatabaseEngineBoundary",
         "titanGraphqlVerifyDatabaseFrontendBoundary",
         "titanGraphqlVerifyDatabaseEnginePackagePrivacy",
+        "titanGraphqlDatabaseEngineArtifactReport",
         titanGraphqlDatabaseHttpFrontendReleaseArtifact,
         "databaseEngineIntegrationTest",
         "databaseEngineMySqlIntegrationTest",
         "databaseEngineCommerceIntegrationTest",
         "databaseEngineCommerceMySqlIntegrationTest",
+        "databaseEngineCommerceHttpCorpusIntegrationTest",
+        "databaseEnginePackageReplacementIntegrationTest",
+        "databaseEngineSnapshotIntegrationTest",
         "databaseEngineCommerceHttpRestartIntegrationTest",
         "databaseHttpFrontendIntegrationTest"
     )
@@ -1465,10 +1472,12 @@ tasks.register("titanGraphqlVerifyDatabaseEnginePackagePrivacy") {
     description = "Rejects workstation paths from all whole-request database engine packages."
     group = "verification"
     dependsOn(
-        "titanGraphqlPackageDatabaseEngine",
-        "titanGraphqlPackageMySqlDatabaseEngine",
-        "titanGraphqlPackageCommerceDatabaseEngine",
-        "titanGraphqlPackageCommerceMySqlDatabaseEngine"
+        "titanGraphqlBindDatabaseEnginePackage",
+        "titanGraphqlBindMySqlDatabaseEnginePackage",
+        "titanGraphqlBindCommerceDatabaseEnginePackage",
+        "titanGraphqlBindCommerceMySqlDatabaseEnginePackage",
+        "titanGraphqlGenerateDatabaseEngineFrontendDescriptor",
+        "titanGraphqlGenerateMySqlDatabaseEngineFrontendDescriptor"
     )
     val packageDirectories = listOf(
         titanGraphqlDatabaseEnginePackageDirectory,
@@ -1476,7 +1485,9 @@ tasks.register("titanGraphqlVerifyDatabaseEnginePackagePrivacy") {
         commerceDatabaseEnginePackageDirectory,
         commerceMySqlDatabaseEnginePackageDirectory
     )
+    val report = layout.buildDirectory.file("reports/database-engine/privacy-scan.txt")
     packageDirectories.forEach { directory -> inputs.dir(directory) }
+    outputs.file(report)
     doLast {
         val privateMachinePath = Regex(
             """(?i)(?:/""" +
@@ -1485,18 +1496,78 @@ tasks.register("titanGraphqlVerifyDatabaseEnginePackagePrivacy") {
         val absoluteSourceLocation = Regex(
             """(?m)(?:-- titan:source:|NullPointerException at )(?:/|[a-z]:[\\\\/])"""
         )
+        val credential = Regex(
+            """(?i)-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----|""" +
+                """AKIA[0-9A-Z]{16}|github_pat_[A-Za-z0-9_]{30,}|gh[pousr]_[A-Za-z0-9_]{30,}"""
+        )
+        fun finding(contents: String): String? = when {
+            privateMachinePath.containsMatchIn(contents) -> "private machine path"
+            absoluteSourceLocation.containsMatchIn(contents) -> "absolute source location"
+            credential.containsMatchIn(contents) -> "high-confidence credential"
+            else -> null
+        }
+        check(finding("/home/example-user/project/source.sql") == "private machine path")
+        check(finding("-----BEGIN PRIVATE KEY-----") == "high-confidence credential")
+        check(finding("github_pat_" + "A".repeat(30)) == "high-confidence credential")
+        check(finding("SELECT 1;") == null)
         val packageFiles = packageDirectories.flatMap { directory ->
             directory.get().asFile.walkTopDown()
-                .filter { file -> file.isFile && file.extension in setOf("sql", "json") }
+                .filter { file -> file.isFile && file.extension in setOf("sql", "json", "sha256", "properties", "txt") }
                 .toList()
         }
         check(packageFiles.isNotEmpty()) { "database engine packages did not produce SQL or metadata" }
         val leak = packageFiles.asSequence().mapNotNull { file ->
-            val contents = file.readText()
-            val match = privateMachinePath.find(contents) ?: absoluteSourceLocation.find(contents)
-            match?.let { "${file}: ${it.value}" }
+            val category = finding(file.readText())
+            category?.let { "${file.name}: $it" }
         }.firstOrNull()
-        check(leak == null) { "database engine package contains a private or absolute source path: $leak" }
+        check(leak == null) { "database engine package privacy scan failed: $leak" }
+        val output = report.get().asFile
+        output.parentFile.mkdirs()
+        output.writeText("status=passed\nfiles-scanned=${packageFiles.size}\n"
+            + "patterns=private-machine-path,absolute-source-location,high-confidence-credential\n")
+    }
+}
+
+tasks.register("titanGraphqlDatabaseEngineArtifactReport") {
+    description = "Records reproducible hashes and byte sizes for the reviewed database-serving artifacts."
+    group = "verification"
+    dependsOn("titanGraphqlVerifyDatabaseEnginePackagePrivacy", databaseHttpFrontendDistribution)
+    val packages = listOf(
+        "demo-postgresql" to titanGraphqlDatabaseEnginePackageDirectory,
+        "demo-mysql" to titanGraphqlMySqlDatabaseEnginePackageDirectory,
+        "commerce-postgresql" to commerceDatabaseEnginePackageDirectory,
+        "commerce-mysql" to commerceMySqlDatabaseEnginePackageDirectory
+    )
+    val report = layout.buildDirectory.file("reports/database-engine/artifact-inventory.tsv")
+    packages.forEach { (_, directory) -> inputs.dir(directory) }
+    inputs.file(databaseHttpFrontendDistribution.flatMap { it.archiveFile })
+    outputs.file(report)
+    doLast {
+        fun hash(file: java.io.File): String {
+            val digest = MessageDigest.getInstance("SHA-256")
+            file.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+            }
+            return HexFormat.of().formatHex(digest.digest())
+        }
+        val rows = mutableListOf("artifact\tpath\tbytes\tsha256")
+        for ((name, directory) in packages) {
+            val root = directory.get().asFile
+            for (file in root.walkTopDown().filter { it.isFile }.sortedBy { it.relativeTo(root).path }) {
+                rows += listOf(name, file.relativeTo(root).path.replace('\\', '/'),
+                    file.length().toString(), hash(file)).joinToString("\t")
+            }
+        }
+        val zip = databaseHttpFrontendDistribution.get().archiveFile.get().asFile
+        rows += listOf("frontend-zip", zip.name, zip.length().toString(), hash(zip)).joinToString("\t")
+        val output = report.get().asFile
+        output.parentFile.mkdirs()
+        output.writeText(rows.joinToString("\n", postfix = "\n"))
     }
 }
 
@@ -1580,6 +1651,91 @@ tasks.register<JavaExec>("titanGraphqlBindCommerceMySqlDatabaseEnginePackage") {
         commerceMySqlDatabaseEnginePackageDirectory.map { it.file("titan-graphql-package.json") },
         commerceMySqlDatabaseEnginePackageDirectory.map { it.file("titan-graphql-database-runtime-identity.sha256") },
         commerceMySqlDatabaseEnginePackageDirectory.map { it.file("titan-graphql-database-package-identity.sha256") })
+}
+
+listOf("postgresql" to "PostgreSql", "mysql" to "MySql").forEach { (dialectId, taskSuffix) ->
+    val root = "generated/proofs/database-engine-commerce-replacement-$dialectId"
+    val sourceDirectory = layout.buildDirectory.dir("$root/package-source")
+    val packageDirectory = layout.buildDirectory.dir("$root/package")
+    val packageIdentity = layout.buildDirectory.file("$root/package-identity.sha256")
+    val baseSource = if (dialectId == "mysql")
+        commerceMySqlDatabaseEnginePackageSourceDirectory else commerceDatabaseEnginePackageSourceDirectory
+    val runtimeIdentity = if (dialectId == "mysql")
+        commerceMySqlDatabaseEngineRuntimeIdentity else commerceDatabaseEngineRuntimeIdentity
+    val baseIdentityTask = if (dialectId == "mysql")
+        "titanGraphqlGenerateCommerceMySqlDatabaseEnginePackageIdentity"
+        else "titanGraphqlGenerateCommerceDatabaseEnginePackageIdentity"
+    val helperClass = if (dialectId == "mysql")
+        "GeneratedDatabaseGraphqlMySqlProcedure" else "GeneratedDatabaseGraphqlSchema"
+    val stageTask = "titanGraphqlStageCommerce${taskSuffix}ReplacementPackage"
+    val identityTask = "titanGraphqlGenerateCommerce${taskSuffix}ReplacementPackageIdentity"
+    val packageTask = "titanGraphqlPackageCommerce${taskSuffix}Replacement"
+    val verifyTask = "titanGraphqlVerifyCommerce${taskSuffix}ReplacementInstall"
+    val bindTask = "titanGraphqlBindCommerce${taskSuffix}ReplacementPackage"
+
+    tasks.register<Sync>(stageTask) {
+        dependsOn(baseIdentityTask)
+        from(baseSource)
+        into(sourceDirectory)
+        doLast {
+            val helper = sourceDirectory.get().file(
+                "$dialectId/io_titan_graphql_database_generated_${helperClass}__mutationRegistryIdentity.sql")
+                .asFile
+            val original = helper.readText()
+            check(original.contains("BEGIN\n")) { "replacement proof helper has no routine body" }
+            helper.writeText(original.replaceFirst("BEGIN\n", "BEGIN\n    -- m5 package replacement proof\n"))
+        }
+    }
+    tasks.register<JavaExec>(identityTask) {
+        dependsOn("classes", stageTask)
+        classpath = sourceSets["main"].runtimeClasspath
+        mainClass.set("io.titan.graphql.artifact.TitanGraphqlDatabasePackageIdentityCli")
+        args(dialectId, sourceDirectory.get().dir(dialectId).asFile.absolutePath,
+            packageIdentity.get().asFile.absolutePath,
+            sourceDirectory.get().file("$dialectId/R__titan_005_graphql_package_identity.sql")
+                .asFile.absolutePath)
+        inputs.dir(sourceDirectory)
+        outputs.file(packageIdentity)
+        outputs.file(sourceDirectory.map { it.file("$dialectId/R__titan_005_graphql_package_identity.sql") })
+    }
+    tasks.register<TitanPackageTask>(packageTask) {
+        dependsOn(identityTask)
+        sqlInputDir.set(sourceDirectory)
+        mode.set("migration")
+        titanVersion.set(providers.provider { titanGraphqlProjectVersion })
+        outputDir.set(packageDirectory)
+    }
+    tasks.register<TitanVerifyInstallTask>(verifyTask) {
+        dependsOn(packageTask)
+        sqlInputDir.set(sourceDirectory)
+        artifactDir.set(packageDirectory)
+        mode.set("migration")
+        titanVersion.set(providers.provider { titanGraphqlProjectVersion })
+        jdbcUrl.set("")
+        username.set("")
+        password.set("")
+        dialect.set(dialectId)
+        failOnVerificationError.set(true)
+        jdbcDriverClasspath.from(configurations["titanJdbc"])
+        outputs.upToDateWhen { false }
+    }
+    tasks.register<JavaExec>(bindTask) {
+        dependsOn("classes", verifyTask)
+        classpath = sourceSets["main"].runtimeClasspath
+        mainClass.set("io.titan.graphql.artifact.TitanGraphqlPackageBindingCli")
+        args(commerceModelFile.asFile.absolutePath, packageDirectory.get().asFile.absolutePath,
+            runtimeIdentity.get().asFile.absolutePath, packageIdentity.get().asFile.absolutePath)
+        inputs.files(commerceModelFile, runtimeIdentity, packageIdentity)
+        inputs.files(
+            packageDirectory.map { it.file("titan-artifact.json") },
+            packageDirectory.map { it.file("titan-object-inventory.json") },
+            packageDirectory.map { it.file("titan-install-plan.json") },
+            packageDirectory.map { it.file("titan-install-verification.json") })
+        outputs.files(
+            packageDirectory.map { it.file("titan-graphql-package.json") },
+            packageDirectory.map { it.file("titan-graphql-database-runtime-identity.sha256") },
+            packageDirectory.map { it.file("titan-graphql-database-package-identity.sha256") })
+    }
 }
 
 val managementDatabaseEngineSchema = "management_graphql"
@@ -2151,6 +2307,82 @@ tasks.register<Test>("databaseEngineCommerceHttpRestartIntegrationTest") {
     systemProperty(
         "titan.graphql.database-frontend.distribution",
         databaseHttpFrontendDistribution.get().archiveFile.get().asFile.absolutePath)
+    shouldRunAfter(tasks.named("databaseEngineCommerceMySqlIntegrationTest"))
+}
+
+tasks.register<Test>("databaseEngineCommerceHttpCorpusIntegrationTest") {
+    description = "Runs the shared Commerce expected-result corpus through the standalone HTTP distribution."
+    group = "verification"
+    dependsOn(
+        "titanGraphqlBindCommerceDatabaseEnginePackage",
+        "titanGraphqlBindCommerceMySqlDatabaseEnginePackage",
+        databaseHttpFrontendDistribution)
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { includeTags("database-engine-commerce-http-corpus") }
+    systemProperty(
+        "titan.graphql.database-engine.commerce.migrations.dir",
+        commerceDatabaseEnginePackageDirectory.map { it.dir("postgresql") }.get().asFile.absolutePath)
+    systemProperty(
+        "titan.graphql.database-engine.commerce.migrations.dir.mysql",
+        commerceMySqlDatabaseEnginePackageDirectory.map { it.dir("mysql") }.get().asFile.absolutePath)
+    systemProperty(
+        "titan.graphql.database-engine.commerce.package.dir",
+        commerceDatabaseEnginePackageDirectory.get().asFile.absolutePath)
+    systemProperty(
+        "titan.graphql.database-engine.commerce.package.dir.mysql",
+        commerceMySqlDatabaseEnginePackageDirectory.get().asFile.absolutePath)
+    systemProperty(
+        "titan.graphql.database-frontend.distribution",
+        databaseHttpFrontendDistribution.get().archiveFile.get().asFile.absolutePath)
+    shouldRunAfter(tasks.named("databaseEngineCommerceMySqlIntegrationTest"))
+}
+
+tasks.register<Test>("databaseEnginePackageReplacementIntegrationTest") {
+    description = "Proves that a same-schema package replacement rejects a stale binding on a reused connection."
+    group = "verification"
+    dependsOn(
+        "titanGraphqlBindCommerceDatabaseEnginePackage",
+        "titanGraphqlBindCommerceMySqlDatabaseEnginePackage",
+        "titanGraphqlBindCommercePostgreSqlReplacementPackage",
+        "titanGraphqlBindCommerceMySqlReplacementPackage")
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { includeTags("database-engine-package-replacement") }
+    systemProperty("titan.graphql.database-engine.commerce.migrations.dir",
+        commerceDatabaseEnginePackageDirectory.map { it.dir("postgresql") }.get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-engine.commerce.migrations.dir.mysql",
+        commerceMySqlDatabaseEnginePackageDirectory.map { it.dir("mysql") }.get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-engine.commerce.package.dir.postgresql",
+        commerceDatabaseEnginePackageDirectory.get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-engine.commerce.package.dir.mysql",
+        commerceMySqlDatabaseEnginePackageDirectory.get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-engine.commerce.replacement.package.dir.postgresql",
+        layout.buildDirectory.dir("generated/proofs/database-engine-commerce-replacement-postgresql/package")
+            .get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-engine.commerce.replacement.package.dir.mysql",
+        layout.buildDirectory.dir("generated/proofs/database-engine-commerce-replacement-mysql/package")
+            .get().asFile.absolutePath)
+    shouldRunAfter(tasks.named("databaseEngineCommerceMySqlIntegrationTest"))
+}
+
+tasks.register<Test>("databaseEngineSnapshotIntegrationTest") {
+    description = "Proves one repeatable-read snapshot across separate GraphQL roots on both dialects."
+    group = "verification"
+    dependsOn(
+        "titanGraphqlBindCommerceDatabaseEnginePackage",
+        "titanGraphqlBindCommerceMySqlDatabaseEnginePackage")
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { includeTags("database-engine-snapshot") }
+    systemProperty("titan.graphql.database-engine.commerce.migrations.dir",
+        commerceDatabaseEnginePackageDirectory.map { it.dir("postgresql") }.get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-engine.commerce.migrations.dir.mysql",
+        commerceMySqlDatabaseEnginePackageDirectory.map { it.dir("mysql") }.get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-engine.commerce.package.dir.postgresql",
+        commerceDatabaseEnginePackageDirectory.get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-engine.commerce.package.dir.mysql",
+        commerceMySqlDatabaseEnginePackageDirectory.get().asFile.absolutePath)
     shouldRunAfter(tasks.named("databaseEngineCommerceMySqlIntegrationTest"))
 }
 

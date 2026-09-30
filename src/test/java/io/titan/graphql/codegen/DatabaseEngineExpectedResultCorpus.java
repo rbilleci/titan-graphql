@@ -28,7 +28,9 @@ final class DatabaseEngineExpectedResultCorpus {
                 String variablesJson,
                 String actorRole,
                 boolean allowMutations,
-                boolean allowIntrospection
+                boolean allowIntrospection,
+                boolean tenantIsolation,
+                String tenantKey
         ) throws Exception;
     }
 
@@ -43,7 +45,9 @@ final class DatabaseEngineExpectedResultCorpus {
                     testCase.path("variables").asText(),
                     testCase.path("actorRole").asText(),
                     testCase.path("allowMutations").asBoolean(false),
-                    testCase.path("allowIntrospection").asBoolean(false));
+                    testCase.path("allowIntrospection").asBoolean(false),
+                    testCase.path("tenantIsolation").asBoolean(false),
+                    testCase.path("tenantKey").asText());
             assertEquals(testCase.path("expected"), actual, "database-engine corpus case " + name);
         }
     }

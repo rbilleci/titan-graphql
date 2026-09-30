@@ -223,6 +223,7 @@ public final class TitanGraphqlMutationPackageAttestor {
         }
         String script = Files.readString(packageDirectory.resolve(dialect)
                 .resolve("R__titan_020_routines.sql"), StandardCharsets.UTF_8);
+        verifyCompleteSqlInventory(inventory, manifest, script, dialect);
         String rootSql = verifySourceSql(root, manifest, script, dialect);
         String identitySql = verifySourceSql(identity, manifest, script, dialect);
         for (JsonNode handler : handlers) {
@@ -236,6 +237,72 @@ public final class TitanGraphqlMutationPackageAttestor {
             throw new IllegalStateException("mutation package registry identity differs from reviewed model");
         }
         verifyDispatchSql(document, rootSql);
+    }
+
+    static void verifyCompleteSqlInventory(
+            JsonNode inventory, JsonNode manifest, String script, String dialect
+    ) {
+        String prefix = dialect + "/";
+        Map<String, String> manifestHashes = new HashMap<>();
+        for (JsonNode input : manifest.path("sourceInputs")) {
+            if (dialect.equals(input.path("dialect").asText()) == false) {
+                continue;
+            }
+            String path = input.path("path").asText();
+            String hash = input.path("sha256").asText();
+            if (path.startsWith(prefix) == false || hash.matches("[0-9a-f]{64}") == false
+                    || manifestHashes.putIfAbsent(path, hash) != null) {
+                throw new IllegalStateException("package manifest has an invalid or duplicate SQL source");
+            }
+        }
+        Map<String, String> objectHashes = new HashMap<>();
+        for (JsonNode object : inventory.path("objects")) {
+            if (dialect.equals(object.path("dialect").asText()) == false) {
+                continue;
+            }
+            String path = object.path("sourceInputPath").asText();
+            if (path.equals(prefix + "R__titan_010_runtime.sql")) {
+                continue;
+            }
+            String hash = object.path("sqlHash").asText();
+            String previous = objectHashes.putIfAbsent(path, hash);
+            if (path.startsWith(prefix) == false || hash.matches("[0-9a-f]{64}") == false
+                    || previous != null && previous.equals(hash) == false) {
+                throw new IllegalStateException("package object inventory has inconsistent SQL source hashes");
+            }
+        }
+        if (manifestHashes.isEmpty() || manifestHashes.equals(objectHashes) == false) {
+            throw new IllegalStateException("package manifest and object SQL inventories differ");
+        }
+        Map<String, String> packagedHashes = new HashMap<>();
+        String marker = "-- titan:source-file:";
+        int location = script.indexOf(marker);
+        if (location != 0) {
+            throw new IllegalStateException("packaged routine SQL has no initial source marker");
+        }
+        while (location >= 0) {
+            int lineEnd = script.indexOf('\n', location);
+            if (lineEnd < 0) {
+                throw new IllegalStateException("packaged routine SQL has an incomplete source marker");
+            }
+            String fileName = script.substring(location + marker.length(), lineEnd);
+            if (fileName.isBlank() || fileName.indexOf('/') >= 0 || fileName.indexOf('\\') >= 0
+                    || fileName.endsWith(".sql") == false) {
+                throw new IllegalStateException("packaged routine SQL has an invalid source marker");
+            }
+            int next = script.indexOf("\n" + marker, lineEnd + 1);
+            String source = next < 0 ? script.substring(lineEnd + 1) : script.substring(lineEnd + 1, next);
+            if (next < 0 && source.endsWith("\n")) {
+                source = source.substring(0, source.length() - 1);
+            }
+            if (packagedHashes.putIfAbsent(prefix + fileName, sha256(source)) != null) {
+                throw new IllegalStateException("packaged routine SQL has a duplicate source marker");
+            }
+            location = next < 0 ? -1 : next + 1;
+        }
+        if (manifestHashes.equals(packagedHashes) == false) {
+            throw new IllegalStateException("packaged routine SQL differs from the complete source inventory");
+        }
     }
 
     static String verifySourceSql(JsonNode object, JsonNode manifest, String script, String dialect) {

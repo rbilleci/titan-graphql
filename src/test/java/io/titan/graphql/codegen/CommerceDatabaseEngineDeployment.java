@@ -226,8 +226,8 @@ final class CommerceDatabaseEngineDeployment {
                 buffer.append('\n');
             }
             buffer.append(line);
-            String current = buffer.toString().trim();
-            if (current.endsWith(delimiter)) {
+            if (trimmed.endsWith(delimiter)) {
+                String current = buffer.toString().trim();
                 String statement = current.substring(0, current.length() - delimiter.length()).trim();
                 if (statement.isEmpty() == false && commentOnly(statement) == false) {
                     statements.add(statement);

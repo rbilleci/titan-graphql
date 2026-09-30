@@ -93,6 +93,35 @@ final class TitanGraphqlMutationPackageAttestorTest {
     }
 
     @Test
+    void attestsEveryPackagedHelperAgainstManifestAndObjectInventory() throws Exception {
+        String root = "SELECT 1;\n";
+        String helper = "SELECT 2;\n";
+        String rootHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(root.getBytes(StandardCharsets.UTF_8)));
+        String helperHash = HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(helper.getBytes(StandardCharsets.UTF_8)));
+        JsonNode manifest = JSON.valueToTree(Map.of("sourceInputs", List.of(
+                Map.of("dialect", "postgresql", "path", "postgresql/root.sql", "sha256", rootHash),
+                Map.of("dialect", "postgresql", "path", "postgresql/helper.sql", "sha256", helperHash))));
+        JsonNode inventory = JSON.valueToTree(Map.of("objects", List.of(
+                Map.of("dialect", "postgresql", "sourceInputPath", "postgresql/root.sql", "sqlHash", rootHash),
+                Map.of("dialect", "postgresql", "sourceInputPath", "postgresql/helper.sql", "sqlHash", helperHash))));
+        String script = "-- titan:source-file:root.sql\n" + root
+                + "\n-- titan:source-file:helper.sql\n" + helper + "\n";
+
+        assertDoesNotThrow(() -> TitanGraphqlMutationPackageAttestor.verifyCompleteSqlInventory(
+                inventory, manifest, script, "postgresql"));
+        IllegalStateException changedHelper = assertThrows(IllegalStateException.class,
+                () -> TitanGraphqlMutationPackageAttestor.verifyCompleteSqlInventory(
+                        inventory, manifest, script.replace("SELECT 2;", "SELECT 3;"), "postgresql"));
+        IllegalStateException missingHelper = assertThrows(IllegalStateException.class,
+                () -> TitanGraphqlMutationPackageAttestor.verifyCompleteSqlInventory(
+                        inventory, manifest, "-- titan:source-file:root.sql\n" + root + "\n", "postgresql"));
+        assertTrue(changedHelper.getMessage().contains("complete source inventory"));
+        assertTrue(missingHelper.getMessage().contains("complete source inventory"));
+    }
+
+    @Test
     void rejectsUnreviewedDispatchAndMissingGeneratedUpdateEffect() throws Exception {
         TitanGraphqlModelDocument model = commerce();
         String sql = dispatchSql(model);

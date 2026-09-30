@@ -3,6 +3,21 @@
   "model": "commerce@1",
   "cases": [
     {
+      "name": "ambiguous-operation-requires-exact-selection",
+      "operationName": "",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "query First { customer(id: 7) { id } } query Second { country(code: \"NL\") { code } }",
+      "expected": {
+        "errors": [
+          {
+            "message": "operation selection failed: provide one operation or its exact operation name",
+            "extensions": { "code": "VALIDATION_ERROR" }
+          }
+        ]
+      }
+    },
+    {
       "name": "named-operation-variables-aliases-and-multiple-roots",
       "operationName": "Lookup",
       "variables": "{\"customerId\":7,\"countryCode\":\"NL\"}",
@@ -21,6 +36,85 @@
             "code": "NL",
             "name": "Netherlands"
           }
+        }
+      }
+    },
+    {
+      "name": "local-and-relation-ordering",
+      "operationName": "OrderedRoots",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "query OrderedRoots { customers(first: 1, orderBy: [{ name: ASC }]) { edges { node { id name } } totalCount pageInfo { hasNextPage hasPreviousPage } } orders(first: 1, orderBy: [{ customerName: ASC }]) { edges { node { id } } } }",
+      "expected": {
+        "data": {
+          "customers": {
+            "edges": [ { "node": { "id": 8, "name": "Adventure Works" } } ],
+            "totalCount": 2,
+            "pageInfo": { "hasNextPage": true, "hasPreviousPage": false }
+          },
+          "orders": { "edges": [ { "node": { "id": 70 } } ] }
+        }
+      }
+    },
+    {
+      "name": "ordered-cursor-window",
+      "operationName": "AfterFirstName",
+      "variables": "{}",
+      "actorRole": "reader",
+      "query": "query AfterFirstName { customers(first: 1, orderBy: [{ name: ASC }], after: \"tgqlc1.bmFtZQ.bmFtZQ.QVND.QWR2ZW50dXJlIFdvcmtz.aWQ.OA\") { edges { node { id name } } pageInfo { hasNextPage hasPreviousPage } } }",
+      "expected": {
+        "data": {
+          "customers": {
+            "edges": [ { "node": { "id": 7, "name": "Northwind" } } ],
+            "pageInfo": { "hasNextPage": false, "hasPreviousPage": true }
+          }
+        }
+      }
+    },
+    {
+      "name": "tenant-a-context-filter",
+      "operationName": "",
+      "variables": "{}",
+      "actorRole": "reader",
+      "tenantIsolation": true,
+      "tenantKey": "tenant-a",
+      "query": "{ customers(first: 10) { totalCount edges { node { id tenantKey } } } }",
+      "expected": {
+        "data": {
+          "customers": {
+            "totalCount": 1,
+            "edges": [ { "node": { "id": 7, "tenantKey": "tenant-a" } } ]
+          }
+        }
+      }
+    },
+    {
+      "name": "tenant-b-context-filter",
+      "operationName": "",
+      "variables": "{}",
+      "actorRole": "reader",
+      "tenantIsolation": true,
+      "tenantKey": "tenant-b",
+      "query": "{ customers(first: 10) { totalCount edges { node { id tenantKey } } } }",
+      "expected": {
+        "data": {
+          "customers": {
+            "totalCount": 1,
+            "edges": [ { "node": { "id": 8, "tenantKey": "tenant-b" } } ]
+          }
+        }
+      }
+    },
+    {
+      "name": "missing-tenant-context-fails-closed",
+      "operationName": "",
+      "variables": "{}",
+      "actorRole": "reader",
+      "tenantIsolation": true,
+      "query": "{ customers(first: 10) { totalCount edges { node { id tenantKey } } } }",
+      "expected": {
+        "data": {
+          "customers": { "totalCount": 0, "edges": [] }
         }
       }
     },
@@ -780,6 +874,54 @@
       }
     },
     {
+      "name": "root-policy-error-location",
+      "operationName": "DeniedCountry",
+      "variables": "{}",
+      "actorRole": "anonymous",
+      "query": "query DeniedCountry {\n  country(code: \"NL\") { name }\n}",
+      "expected": {
+        "errors": [
+          {
+            "message": "root 'country' is not authorized",
+            "locations": [ { "line": 2, "column": 3 } ],
+            "extensions": { "code": "AUTHORIZATION_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "selected-field-policy-error-location",
+      "operationName": "",
+      "variables": "{}",
+      "actorRole": "fieldReader",
+      "query": "{ customer(id: 7) { verified } }",
+      "expected": {
+        "errors": [
+          {
+            "message": "field 'Customer.verified' is not authorized",
+            "locations": [ { "line": 1, "column": 21 } ],
+            "extensions": { "code": "AUTHORIZATION_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "relation-policy-error-location",
+      "operationName": "",
+      "variables": "{}",
+      "actorRole": "relationReader",
+      "query": "{ customer(id: 7) { orders { id } } }",
+      "expected": {
+        "errors": [
+          {
+            "message": "relation 'Customer.orders' is not authorized",
+            "locations": [ { "line": 1, "column": 21 } ],
+            "extensions": { "code": "AUTHORIZATION_ERROR" }
+          }
+        ]
+      }
+    },
+    {
       "name": "subscription-unsupported-operation-code",
       "operationName": "Events",
       "variables": "{}",
@@ -883,6 +1025,23 @@
       "actorRole": "editor",
       "allowMutations": true,
       "query": "mutation MissingTarget { renameCustomer(id: 999, name: \"Never\") { id name } }",
+      "expected": {
+        "data": null,
+        "errors": [
+          {
+            "message": "mutation 'renameCustomer' target row does not exist",
+            "extensions": { "code": "EXECUTION_ERROR" }
+          }
+        ]
+      }
+    },
+    {
+      "name": "later-mutation-field-fails-after-earlier-write",
+      "operationName": "PostWriteFailure",
+      "variables": "{}",
+      "actorRole": "editor",
+      "allowMutations": true,
+      "query": "mutation PostWriteFailure { first: renameCustomer(id: 8, name: \"Must roll back\") { id } second: renameCustomer(id: 999, name: \"Missing\") { id } }",
       "expected": {
         "data": null,
         "errors": [
