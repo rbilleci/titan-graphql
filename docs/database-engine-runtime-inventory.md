@@ -1,7 +1,9 @@
 # Database-engine runtime inventory
 
 Status: M6 deletion audit in progress. M0–M5 established the replacement and parity evidence;
-the removal is committed locally as `7893bd9`, but clean-clone and final-gate evidence remain open.
+`7893bd9` removes the legacy code, and `07dcad0` records the migration map. The local full release,
+container, and clean-clone gates pass. Cleanup of an ignored obsolete output directory awaits
+confirmation of the intended local target.
 The last completed parity run and measurements are in
 [database-engine-m5-parity.md](database-engine-m5-parity.md). The 97 historical SQL-mode corpus
 case IDs have individual dispositions in
@@ -38,9 +40,10 @@ callers, or cutovers.
 
 ## Required completion evidence
 
-M6 remains open until source and route searches show no alternate serving mode, obsolete package
-task, or private fixture; the compiled `main` JAR and dependency graph contain no superseded
-runtime closure; the standalone ZIP still has the exact reviewed class/dependency set; and the
-installed, HTTP, container, privacy/history, and clean-clone gates pass. Grep absence alone is
-insufficient. The final audit must inspect reachable endpoints and package invocation, not just
-class names. M7 separately handles publication, remote reconciliation, and final push.
+Source and route searches show no alternate serving mode, obsolete package task, or private fixture.
+The compiled `main` JAR and runtime dependency graph have no superseded serving closure; the
+standalone ZIP retains its reviewed class/dependency set. Installed, HTTP, container,
+privacy/history, and clean-clone checks pass. Grep absence alone is insufficient: the container
+gate and standalone HTTP tests exercise the reachable endpoints and installed package invocation.
+M6 remains open only for confirmation and removal of the obsolete ignored local output directory.
+M7 separately handles publication, remote reconciliation, and final push.
