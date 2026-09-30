@@ -140,7 +140,7 @@ class GraphqlSchemaPrinterTest {
         GraphqlPolicy policy = new GraphqlPolicy();
 
         GraphqlSchema yamlBackedSchema = ProjectionGraphqlAdapter.adapt(
-                TitanGraphqlProjectionModelAdapter.adapt(document, policy)
+                TitanGraphqlProjectionModelAdapter.adapt(document)
         );
         GraphqlSchema javaBackedSchema = DemoBlogGraphqlSchema.create(policy);
 
@@ -189,7 +189,7 @@ class GraphqlSchemaPrinterTest {
 
         TitanGraphqlProjectionModelAdapterException error = assertThrows(
                 TitanGraphqlProjectionModelAdapterException.class,
-                () -> TitanGraphqlProjectionModelAdapter.adapt(document, new GraphqlPolicy())
+                () -> TitanGraphqlProjectionModelAdapter.adapt(document)
         );
 
         assertEquals("UNSUPPORTED_POLICY", error.code());

@@ -1,9 +1,5 @@
 package io.titan.graphql.database;
 
-import io.titan.graphql.GraphqlExecution;
-import io.titan.graphql.GraphqlExecutionModeUnavailableException;
-import io.titan.graphql.GraphqlModelRuntime;
-import io.titan.graphql.GraphqlRequest;
 import io.titan.graphql.GraphqlRequestContext;
 import io.titan.graphql.GraphqlRuntimeRequest;
 import io.titan.graphql.artifact.TitanGraphqlDatabasePackageIdentity;
@@ -22,15 +18,8 @@ import java.util.Objects;
  * transport receives a separately framed transaction instruction; it never inspects GraphQL data
  * or errors to decide whether to commit.</p>
  *
- * <p>This is the package-bound Phase 5 cutover adapter. It is selectable only through the
- * explicit database execution mode, after the reviewed model, package binding, dialect, and
- * manifest-published whole-request entry point have all been verified. It is not the final
- * production architecture yet: the legacy runtimes remain until database-engine feature parity,
- * pooled package-replacement evidence, and legacy deletion are complete.</p>
  */
-public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRuntime {
-
-    public static final String NAME = "database-whole-request";
+public final class DatabaseGraphqlWholeRequestRuntime {
 
     public enum Dialect {
         POSTGRESQL,
@@ -148,12 +137,6 @@ public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRun
                 connectionVerifier);
     }
 
-    @Override
-    public String name() {
-        return NAME;
-    }
-
-    @Override
     public String execute(GraphqlRuntimeRequest request, GraphqlRequestContext context) {
         Objects.requireNonNull(request, "request");
         Objects.requireNonNull(context, "context");
@@ -165,17 +148,8 @@ public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRun
         } catch (SQLException failure) {
             throw unavailable("the installed whole-request entry point could not be invoked", failure);
         } catch (RuntimeException failure) {
-            if (failure instanceof GraphqlExecutionModeUnavailableException) {
-                throw failure;
-            }
             throw unavailable("the database connection could not serve the whole request", failure);
         }
-    }
-
-    @Override
-    public GraphqlExecution executeWithPlan(GraphqlRequest request, GraphqlRequestContext context) {
-        throw new UnsupportedOperationException(
-                "the database whole-request runtime owns planning inside the installed engine");
     }
 
     static String trustedContextJson(GraphqlRequestContext context) {
@@ -285,8 +259,8 @@ public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRun
         return escaped;
     }
 
-    private GraphqlExecutionModeUnavailableException unavailable(String cause, Throwable failure) {
-        return new GraphqlExecutionModeUnavailableException(
+    private IllegalStateException unavailable(String cause, Throwable failure) {
+        return new IllegalStateException(
                 "database whole-request runtime (" + dialect.name().toLowerCase() + ") could not answer this request: "
                         + cause + " [database: " + connectionDescription + "]",
                 failure);

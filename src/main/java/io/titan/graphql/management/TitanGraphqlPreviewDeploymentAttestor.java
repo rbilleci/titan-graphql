@@ -76,7 +76,7 @@ final class TitanGraphqlPreviewDeploymentAttestor {
                 "preview publication attestation", entryPoint);
         String response = runtime.execute(new GraphqlRuntimeRequest(
                 "query PreviewAttestation { __typename }", "PreviewAttestation", "{}", "{}", false),
-                GraphqlRequestContext.legacy(1L, "operator"));
+                GraphqlRequestContext.forActor(1L, "operator"));
         try {
             JsonNode result = JSON.readTree(response);
             if (result.has("errors") || !"Query".equals(result.at("/data/__typename").asText())) {

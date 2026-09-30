@@ -33,16 +33,7 @@ public final class TitanGraphqlInputDefaultValidator {
     ) {
         GraphqlAst.Value value;
         try {
-            GraphqlAst.Document parsed = GraphqlParser.parseDocument(
-                    "query Default($value: " + typeReference + " = " + defaultValue + ") { __typename }");
-            if (parsed.operations().size() != 1 || parsed.operations().getFirst().variables().size() != 1) {
-                return "default is not one GraphQL constant value";
-            }
-            GraphqlAst.VariableDefinition definition = parsed.operations().getFirst().variables().getFirst();
-            value = definition.defaultValue();
-            if (value == null) {
-                return "default is not one GraphQL constant value";
-            }
+            value = TitanGraphqlConstantValueParser.parse(defaultValue);
         } catch (RuntimeException ex) {
             return "default is not valid GraphQL constant-value syntax";
         }

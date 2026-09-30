@@ -634,8 +634,6 @@ final class TitanGraphqlDurableManagementStoreTest {
                         List.of("management"),
                         List.of(),
                         true,
-                        false,
-                        false,
                         0L));
     }
 

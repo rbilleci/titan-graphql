@@ -10,10 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.titan.graphql.GraphqlApplicationMutationProvider;
 import io.titan.graphql.GraphqlCursorCodec;
-import io.titan.graphql.GraphqlExecutionEngine;
-import io.titan.graphql.GraphqlHttpResource;
 import io.titan.graphql.GraphqlRequestContext;
 import io.titan.graphql.GraphqlRootField;
 import io.titan.graphql.GraphqlRuntimeRequest;
@@ -24,7 +21,6 @@ import io.titan.runtime.jdbc.SingleConnectionDataSource;
 import io.titan.runtime.testing.DatabaseTarget;
 import io.titan.runtime.testing.TitanTest;
 import io.titan.runtime.testing.TitanTestContext;
-import jakarta.ws.rs.core.Response;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -96,7 +92,7 @@ class CommerceDatabaseGraphqlEngineIT {
 
         JsonNode accepted = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { renameCustomerWithProcedure(id: 7, name: \"Procedure\") { id name } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "editor")));
         assertEquals("Procedure!", accepted.at("/data/renameCustomerWithProcedure/name").asText(),
                 accepted::toString);
         assertEquals("Procedure!", customerName(connection, 7));
@@ -105,7 +101,7 @@ class CommerceDatabaseGraphqlEngineIT {
 
         JsonNode handlerFailure = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { renameCustomerWithProcedure(id: 7, name: \"Reject after write\") { id name } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "editor")));
         assertEquals("mutation 'renameCustomerWithProcedure' procedure handler failed",
                 handlerFailure.at("/errors/0/message").asText(), handlerFailure::toString);
         assertEquals("EXECUTION_ERROR", handlerFailure.at("/errors/0/extensions/code").asText(),
@@ -117,7 +113,7 @@ class CommerceDatabaseGraphqlEngineIT {
         JsonNode rejected = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { changed: renameCustomerWithProcedure(id: 7, name: \"Staged\") { id name } "
                         + "missing: renameCustomer(id: 999, name: \"Missing\") { id } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "editor")));
         assertTrue(rejected.at("/errors/0/message").asText().contains("target row does not exist"),
                 rejected::toString);
         assertEquals("Procedure!", customerName(connection, 7));
@@ -147,7 +143,7 @@ class CommerceDatabaseGraphqlEngineIT {
 
         JsonNode second = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { renameCustomerWithProcedure(id: 7, name: \"Retry delivery\") { id name } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "editor")));
         assertEquals("Retry delivery!", second.at("/data/renameCustomerWithProcedure/name").asText(),
                 second::toString);
         try (Connection locking = context.openAdditionalConnection(DatabaseTarget.POSTGRESQL)) {
@@ -176,7 +172,7 @@ class CommerceDatabaseGraphqlEngineIT {
         GraphqlRequestContext keyedContext = new GraphqlRequestContext(
                 11L, "editor", "test-editor", "test-tenant", "test-request",
                 "procedure-outbox", List.of(), List.of(),
-                false, false, false, 0L);
+                false, 0L);
         GraphqlRuntimeRequest keyedRequest = new GraphqlRuntimeRequest(
                 "mutation { renameCustomerWithProcedure(id: 7, name: \"Keyed event\") { id name } }",
                 "", "{}", "{}", true);
@@ -203,27 +199,27 @@ class CommerceDatabaseGraphqlEngineIT {
 
         JsonNode omitted = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { setCustomerNicknameWithProcedure(id: 8) { id nickname } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "editor")));
         assertEquals("Adventure", omitted.at("/data/setCustomerNicknameWithProcedure/nickname").asText(),
                 omitted::toString);
         assertEquals("Adventure", customerNickname(connection, 8));
 
         JsonNode supplied = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { setCustomerNicknameWithProcedure(id: 8, nickname: \"Reviewed\") { id nickname } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "editor")));
         assertEquals("Reviewed", supplied.at("/data/setCustomerNicknameWithProcedure/nickname").asText(),
                 supplied::toString);
         assertEquals("Reviewed", customerNickname(connection, 8));
 
         JsonNode denied = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { setCustomerNicknameWithProcedure(id: 8, nickname: \"Denied\") { id nickname } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "reader")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "reader")));
         assertTrue(denied.has("errors"), denied::toString);
         assertEquals("Reviewed", customerNickname(connection, 8));
 
         JsonNode cleared = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { setCustomerNicknameWithProcedure(id: 8, nickname: null) { id nickname } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "editor")));
         assertTrue(cleared.at("/data/setCustomerNicknameWithProcedure/nickname").isNull(), cleared::toString);
         assertNull(customerNickname(connection, 8));
     }
@@ -242,27 +238,27 @@ class CommerceDatabaseGraphqlEngineIT {
 
         JsonNode omitted = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { setCustomerNicknameWithInputProcedure(input: {id: 8, patch: {}}) { id nickname } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "editor")));
         assertEquals("Adventure", omitted.at("/data/setCustomerNicknameWithInputProcedure/nickname").asText(),
                 omitted::toString);
         assertEquals("Adventure", customerNickname(connection, 8));
 
         JsonNode supplied = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { setCustomerNicknameWithInputProcedure(input: {id: 8, patch: {nickname: \"Reviewed\"}}) { id nickname } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "editor")));
         assertEquals("Reviewed", supplied.at("/data/setCustomerNicknameWithInputProcedure/nickname").asText(),
                 supplied::toString);
         assertEquals("Reviewed", customerNickname(connection, 8));
 
         JsonNode denied = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { setCustomerNicknameWithInputProcedure(input: {id: 8, patch: {nickname: \"Denied\"}}) { id nickname } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "reader")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "reader")));
         assertTrue(denied.has("errors"), denied::toString);
         assertEquals("Reviewed", customerNickname(connection, 8));
 
         JsonNode cleared = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
                 "mutation { setCustomerNicknameWithInputProcedure(input: {id: 8, patch: {nickname: null}}) { id nickname } }",
-                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+                "", "{}", "{}", true), GraphqlRequestContext.forActor(11L, "editor")));
         assertTrue(cleared.at("/data/setCustomerNicknameWithInputProcedure/nickname").isNull(), cleared::toString);
         assertNull(customerNickname(connection, 8));
     }
@@ -306,7 +302,7 @@ class CommerceDatabaseGraphqlEngineIT {
         JsonNode replacedPackageResponse = JSON.readTree(replacedPackage.execute(
                 new GraphqlRuntimeRequest("mutation { renameCustomer(id: 7, name: \"Must not execute\") { id } }",
                         "", "{}", "{}", true),
-                GraphqlRequestContext.legacy(11L, "editor")));
+                GraphqlRequestContext.forActor(11L, "editor")));
         assertTrue(replacedPackageResponse.at("/errors/0/message").asText().contains("runtime identity"),
                 replacedPackageResponse::toString);
         assertEquals("Northwind", customerName(connection, 7));
@@ -320,19 +316,19 @@ class CommerceDatabaseGraphqlEngineIT {
                 "Titan PostgreSQL test connection");
         JsonNode stalePackageResponse = JSON.readTree(stalePackage.execute(
                 new GraphqlRuntimeRequest("{ deliberately invalid before GraphQL parsing }", "", "{}", "{}", false),
-                GraphqlRequestContext.legacy(11L, "reader")));
+                GraphqlRequestContext.forActor(11L, "reader")));
         assertTrue(stalePackageResponse.at("/errors/0/message").asText().contains("package identity"),
                 stalePackageResponse::toString);
 
         JsonNode query = JSON.readTree(runtime.execute(
                 new GraphqlRuntimeRequest("{ customer(id: 7) { name } }", "", "{}", "{}", false),
-                GraphqlRequestContext.legacy(11L, "reader")));
+                GraphqlRequestContext.forActor(11L, "reader")));
         assertEquals("Northwind", query.at("/data/customer/name").asText(), query::toString);
 
         JsonNode getMutation = JSON.readTree(runtime.execute(
                 new GraphqlRuntimeRequest("mutation { renameCustomer(id: 7, name: \"Forbidden\") { id } }",
                         "", "{}", "{}", false),
-                GraphqlRequestContext.legacy(11L, "editor")));
+                GraphqlRequestContext.forActor(11L, "editor")));
         assertTrue(getMutation.at("/errors/0/message").asText().contains("not allowed"), getMutation::toString);
         assertEquals("Northwind", customerName(connection, 7));
 
@@ -343,7 +339,7 @@ class CommerceDatabaseGraphqlEngineIT {
                           second: renameCustomer(id: 999, name: "Missing") { id }
                         }
                         """, "", "{}", "{}", true),
-                GraphqlRequestContext.legacy(11L, "editor")));
+                GraphqlRequestContext.forActor(11L, "editor")));
         assertTrue(failedMutation.at("/extensions/titanTransactionOutcome").isMissingNode(),
                 "transport lifecycle data must not leak into the GraphQL response: " + failedMutation);
         assertEquals("Northwind", customerName(connection, 7));
@@ -351,38 +347,12 @@ class CommerceDatabaseGraphqlEngineIT {
         JsonNode committedMutation = JSON.readTree(runtime.execute(
                 new GraphqlRuntimeRequest("mutation { renameCustomer(id: 7, name: \"Adapter committed\") { mutationType: __typename name } }",
                         "", "{}", "{}", true),
-                GraphqlRequestContext.legacy(11L, "editor")));
+                GraphqlRequestContext.forActor(11L, "editor")));
         assertTrue(committedMutation.at("/extensions/titanTransactionOutcome").isMissingNode(),
                 "transport lifecycle data must not leak into the GraphQL response: " + committedMutation);
         assertEquals("Customer", committedMutation.at("/data/renameCustomer/mutationType").asText(),
                 committedMutation::toString);
         assertEquals("Adapter committed", customerName(connection, 7));
-    }
-
-    @Test
-    void jaxRsAdapterUsesOnlyTheBoundWholeRequestEngine(TitanTestContext context) throws Exception {
-        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
-        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
-        GraphqlHttpResource resource = new GraphqlHttpResource(databaseEngine(connection), true);
-
-        Response get = resource.getResponse(
-                "{ customer(id: 7) { name } }", null, null, null, "application/graphql-response+json",
-                "11", "reader", null, null, null, null, null, null, null, null);
-
-        assertEquals(200, get.getStatus());
-        assertEquals("database", get.getHeaderString("X-Titan-Execution-Mode"));
-        assertTrue(get.getHeaderString("X-Titan-Deployment-Fingerprint").matches("[0-9a-f]{64}"));
-        JsonNode response = JSON.readTree(String.valueOf(get.getEntity()));
-        assertEquals("Northwind", response.at("/data/customer/name").asText(), response::toString);
-
-        Response post = resource.postResponse(
-                Map.of("query", "mutation { renameCustomer(id: 7, name: \"HTTP committed\") { name } }"),
-                "application/graphql-response+json", "11", "editor", null, null, null,
-                null, null, null, null, null);
-        assertEquals(200, post.getStatus());
-        assertEquals("HTTP committed", JSON.readTree(String.valueOf(post.getEntity()))
-                .at("/data/renameCustomer/name").asText());
-        assertEquals("HTTP committed", customerName(connection, 7));
     }
 
     @Test
@@ -402,16 +372,6 @@ class CommerceDatabaseGraphqlEngineIT {
                 .contains("request deadline exceeded before database execution"), expired::toString);
         assertTrue(unrepresentable.at("/errors/0/message").asText()
                 .contains("invalid deadlineEpochMillis"), unrepresentable::toString);
-    }
-
-    private static GraphqlExecutionEngine databaseEngine(Connection connection) {
-        return new GraphqlExecutionEngine(
-                "database",
-                () -> new SingleConnectionDataSource(connection),
-                "Titan PostgreSQL HTTP test connection",
-                "src/test/resources/graphql/commerce.titan.graphql.yaml",
-                GraphqlApplicationMutationProvider.none(),
-                "postgresql");
     }
 
     @Test

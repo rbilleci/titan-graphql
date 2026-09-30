@@ -25,7 +25,7 @@ class DatabaseGraphqlWholeRequestRuntimeTest {
 
     @Test
     void forwardsNamedTrustedContextValuesAsTypedJson() throws Exception {
-        GraphqlRequestContext context = GraphqlRequestContext.legacy(7L, "reader")
+        GraphqlRequestContext context = GraphqlRequestContext.forActor(7L, "reader")
                 .withValues(Map.of(
                         "articleVisibility", true,
                         "activeCustomers", false,
@@ -41,17 +41,8 @@ class DatabaseGraphqlWholeRequestRuntimeTest {
     }
 
     @Test
-    void doesNotInferModelSpecificValuesFromTheLegacyContextShape() throws Exception {
-        GraphqlRequestContext legacy = GraphqlRequestContext.articleVisibility(7L, "reader", true);
-
-        JsonNode json = JSON.readTree(DatabaseGraphqlWholeRequestRuntime.trustedContextJson(legacy));
-
-        assertTrue(json.path("contextValues").isEmpty());
-    }
-
-    @Test
     void registrySelectionComesFromDeploymentRatherThanNamedContextValues() throws Exception {
-        GraphqlRequestContext context = GraphqlRequestContext.legacy(7L, "reader")
+        GraphqlRequestContext context = GraphqlRequestContext.forActor(7L, "reader")
                 .withValues(Map.of("operationRegistryId", "caller-registry"));
 
         JsonNode json = JSON.readTree(DatabaseGraphqlWholeRequestRuntime.trustedContextJson(
@@ -156,7 +147,7 @@ class DatabaseGraphqlWholeRequestRuntimeTest {
         String response = runtime.execute(
                 new GraphqlRuntimeRequest("{ deliberately: unparsed }",
                         "SelectedOperation", "{\"amount\":9007199254740993}", "{\"trace\":true}", false),
-                GraphqlRequestContext.legacy(41L, "reader"));
+                GraphqlRequestContext.forActor(41L, "reader"));
 
         assertTrue(response.contains("\"ok\":true"));
         assertTrue(response.contains("\"titanTransactionOutcome\":\"ROLLBACK\""), response);
@@ -184,10 +175,10 @@ class DatabaseGraphqlWholeRequestRuntimeTest {
     @Test
     void constrainsJdbcDeadlineToTheAuthenticatedContextBudget() {
         assertEquals(io.titan.graphql.frontend.DatabaseWholeRequestClient.DEFAULT_STATEMENT_TIMEOUT_SECONDS,
-                DatabaseGraphqlWholeRequestRuntime.statementTimeoutSeconds(GraphqlRequestContext.legacy(1L, "reader")));
+                DatabaseGraphqlWholeRequestRuntime.statementTimeoutSeconds(GraphqlRequestContext.forActor(1L, "reader")));
         assertEquals(1, DatabaseGraphqlWholeRequestRuntime.statementTimeoutSeconds(
                 new GraphqlRequestContext(1L, "reader", "actor-1", "", "", "", java.util.List.of(),
-                        java.util.List.of(), false, false, false, System.currentTimeMillis() - 1L)));
+                        java.util.List.of(), false, System.currentTimeMillis() - 1L)));
     }
 
     private static Object unsupported(String method) {

@@ -10,22 +10,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
-/**
- * Shared test support (extracted from {@code GraphqlSqlModeEquivalenceIT}, W2): deploys the
- * demo DDL, the packaged Titan migrations, and the Java-mode fixture rows onto a live
- * database connection. Used by the W2 equivalence IT (PostgreSQL leg, and the W5.2 MySQL
- * leg) and the W5.1 SQL-mode HTTP serving IT.
- */
+/** Deploys the packaged database engine and demo rows for direct installed-engine tests. */
 public final class DemoBlogSqlDeployment {
 
     private DemoBlogSqlDeployment() {
     }
 
-    /**
-     * Mirror of the Java-mode fixture dataset ({@code DemoBlogFixtureStore}). The transpiled
-     * kernel carries its bounded demo data inside the generated routines, but the deployed
-     * schema is seeded identically so the database state matches what Java mode assumes.
-     */
+    /** Rows used to verify that installed routines read live database state. */
     public static final String FIXTURE_SEED_SQL = """
             INSERT INTO users (id, name, email, role) VALUES
               (10, 'Ada Lovelace', 'ada@example.test', 'author'),
@@ -39,35 +30,7 @@ public final class DemoBlogSqlDeployment {
               (102, 2, 10, 'API comment');
             """;
 
-    /**
-     * Deploys the demo DDL, the packaged runtime migration, the packaged routine bundle, and
-     * the fixture seed onto the connected database.
-     *
-     * <p>Each migration file executes as a single multi-statement JDBC call — the PostgreSQL
-     * driver parses dollar-quoted bodies natively, which is exactly how core's
-     * {@code titanVerifyInstall} treats the same files. {@code R__titan_010_runtime.sql} is
-     * idempotent ({@code CREATE ... IF NOT EXISTS} / {@code CREATE OR REPLACE}), so
-     * re-applying the packaged file on a harness-prepared database keeps the deployment
-     * identical to a from-scratch install.</p>
-     */
-    public static void deployPackagedKernel(Connection connection) throws IOException, SQLException {
-        executeScript(connection, Path.of("ddl", "postgres", "titan_graphql_postgres.sql"));
-        Path migrationsDir = Path.of(System.getProperty(
-                "titan.graphql.migrations.dir",
-                "build/generated/migrations/titan/postgresql"));
-        executeScript(connection, migrationsDir.resolve("R__titan_010_runtime.sql"));
-        executeScript(connection, migrationsDir.resolve("R__titan_020_routines.sql"));
-        try (Statement statement = connection.createStatement()) {
-            statement.execute(FIXTURE_SEED_SQL);
-        }
-    }
-
-    /**
-     * Deploys the generated database-resident whole-request engine used by the database HTTP
-     * cutover test. This is intentionally separate from {@link #deployPackagedKernel(Connection)}:
-     * the latter is the historical SQL-mode package and must not accidentally satisfy a test of
-     * the new manifest-bound entry point.
-     */
+    /** Deploys the PostgreSQL package and seed rows on the test connection. */
     public static void deployPackagedDatabaseEngine(Connection connection) throws IOException, SQLException {
         executeScript(connection, Path.of("ddl", "postgres", "titan_graphql_postgres.sql"));
         Path migrationsDir = Path.of(System.getProperty(
@@ -80,33 +43,17 @@ public final class DemoBlogSqlDeployment {
         }
     }
 
-    /**
-     * MySQL leg (completion plan W5.2): deploys the MySQL demo DDL
-     * ({@code ddl/mysql/titan_graphql_mysql.sql}), the packaged MySQL migrations, and the fixture
-     * seed onto a live MySQL connection.
-     *
-     * <p>Unlike the PostgreSQL leg, the MySQL JDBC driver does not accept multi-statement
-     * scripts in one {@code Statement.execute}, and the emitted MySQL routine bundle uses the
-     * mysql-client {@code DELIMITER} convention for routine bodies — statements are split
-     * here the same way core's harness ({@code SqlScripts}) and {@code titanVerifyInstall}
-     * split them. The kernel's objects are qualified with the configured Titan schema
-     * ({@code `public`}), which on MySQL is a server-global database; the DDL script is
-     * re-runnable (DROP TABLE IF EXISTS) and the routine bundle replaces via
-     * {@code DROP FUNCTION IF EXISTS}, so repeated deployments on the shared container stay
-     * equivalent to a fresh install.</p>
-     */
-    public static void deployPackagedKernelMySql(Connection connection) throws IOException, SQLException {
+    /** Deploys the MySQL package and seed rows on the test connection. */
+    public static void deployPackagedDatabaseEngineMySql(Connection connection) throws IOException, SQLException {
         executeScriptStatementWise(connection, Path.of("ddl", "mysql", "titan_graphql_mysql.sql"));
-        // Runtime helpers in R__titan_010_runtime.sql are intentionally unqualified and must be
-        // created in the same `public` database as the generated routines. The test connection
-        // defaults to the harness database, so make the package-install target explicit before
-        // applying either migration.
+        // Runtime helpers must be installed in the same `public` database as the generated
+        // routines. The test connection defaults to the harness database.
         try (Statement statement = connection.createStatement()) {
             statement.execute("USE public");
         }
         Path migrationsDir = Path.of(System.getProperty(
-                "titan.graphql.migrations.dir.mysql",
-                "build/generated/migrations/titan/mysql"));
+                "titan.graphql.database-engine.mysql.migrations.dir",
+                "build/generated/proofs/database-engine-mysql/package/mysql"));
         executeScriptStatementWise(connection, migrationsDir.resolve("R__titan_010_runtime.sql"));
         executeScriptStatementWise(connection, migrationsDir.resolve("R__titan_020_routines.sql"));
         // Same fixture dataset as the PostgreSQL leg; MySQL needs the explicit `public`
@@ -143,7 +90,7 @@ public final class DemoBlogSqlDeployment {
 
     private static String readScript(Path sqlFile) throws IOException {
         if (Files.exists(sqlFile) == false) {
-            throw new IllegalStateException("missing SQL script (run titanPackage first?): "
+            throw new IllegalStateException("missing database engine package SQL script: "
                     + sqlFile.toAbsolutePath());
         }
         return Files.readString(sqlFile);

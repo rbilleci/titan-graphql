@@ -366,7 +366,7 @@ class GraphqlMetamodelTest {
     void demoBlogYamlAdaptsToCurrentProjectionModelContract() throws IOException {
         TitanGraphqlModelDocument document = TitanGraphqlModelDocumentYaml.parse(readDemoBlogFixture());
 
-        ProjectionModel model = TitanGraphqlProjectionModelAdapter.adapt(document, new GraphqlPolicy());
+        ProjectionModel model = TitanGraphqlProjectionModelAdapter.adapt(document);
 
         ProjectionType article = model.type("Article");
         assertEquals("articles", article.tableName());
@@ -413,7 +413,7 @@ class GraphqlMetamodelTest {
 
         TitanGraphqlProjectionModelAdapterException failure = assertThrows(
                 TitanGraphqlProjectionModelAdapterException.class,
-                () -> TitanGraphqlProjectionModelAdapter.adapt(document, new GraphqlPolicy()));
+                () -> TitanGraphqlProjectionModelAdapter.adapt(document));
 
         assertEquals("UNSUPPORTED_POINT_ROOT_KEY", failure.code());
         assertTrue(failure.getMessage().contains("author_id"), failure.getMessage());

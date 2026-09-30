@@ -50,7 +50,7 @@ final class TitanGraphqlManagementModelDogfoodTest {
     @Test
     void adaptsManagementModelFixtureToCurrentManagementSchemaSurface() throws IOException {
         TitanGraphqlModelDocument document = managementDocument();
-        ProjectionModel yamlBackedModel = TitanGraphqlProjectionModelAdapter.adapt(document, new GraphqlPolicy());
+        ProjectionModel yamlBackedModel = TitanGraphqlProjectionModelAdapter.adapt(document);
         TitanGraphqlProjectionModel javaBackedModel = TitanGraphqlManagementProjection.projectionModel();
         ProjectionModel javaProjectionModel = javaBackedModel.toProjectionModel();
         String yamlBackedSchema = GraphqlSchemaPrinter.print(ProjectionGraphqlAdapter.adapt(yamlBackedModel));

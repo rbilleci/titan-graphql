@@ -11,10 +11,9 @@ import java.util.List;
  * {@code titan-install-plan.json}, {@code titan-install-verification.json} and the
  * {@code titan-rollback.<dialect>.sql} scripts).
  *
- * <p>Configuration mirrors the management transaction-log plumbing: the
- * {@code titan.graphql.artifacts.dir} system property wins, then the
- * {@code TITAN_GRAPHQL_ARTIFACTS_DIR} environment variable, then the build's default
- * {@code titanPackage} output directory ({@code build/generated/migrations/titan}).</p>
+ * <p>The {@code titan.graphql.artifacts.dir} system property takes precedence over the
+ * {@code TITAN_GRAPHQL_ARTIFACTS_DIR} environment variable. A package directory must be
+ * selected explicitly so an old build output cannot become an implicit deployment source.</p>
  *
  * <p>A missing or incomplete directory is an explicit, descriptive error state — never a
  * silent placeholder. Run {@code titanPackage} (and {@code titanVerifyInstall}) or point the
@@ -24,7 +23,6 @@ public final class TitanGraphqlArtifactsDirectory {
 
     public static final String SYSTEM_PROPERTY = "titan.graphql.artifacts.dir";
     public static final String ENVIRONMENT_VARIABLE = "TITAN_GRAPHQL_ARTIFACTS_DIR";
-    public static final String DEFAULT_DIRECTORY = "build/generated/migrations/titan";
 
     /** Reproducible display root used when an absolute directory cannot be relativized. */
     public static final String PORTABLE_DISPLAY_ROOT = "titan-package";
@@ -39,7 +37,8 @@ public final class TitanGraphqlArtifactsDirectory {
             value = fromEnvironment == null ? "" : fromEnvironment;
         }
         if (value.isBlank()) {
-            value = DEFAULT_DIRECTORY;
+            throw new IllegalStateException("Titan artifacts directory is not configured — set -D"
+                    + SYSTEM_PROPERTY + " or " + ENVIRONMENT_VARIABLE + " to a verified package directory");
         }
         return Path.of(value);
     }

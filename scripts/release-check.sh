@@ -36,9 +36,11 @@ secret_pattern='BEGIN ([A-Z ]+ )?PRIVATE KEY|AKIA[0-9A-Z]{16}|gh[pousr]_[A-Za-z0
 tracked_secrets="$(git grep -n -I -E "$secret_pattern" -- . ':!scripts/release-check.sh' || true)"
 [[ -z "$tracked_secrets" ]] || fail "high-confidence credential pattern in tracked files: $tracked_secrets"
 
+# A published privacy-scanner self-test contains a key header but no key body.
 history_secrets="$(git log --all --no-ext-diff -p -- . ':!gradle/wrapper/gradle-wrapper.jar' \
   ':!scripts/release-check.sh' \
-  | grep -E "$secret_pattern" || true)"
+  | grep -E "$secret_pattern" \
+  | grep -Fv 'check(finding("-----BEGIN PRIVATE KEY-----") == "high-confidence credential")' || true)"
 [[ -z "$history_secrets" ]] || fail "high-confidence credential pattern in reachable history"
 
 machine_paths="$(git grep -n -I -E '/home/[^ /]+/|/Users/[^ /]+/|[A-Za-z]:\\\\Users\\\\' -- . || true)"
@@ -50,10 +52,7 @@ private_authors="$(git log --all --format='%ae' | sort -u \
 
 ./gradlew test
 if [[ "$full" == true ]]; then
-  # This is intentionally an on-demand local gate. It exercises the complete transpiled
-  # whole-request path directly and through the isolated HTTP distribution on both supported
-  # databases. Transitional Quarkus/compiled/SQL tests remain migration oracles but cannot
-  # approve a deployable database-serving release artifact.
+  # The local gate exercises installed whole-request packages and the isolated HTTP ZIP on both dialects.
   ./gradlew titanGraphqlDatabaseEngineReleaseCheck
 fi
 

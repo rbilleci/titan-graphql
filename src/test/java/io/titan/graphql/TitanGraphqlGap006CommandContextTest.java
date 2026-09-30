@@ -50,31 +50,6 @@ final class TitanGraphqlGap006CommandContextTest {
         assertTrue(failure.getMessage().contains("TITAN-MGMT-E003"));
     }
 
-    @Test
-    void legacyManagementRuntimeRequiresActorAndIdempotencyContextBeforeHandlerRuns() {
-        GraphqlAdminHttpResource.GraphqlAdminHttpResult response = new LegacyManagementGraphqlTestClient().negotiatePost(
-                Map.of("query", """
-                        mutation Import {
-                          importModelDocument(input: { workspaceId: "workspace-001", yaml: "not: yaml: model" }) {
-                            accepted
-                            draftId
-                          }
-                        }
-                        """),
-                "application/json",
-                new GraphqlAdminHttpResource.GraphqlAdminHttpContext(
-                        "",
-                        "operator",
-                        "request-import",
-                        "",
-                        true,
-                        "")
-        );
-
-        assertTrue(response.body().contains("TITAN-MGMT-E002"));
-        assertTrue(response.body().contains("TITAN-MGMT-E003"));
-    }
-
     private static GraphqlRequestContext managementContext(
             String actorRole,
             String actorKey,
@@ -91,8 +66,6 @@ final class TitanGraphqlGap006CommandContextTest {
                 List.of("management"),
                 List.of(),
                 true,
-                false,
-                false,
                 0L
         );
     }

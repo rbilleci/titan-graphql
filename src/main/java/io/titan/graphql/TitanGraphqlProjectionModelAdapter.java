@@ -38,12 +38,6 @@ final class TitanGraphqlProjectionModelAdapter {
         return new ProjectionModel(retrievals, types);
     }
 
-    /** Compatibility overload for the former demo-policy adapter parameter. */
-    static ProjectionModel adapt(TitanGraphqlModelDocument document, GraphqlPolicy ignored) {
-        if (ignored == null) throw new NullPointerException("policy");
-        return adapt(document);
-    }
-
     private static ProjectionRetrieval root(TitanGraphqlRootDocument root, AdapterContext context) {
         return switch (root.operation()) {
             case POINT -> pointRoot(root, context);

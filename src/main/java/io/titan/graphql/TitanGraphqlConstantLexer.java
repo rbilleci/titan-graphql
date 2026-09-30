@@ -3,18 +3,18 @@ package io.titan.graphql;
 import java.util.ArrayList;
 import java.util.List;
 
-final class GraphqlLexer {
+final class TitanGraphqlConstantLexer {
 
     private final String input;
     private final List<GraphqlToken> tokens = new ArrayList<>();
     private int position;
 
-    GraphqlLexer(String input) {
+    TitanGraphqlConstantLexer(String input) {
         this.input = input == null ? "" : input;
     }
 
     static List<GraphqlToken> lex(String input) {
-        return new GraphqlLexer(input).lexTokens();
+        return new TitanGraphqlConstantLexer(input).lexTokens();
     }
 
     List<GraphqlToken> lex() {

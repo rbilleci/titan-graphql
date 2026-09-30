@@ -16,13 +16,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Config plumbing for the real-artifact pipeline: the
- * {@code titan.graphql.artifacts.dir} property selects the {@code titanPackage} output
- * directory the management plane reads, and missing state is an explicit, descriptive
- * error (never a placeholder). Uses the checked-in schema-faithful fixture package under
- * {@code src/test/resources/titan-artifacts} so plain {@code test} stays Docker-free; the
- * real {@code titanPackage}/{@code titanVerifyInstall} output is exercised by
- * {@code TitanGraphqlRealArtifactPipelineIT}.
+ * The property selects the package metadata read by the management plane. The checked-in
+ * fixture under {@code src/test/resources/titan-artifacts} keeps this test Docker-free.
  */
 final class TitanGraphqlArtifactsDirectoryTest {
 
@@ -46,12 +41,17 @@ final class TitanGraphqlArtifactsDirectoryTest {
     }
 
     @Test
-    void defaultsToTheTitanPackageOutputDirectory() {
+    void requiresAnExplicitPackageDirectory() {
         System.clearProperty(TitanGraphqlArtifactsDirectory.SYSTEM_PROPERTY);
-
-        assertEquals(
-                Path.of("build/generated/migrations/titan"),
-                TitanGraphqlArtifactsDirectory.configuredDirectory());
+        String fromEnvironment = System.getenv(TitanGraphqlArtifactsDirectory.ENVIRONMENT_VARIABLE);
+        if (fromEnvironment == null || fromEnvironment.isBlank()) {
+            IllegalStateException error = assertThrows(
+                    IllegalStateException.class,
+                    TitanGraphqlArtifactsDirectory::configuredDirectory);
+            assertTrue(error.getMessage().contains(TitanGraphqlArtifactsDirectory.SYSTEM_PROPERTY));
+        } else {
+            assertEquals(Path.of(fromEnvironment), TitanGraphqlArtifactsDirectory.configuredDirectory());
+        }
     }
 
     @Test

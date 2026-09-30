@@ -61,7 +61,7 @@ public final class TitanGraphqlModelImportJobRunner {
             String idempotencyKey = required(payload, "idempotencyKey");
             GraphqlRequestContext context = new GraphqlRequestContext(
                     0L, actorRole, actorKey, "", requestId, idempotencyKey,
-                    List.of(), List.of(), false, false, false, 0L);
+                    List.of(), List.of(), false, 0L);
             service = importer.get();
             prepared = service.prepare(Map.of("workspaceId", workspaceId, "yaml", yaml), context);
             if (!prepared.invocation().validate().valid()) {

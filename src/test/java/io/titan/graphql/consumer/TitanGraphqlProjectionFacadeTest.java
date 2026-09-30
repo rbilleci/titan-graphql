@@ -13,17 +13,6 @@ import io.titan.graphql.TitanGraphqlProjection;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-/**
- * Documents and locks the supported integration boundary for an external product — modelled here by a
- * package OTHER than {@code io.titan.graphql}, so only public API is visible.
- *
- * <p>Execution: the projection descriptor classes ({@link ProjectionModel}, {@link ProjectionRetrieval},
- * {@link ProjectionType}, {@link ProjectionField}) and {@link ProjectionGraphqlAdapter#adapt} are all
- * public, so a product builds a {@code ProjectionModel} and adapts it to an execution-ready
- * {@link GraphqlSchema} (then implements {@code GraphqlDataModel} for {@code GraphqlEngine}). The fluent
- * {@link TitanGraphqlProjection} facade stays deliberately inspection-only (SDL/artifact review); it is
- * not an execution entry point (see ATG-015 revisit — the schema() handle was reverted as redundant).</p>
- */
 class TitanGraphqlProjectionFacadeTest {
 
     @Test

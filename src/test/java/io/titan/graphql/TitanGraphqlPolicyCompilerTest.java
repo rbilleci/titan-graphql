@@ -55,7 +55,7 @@ class TitanGraphqlPolicyCompilerTest {
                 .replace("      author:\n        target: User",
                         "      author:\n        policies: [canReadUserEmail]\n        target: User");
         GraphqlSchema schema = ProjectionGraphqlAdapter.adapt(TitanGraphqlProjectionModelAdapter.adapt(
-                TitanGraphqlModelDocumentYaml.parse(yaml), new GraphqlPolicy()));
+                TitanGraphqlModelDocumentYaml.parse(yaml)));
         GraphqlFieldDescriptor author = schema.type("Article").field("author");
 
         assertTrue(author.canRead("admin"));

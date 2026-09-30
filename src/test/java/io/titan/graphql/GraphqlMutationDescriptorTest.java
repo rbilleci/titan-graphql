@@ -124,19 +124,6 @@ final class GraphqlMutationDescriptorTest {
         assertEquals(null, schema.rootField("importModelDocument"));
         assertThrows(UnsupportedOperationException.class, () -> schema.mutations().clear());
 
-        GraphqlException error = assertThrows(
-                GraphqlException.class,
-                () -> GraphqlValidator.validate(
-                        schema,
-                        GraphqlParser.parseSelectedOperation(GraphqlRequest.of(
-                                "mutation Import { importModelDocument(input: { workspaceId: 1, yaml: \"apiVersion: titan.graphql/v1alpha1\" }) { draftId } }",
-                                "Import"
-                        )),
-                        "admin"
-                )
-        );
-        assertEquals("mutation operation selected but mutation execution is not implemented yet", error.getMessage());
-        assertEquals(GraphqlException.UNSUPPORTED_OPERATION, error.code());
     }
 
     @Test

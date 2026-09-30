@@ -85,7 +85,7 @@ public record TitanGraphqlPackageBinding(
                     TitanGraphqlPackageBinding.class);
         } catch (IOException ex) {
             throw new IllegalStateException("Titan GraphQL package binding could not be read from "
-                    + bindingPath.toAbsolutePath() + " — run titanGraphqlBindPackage for the reviewed model", ex);
+                    + bindingPath.toAbsolutePath() + " — bind the reviewed model to its install-verified package", ex);
         }
     }
 

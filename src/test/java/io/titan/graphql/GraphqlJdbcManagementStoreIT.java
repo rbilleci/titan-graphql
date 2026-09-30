@@ -13,7 +13,6 @@ import io.titan.graphql.artifact.TitanGraphqlGeneratedArtifact;
 import io.titan.graphql.management.TitanGraphqlDeployment;
 import io.titan.graphql.management.TitanGraphqlArtifactSetRef;
 import io.titan.graphql.management.TitanGraphqlDurableManagementStore;
-import io.titan.graphql.management.TitanGraphqlManagementStore;
 import io.titan.graphql.management.TitanGraphqlManagementSchemaInstaller;
 import io.titan.graphql.management.TitanGraphqlManagedModel;
 import io.titan.graphql.management.TitanGraphqlModelDraft;
@@ -22,9 +21,6 @@ import io.titan.graphql.management.TitanGraphqlOperationRegistry;
 import io.titan.management.ManagementAudit.AuditStatus;
 import io.titan.management.ManagementSchemaInstaller;
 import io.titan.management.ManagementSchemaInstaller.Dialect;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
@@ -32,7 +28,6 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -48,33 +43,8 @@ import org.junit.jupiter.params.provider.EnumSource;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 
-/**
- * Dogfood campaign Phase C ({@code @Tag("docker")}) — the consumer's management plane running ON the
- * dogfooded core JDBC store ({@code titan.graphql.management.store=jdbc}), against LIVE PostgreSQL 16
- * + MySQL 8.4, parameterized over both dialects.
- *
- * <p>It drives the SAME {@code importModelDocument} mutation path the file-store tests use —
- * {@link GraphqlManagementMutationSupport#executeMutation} over the management schema — but the store
- * is built by {@link TitanGraphqlManagementStoreFactory} in jdbc mode: the management schema +
- * Titan-transpiled routines are bootstrapped against the container, and the mutation runs through
- * core's {@code JdbcTransactionalMutationStore} (mutations are {@code CALL}ed transpiled routines).
- *
- * <p>It proves the three things the file store cannot show for the consumer:
- * <ol>
- *   <li><b>DURABILITY</b> — the imported model document persists THROUGH the JDBC store: a brand-new
- *       store instance over the same datasource (nothing in memory) reads the draft + idempotency +
- *       audit rows back from the live database.</li>
- *   <li><b>IDEMPOTENCY</b> — the same request/idempotency key replays without a second mutation (one
- *       idempotency row), and a conflicting input on the same key is refused.</li>
- *   <li><b>DEPLOYMENT-ACTIVATION GATING</b> — the GAP-006 activation guards still hold over the JDBC
- *       store (an ACTIVE deployment seed and an activation without verified GAP-005 evidence are
- *       refused), so the durable swap did not weaken the activation contract.</li>
- * </ol>
- *
- * <p>The schema-bootstrap honesty leg additionally asserts that an UNREACHABLE datasource fails fast
- * and descriptively (never a silent fallback to the file store).
- */
 @Tag("docker")
+@Tag("database-management-store")
 class GraphqlJdbcManagementStoreIT {
 
     private static PostgreSQLContainer<?> postgres;
@@ -98,10 +68,6 @@ class GraphqlJdbcManagementStoreIT {
                 .withUsername("titan")
                 .withPassword("titan");
         postgres.start();
-        // The MySQL schema IS a database: provision it AS `management` so the scoped `titan` user has
-        // ALL PRIVILEGES on it (it can DROP/CREATE its own database between tests, and the factory's
-        // CREATE-DATABASE-IF-NOT-EXISTS / USE both succeed). log_bin_trust_function_creators lets a
-        // non-super user CREATE PROCEDURE without SUPER.
         mysql = new MySQLContainer<>("mysql:8.4")
                 .withDatabaseName("management")
                 .withUsername("titan")
@@ -121,88 +87,6 @@ class GraphqlJdbcManagementStoreIT {
     }
 
     // ------------------------------------------------------------------
-    // DURABILITY + IDEMPOTENCY through the management plane (importModelDocument).
-    // ------------------------------------------------------------------
-
-    @ParameterizedTest
-    @EnumSource(Target.class)
-    void importModelDocumentPersistsThroughTheJdbcStoreAndIsIdempotent(Target target) throws Exception {
-        DataSource dataSource = freshDataSource(target);
-
-        // The store is built EXACTLY as the runtime builds it in jdbc mode: the factory bootstraps
-        // the schema/routines against the datasource and wraps core's JdbcTransactionalMutationStore.
-        TitanGraphqlDurableManagementStore store = TitanGraphqlManagementStoreFactory.jdbcStore(
-                dataSource, target.dialect);
-        GraphqlManagementMutationSupport support = new GraphqlManagementMutationSupport(store);
-        GraphqlSchema schema = managementSchema(support);
-        String yaml = readDemoBlogFixture();
-
-        GraphqlExecution first = support.executeMutation(
-                schema, importOperation(yaml), context("request-import", "idem-import"));
-        GraphqlExecution replay = support.executeMutation(
-                schema, importOperation(yaml), context("request-import", "idem-import"));
-
-        assertTrue(first.json().contains("\"accepted\":true"), target + " import accepted: " + first.json());
-        assertEquals(first.json(), replay.json(), target + " replay returns the same payload");
-
-        // The mutation ran THROUGH the JDBC store: one durable draft, one idempotency row, and the
-        // attempt+outcome audit pair per CALL (faithful to the file store's [ATTEMPT, SUCCESS] x2).
-        assertEquals(1, store.titanDrafts().size(), target + " one durable draft");
-        assertEquals(1, store.idempotencyRecords().size(), target + " one durable idempotency row");
-        assertEquals(
-                List.of(AuditStatus.ATTEMPT, AuditStatus.SUCCESS, AuditStatus.ATTEMPT, AuditStatus.SUCCESS),
-                store.auditRecords().stream().map(io.titan.management.ManagementAudit.AuditRecord::status).toList(),
-                target + " attempt+outcome audited per call");
-
-        String draftId = draftId(yaml);
-
-        // DURABILITY: a BRAND-NEW jdbc-mode store over the same datasource — nothing in memory —
-        // reads the draft + idempotency + audit back from the live database. (Re-bootstrap is a
-        // no-op: the factory's already-installed guard skips re-applying the bundle.)
-        TitanGraphqlDurableManagementStore reloaded = TitanGraphqlManagementStoreFactory.jdbcStore(
-                dataSource, target.dialect);
-        assertEquals(1, reloaded.titanDrafts().size(), target + " durable draft survives a new store instance");
-        assertEquals(draftId, reloaded.titanDrafts().getFirst().id(), target + " durable draft id");
-        assertNotNull(reloaded.draft(draftId), target + " draft read back through the JDBC store");
-        assertEquals(TitanGraphqlModelDraft.ModelDraftStatus.IMPORTED,
-                reloaded.draft(draftId).status(), target + " durable draft status");
-        assertEquals(yaml, reloaded.draft(draftId).sourceText(), target + " complete model source survives reload");
-        assertNotNull(reloaded.model(reloaded.draft(draftId).modelId()), target + " model wrapper survives reload");
-        assertNotNull(reloaded.validationReport(reloaded.draft(draftId).validationReportId()),
-                target + " validation report survives reload");
-        assertEquals(1, reloaded.idempotencyRecords().size(), target + " durable idempotency row survives");
-
-        TitanGraphqlModelDraft imported = reloaded.draft(draftId);
-        TitanGraphqlArtifactSetRef artifact = new TitanGraphqlArtifactSetRef(
-                "artifact-generated", draftId, imported.semanticHash(), "", "", "", "", "", "",
-                "development", "2026-06-09T00:02:00Z");
-        TitanGraphqlModelDraft generated = new TitanGraphqlModelDraft(
-                imported.id(), imported.modelId(), TitanGraphqlModelDraft.ModelDraftStatus.READY_FOR_REVIEW,
-                imported.sourceFormat(), imported.sourceText(), imported.canonicalJson(), imported.semanticHash(),
-                imported.validationReportId(), artifact.id(), imported.driftReportId(), imported.createdBy(),
-                imported.createdAt(), "2026-06-09T00:02:00Z");
-        reloaded.saveGeneratedArtifacts(artifact, generated, null);
-        TitanGraphqlDurableManagementStore afterGeneration = TitanGraphqlManagementStoreFactory.jdbcStore(
-                dataSource, target.dialect);
-        assertEquals(artifact.id(), afterGeneration.artifactSet(artifact.id()).id(),
-                target + " generated artifact wrapper survives reload");
-        assertEquals(artifact.id(), afterGeneration.draft(draftId).artifactSetId(),
-                target + " paired generated draft survives reload");
-
-        // IDEMPOTENCY conflict: same key, changed input -> refused, still one draft + one idem row.
-        GraphqlExecution conflict = support.executeMutation(
-                schema,
-                importOperation(yaml.replace("name: demo-blog", "name: demo-blog-v2")),
-                context("request-import-2", "idem-import"));
-        assertTrue(conflict.json().contains("idempotency input mismatch"),
-                target + " conflicting input on the same key is refused: " + conflict.json());
-        TitanGraphqlDurableManagementStore afterConflict = TitanGraphqlManagementStoreFactory.jdbcStore(
-                dataSource, target.dialect);
-        assertEquals(1, afterConflict.titanDrafts().size(), target + " conflict performed no second mutation");
-        assertEquals(1, afterConflict.idempotencyRecords().size(), target + " still one durable idempotency row");
-    }
-
-    // ------------------------------------------------------------------
     // DEPLOYMENT-ACTIVATION GATING still holds over the JDBC store.
     // ------------------------------------------------------------------
 
@@ -210,7 +94,7 @@ class GraphqlJdbcManagementStoreIT {
     @EnumSource(Target.class)
     void deploymentActivationGatingHoldsOverTheJdbcStore(Target target) throws Exception {
         DataSource dataSource = freshDataSource(target);
-        TitanGraphqlDurableManagementStore store = TitanGraphqlManagementStoreFactory.jdbcStore(
+        TitanGraphqlDurableManagementStore store = JdbcManagementStoreFixture.create(
                 dataSource, target.dialect);
 
         // Seed a known model wrapper so the activation/seed paths can resolve the workspace.
@@ -240,7 +124,7 @@ class GraphqlJdbcManagementStoreIT {
                 target + " activation without evidence refused: " + missingEvidence.getMessage());
 
         // The gates left the durable store untouched: no deployments persisted through the JDBC store.
-        TitanGraphqlDurableManagementStore reloaded = TitanGraphqlManagementStoreFactory.jdbcStore(
+        TitanGraphqlDurableManagementStore reloaded = JdbcManagementStoreFixture.create(
                 dataSource, target.dialect);
         assertTrue(reloaded.titanDeployments().isEmpty(), target + " no deployment persisted past the gates");
     }
@@ -257,11 +141,10 @@ class GraphqlJdbcManagementStoreIT {
                         + "://127.0.0.1:1/titan_does_not_exist", "nobody", "nobody");
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> TitanGraphqlManagementStoreFactory.jdbcStore(unreachable, target.dialect));
-        assertTrue(failure.getMessage().contains("could not bootstrap")
-                        || failure.getMessage().contains("could not be initialised"),
+                () -> JdbcManagementStoreFixture.create(unreachable, target.dialect));
+        assertTrue(failure.getMessage().contains("could not bootstrap"),
                 target + " honest bootstrap failure: " + failure.getMessage());
-        assertTrue(failure.getMessage().contains("quarkus.datasource"),
+        assertTrue(failure.getMessage().contains("JDBC URL and credentials"),
                 target + " failure names the remedy: " + failure.getMessage());
     }
 
@@ -422,14 +305,14 @@ class GraphqlJdbcManagementStoreIT {
     void runtimeJdbcStoreRequiresPriorInstallation(Target target) throws Exception {
         DataSource dataSource = freshDataSource(target);
         IllegalStateException missing = assertThrows(IllegalStateException.class,
-                () -> TitanGraphqlManagementStoreFactory.jdbcStoreInstalled(dataSource, target.dialect));
+                () -> JdbcManagementStoreFixture.createInstalled(dataSource, target.dialect));
         assertTrue(missing.getMessage().contains("install-management"));
 
         try (Connection connection = dataSource.getConnection()) {
             TitanGraphqlManagementSchemaInstaller.install(connection, target.dialect);
         }
         TitanGraphqlDurableManagementStore installed =
-                TitanGraphqlManagementStoreFactory.jdbcStoreInstalled(dataSource, target.dialect);
+                JdbcManagementStoreFixture.createInstalled(dataSource, target.dialect);
         assertTrue(installed.titanDrafts().isEmpty());
     }
 
@@ -437,7 +320,7 @@ class GraphqlJdbcManagementStoreIT {
     @EnumSource(Target.class)
     void generatedArtifactCoreAndProductWritesRollBackTogether(Target target) throws Exception {
         DataSource dataSource = freshDataSource(target);
-        TitanGraphqlDurableManagementStore store = TitanGraphqlManagementStoreFactory.jdbcStore(
+        TitanGraphqlDurableManagementStore store = JdbcManagementStoreFixture.create(
                 dataSource, target.dialect);
         store.saveModel(new TitanGraphqlManagedModel(
                 "model-atomic", "workspace-atomic", "atomic", "Atomic", "",
@@ -470,14 +353,14 @@ class GraphqlJdbcManagementStoreIT {
         } finally {
             renameProductStateTable(dataSource, target, false);
         }
-        TitanGraphqlDurableManagementStore afterFailure = TitanGraphqlManagementStoreFactory.jdbcStoreInstalled(
+        TitanGraphqlDurableManagementStore afterFailure = JdbcManagementStoreFixture.createInstalled(
                 dataSource, target.dialect);
         assertTrue(afterFailure.titanDrafts().isEmpty(), target + " core seed rolled back");
         assertTrue(afterFailure.titanArtifactRefs().isEmpty(), target + " core artifact rolled back");
         assertTrue(afterFailure.artifactSet(artifact.id()) == null, target + " product entry did not commit");
 
         afterFailure.saveGeneratedArtifacts(artifact, draft, metadata);
-        TitanGraphqlDurableManagementStore recovered = TitanGraphqlManagementStoreFactory.jdbcStoreInstalled(
+        TitanGraphqlDurableManagementStore recovered = JdbcManagementStoreFixture.createInstalled(
                 dataSource, target.dialect);
         assertEquals(draft.id(), recovered.titanDrafts().getFirst().id());
         assertEquals(artifact.id(), recovered.titanArtifactRefs().getFirst().id());
@@ -488,7 +371,7 @@ class GraphqlJdbcManagementStoreIT {
     @EnumSource(Target.class)
     void observedOperationReviewDoesNotPublishHalfARegistryDecision(Target target) throws Exception {
         DataSource dataSource = freshDataSource(target);
-        TitanGraphqlDurableManagementStore store = TitanGraphqlManagementStoreFactory.jdbcStore(
+        TitanGraphqlDurableManagementStore store = JdbcManagementStoreFixture.create(
                 dataSource, target.dialect);
         TitanGraphqlObservedOperation observed = TitanGraphqlObservedOperation.observed(
                 "model-review", "prod", "reader", "portal", "operation-sha", "ArticleById",
@@ -506,7 +389,7 @@ class GraphqlJdbcManagementStoreIT {
         } finally {
             renameProductStateTable(dataSource, target, false);
         }
-        TitanGraphqlDurableManagementStore afterFailure = TitanGraphqlManagementStoreFactory.jdbcStoreInstalled(
+        TitanGraphqlDurableManagementStore afterFailure = JdbcManagementStoreFixture.createInstalled(
                 dataSource, target.dialect);
         assertEquals(TitanGraphqlObservedOperation.ObservedOperationStatus.OBSERVED,
                 afterFailure.observedOperation(observed.id()).status());
@@ -544,7 +427,7 @@ class GraphqlJdbcManagementStoreIT {
             removeRegistry.setString(1, "registry-model-review-prod");
             assertEquals(1, removeRegistry.executeUpdate());
         }
-        TitanGraphqlDurableManagementStore recovered = TitanGraphqlManagementStoreFactory.jdbcStoreInstalled(
+        TitanGraphqlDurableManagementStore recovered = JdbcManagementStoreFixture.createInstalled(
                 dataSource, target.dialect);
         assertEquals(TitanGraphqlObservedOperation.ObservedOperationStatus.APPROVED,
                 recovered.observedOperation(observed.id()).status());
@@ -604,7 +487,7 @@ class GraphqlJdbcManagementStoreIT {
                 currentRegistry.id(), currentRegistry.modelId(), currentRegistry.environment(),
                 TitanGraphqlOperationRegistry.RegistryMode.ENFORCE, currentRegistry.operations(),
                 "2026-06-09T00:02:00Z"));
-        TitanGraphqlDurableManagementStore enforced = TitanGraphqlManagementStoreFactory.jdbcStoreInstalled(
+        TitanGraphqlDurableManagementStore enforced = JdbcManagementStoreFixture.createInstalled(
                 dataSource, target.dialect);
         assertEquals(TitanGraphqlOperationRegistry.RegistryMode.ENFORCE,
                 enforced.operationRegistry(currentRegistry.id()).mode());
@@ -623,14 +506,14 @@ class GraphqlJdbcManagementStoreIT {
     @EnumSource(Target.class)
     void concurrentObservationsMergeThroughLockedDatabaseRow(Target target) throws Exception {
         DataSource dataSource = freshDataSource(target);
-        TitanGraphqlDurableManagementStore firstStore = TitanGraphqlManagementStoreFactory.jdbcStore(
+        TitanGraphqlDurableManagementStore firstStore = JdbcManagementStoreFixture.create(
                 dataSource, target.dialect);
         TitanGraphqlObservedOperation initial = TitanGraphqlObservedOperation.observed(
                 "model-concurrent", "prod", "reader", "portal", "operation-sha", "ReadArticle",
                 "query ReadArticle { article(id: 1) { id } }", 2, 3, List.of("Article.id"),
                 "2026-06-09T00:00:00Z");
         firstStore.saveObservedOperation(initial);
-        TitanGraphqlDurableManagementStore secondStore = TitanGraphqlManagementStoreFactory.jdbcStoreInstalled(
+        TitanGraphqlDurableManagementStore secondStore = JdbcManagementStoreFixture.createInstalled(
                 dataSource, target.dialect);
         TitanGraphqlObservedOperation second = TitanGraphqlObservedOperation.observed(
                 "model-concurrent", "prod", "reader", "portal", "operation-sha", "ReadArticle",
@@ -660,7 +543,7 @@ class GraphqlJdbcManagementStoreIT {
             workers.shutdownNow();
         }
 
-        TitanGraphqlDurableManagementStore recovered = TitanGraphqlManagementStoreFactory.jdbcStoreInstalled(
+        TitanGraphqlDurableManagementStore recovered = JdbcManagementStoreFixture.createInstalled(
                 dataSource, target.dialect);
         assertEquals(3, recovered.observedOperation(initial.id()).observedCount());
         try (Connection connection = dataSource.getConnection();
@@ -678,7 +561,7 @@ class GraphqlJdbcManagementStoreIT {
     @EnumSource(Target.class)
     void concurrentReviewsKeepBothRegistryDecisions(Target target) throws Exception {
         DataSource dataSource = freshDataSource(target);
-        TitanGraphqlDurableManagementStore firstStore = TitanGraphqlManagementStoreFactory.jdbcStore(
+        TitanGraphqlDurableManagementStore firstStore = JdbcManagementStoreFixture.create(
                 dataSource, target.dialect);
         TitanGraphqlObservedOperation viewer = TitanGraphqlObservedOperation.observed(
                 "model-review-lock", "prod", "viewer", "portal", "operation-sha", "ReadArticle",
@@ -689,7 +572,7 @@ class GraphqlJdbcManagementStoreIT {
                 "query ReadArticle { article(id: 1) { id } }", 2, 3, List.of("Article.id"),
                 "2026-06-09T00:00:00Z");
         firstStore.saveObservedOperation(viewer).saveObservedOperation(admin);
-        TitanGraphqlDurableManagementStore secondStore = TitanGraphqlManagementStoreFactory.jdbcStoreInstalled(
+        TitanGraphqlDurableManagementStore secondStore = JdbcManagementStoreFixture.createInstalled(
                 dataSource, target.dialect);
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService workers = Executors.newFixedThreadPool(2);
@@ -711,7 +594,7 @@ class GraphqlJdbcManagementStoreIT {
             workers.shutdownNow();
         }
 
-        TitanGraphqlDurableManagementStore recovered = TitanGraphqlManagementStoreFactory.jdbcStoreInstalled(
+        TitanGraphqlDurableManagementStore recovered = JdbcManagementStoreFixture.createInstalled(
                 dataSource, target.dialect);
         TitanGraphqlOperationRegistry registry = recovered.operationRegistry("registry-model-review-lock-prod");
         assertEquals(2, registry.operations().size());
@@ -760,16 +643,6 @@ class GraphqlJdbcManagementStoreIT {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Helpers.
-    // ------------------------------------------------------------------
-
-    /**
-     * A fresh, isolated {@code management} schema per test, so each parameterized leg starts empty.
-     * Returns a plain DataSource at the database/admin level — the factory itself ensures the
-     * {@code management} schema and sets the per-connection search path, so the test only needs to
-     * reset the schema between runs.
-     */
     private DataSource freshDataSource(Target target) throws SQLException {
         if (target == Target.POSTGRESQL) {
             try (Connection admin = DriverManager.getConnection(
@@ -782,73 +655,11 @@ class GraphqlJdbcManagementStoreIT {
         try (Connection admin = DriverManager.getConnection(
                 mysql.getJdbcUrl(), mysql.getUsername(), mysql.getPassword());
              Statement statement = admin.createStatement()) {
-            // The scoped user owns the `management` database, so it can reset it between tests.
             statement.execute("DROP DATABASE IF EXISTS management");
             statement.execute("CREATE DATABASE management");
         }
-        // Point the URL at the server (no default DB) so the factory's USE selects `management`;
-        // the host/port come from the container's mapped binding.
         String url = "jdbc:mysql://" + mysql.getHost() + ":" + mysql.getMappedPort(3306) + "/";
         return new SimpleDataSource(url, mysql.getUsername(), mysql.getPassword());
-    }
-
-    private static GraphqlSchema managementSchema(GraphqlManagementMutationSupport support) {
-        return support.withManagementMutations(ProjectionGraphqlAdapter.adapt(
-                io.titan.graphql.management.TitanGraphqlManagementProjection.projectionModel().toProjectionModel()
-        ));
-    }
-
-    private static GraphqlAst.AstOperation importOperation(String yaml) {
-        return GraphqlParser.parseSelectedOperation(new GraphqlRequest(
-                """
-                mutation Import($yaml: String!) {
-                  importModelDocument(input: { workspaceId: "workspace-001", yaml: $yaml }) {
-                    accepted
-                    draftId
-                    modelId
-                    errors
-                    warnings
-                  }
-                }
-                """,
-                "Import",
-                Map.of("yaml", yaml),
-                Map.of()
-        ));
-    }
-
-    private static String draftId(String yaml) {
-        var document = io.titan.graphql.model.TitanGraphqlModelDocumentYaml.parse(yaml);
-        return "draft-" + io.titan.graphql.model.TitanGraphqlModelDocumentJson.semanticHash(document).substring(0, 12);
-    }
-
-    private static GraphqlRequestContext context(String requestId, String idempotencyKey) {
-        return new GraphqlRequestContext(
-                0L,
-                "operator",
-                "actor-operator",
-                "",
-                requestId,
-                idempotencyKey,
-                List.of("management"),
-                List.of(),
-                true,
-                false,
-                false,
-                0L);
-    }
-
-    private static String readDemoBlogFixture() {
-        try (InputStream stream = TitanGraphqlManagementStore.class.getResourceAsStream(
-                "/graphql/demo-blog.titan.graphql.yaml"
-        )) {
-            if (stream == null) {
-                throw new IllegalStateException("missing demo-blog model fixture");
-            }
-            return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-        } catch (IOException ex) {
-            throw new IllegalStateException("failed to read demo-blog model fixture", ex);
-        }
     }
 
     /** Minimal {@link DataSource} returning a fresh DriverManager connection per call. */

@@ -5,15 +5,10 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.titan.graphql.GraphqlApplicationMutationProvider;
-import io.titan.graphql.GraphqlExecutionEngine;
-import io.titan.graphql.GraphqlHttpResource;
 import io.titan.graphql.conformance.DemoBlogSqlDeployment;
-import io.titan.runtime.jdbc.SingleConnectionDataSource;
 import io.titan.runtime.testing.DatabaseTarget;
 import io.titan.runtime.testing.TitanTest;
 import io.titan.runtime.testing.TitanTestContext;
-import jakarta.ws.rs.core.Response;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -37,7 +32,7 @@ class DatabaseGraphqlEngineIT {
     void installedEntryPointExecutesPointReadVariablesAliasesAndLiveData(TitanTestContext context)
             throws Exception {
         Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
-        DemoBlogSqlDeployment.deployPackagedKernel(connection);
+        DemoBlogSqlDeployment.deployPackagedDatabaseEngine(connection);
 
         JsonNode literal = execute(connection, "{ article(id: 1) { id title titleLength } }", "", "{}");
         assertEquals(1, literal.at("/data/article/id").asInt());
@@ -170,28 +165,6 @@ class DatabaseGraphqlEngineIT {
         }
         JsonNode changed = execute(connection, "{ article(id: 1) { title } }", "", "{}");
         assertEquals("Changed inside PostgreSQL", changed.at("/data/article/title").asText());
-    }
-
-    @Test
-    void jaxRsAdapterUsesTheManifestBoundDemoEngine(TitanTestContext context) throws Exception {
-        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
-        DemoBlogSqlDeployment.deployPackagedKernel(connection);
-        GraphqlExecutionEngine engine = new GraphqlExecutionEngine(
-                "database",
-                () -> new SingleConnectionDataSource(connection),
-                "Titan PostgreSQL demo HTTP test connection",
-                "src/test/resources/graphql/demo-blog.titan.graphql.yaml",
-                GraphqlApplicationMutationProvider.none(),
-                "postgresql");
-
-        Response response = new GraphqlHttpResource(engine, true).getResponse(
-                "{ article(id: 1) { title } }", null, null, null, "application/graphql-response+json",
-                "10", "reader", null, null, null, null, null, null, null, null);
-
-        assertEquals(200, response.getStatus());
-        assertEquals("database", response.getHeaderString("X-Titan-Execution-Mode"));
-        assertEquals("Titan GraphQL proof", JSON.readTree(String.valueOf(response.getEntity()))
-                .at("/data/article/title").asText());
     }
 
     private static JsonNode execute(Connection connection, String query, String operationName, String variablesJson)

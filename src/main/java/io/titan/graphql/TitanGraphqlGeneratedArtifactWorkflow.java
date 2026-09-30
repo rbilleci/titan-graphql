@@ -177,8 +177,8 @@ public final class TitanGraphqlGeneratedArtifactWorkflow {
             if (packageBinding == null) {
                 throw new IllegalStateException(
                         "model '" + document.metadata().name() + "' requests generated SQL artifacts but the Titan"
-                                + " package has no exact model binding — run titanGraphqlBindPackage for this reviewed"
-                                + " model before attaching SQL artifacts");
+                                + " package has no exact model binding — bind this reviewed model to its"
+                                + " install-verified database-engine package before attaching SQL artifacts");
             }
             packageBinding.verify(document, gap005Metadata);
             generatedSqlHash = gap005Metadata.manifestContentHash();
@@ -255,11 +255,11 @@ public final class TitanGraphqlGeneratedArtifactWorkflow {
     private static String introspectionArtifactJson(GraphqlSchema schema) {
         try {
             return JSON.writeValueAsString(new IntrospectionArtifact(
-                    responseData(schema, schemaIntrospectionQuery()).get("__schema"),
+                    responseData(schema, schemaIntrospectionOperation()).get("__schema"),
                     typeNames(schema).stream()
                             .map(typeName -> new TypeIntrospectionArtifact(
                                     typeName,
-                                    responseData(schema, typeIntrospectionQuery(typeName)).get("__type")
+                                    responseData(schema, typeIntrospectionOperation(typeName)).get("__type")
                             ))
                             .toList()
             ));
@@ -268,10 +268,9 @@ public final class TitanGraphqlGeneratedArtifactWorkflow {
         }
     }
 
-    private static JsonNode responseData(GraphqlSchema schema, String query) {
+    private static JsonNode responseData(GraphqlSchema schema, GraphqlAst.AstOperation operation) {
         try {
-            GraphqlAst.AstOperation operation = GraphqlParser.parse(GraphqlRequest.query(query));
-            String json = GraphqlIntrospection.execute(schema, operation).json();
+            String json = TitanGraphqlIntrospectionArtifactProjection.project(schema, operation);
             JsonNode data = JSON.readTree(json).get("data");
             if (data == null) {
                 throw new IllegalArgumentException("introspection query did not return data");
@@ -282,63 +281,44 @@ public final class TitanGraphqlGeneratedArtifactWorkflow {
         }
     }
 
-    private static String schemaIntrospectionQuery() {
-        return """
-                {
-                  __schema {
-                    queryType { name kind }
-                    types { name kind }
-                    directives {
-                      name
-                      isRepeatable
-                      locations
-                      args { name type { name kind ofType { name kind ofType { name kind } } } }
-                    }
-                  }
-                }
-                """;
+    private static GraphqlAst.AstOperation schemaIntrospectionOperation() {
+        return operation(field("__schema",
+                field("queryType", field("name"), field("kind")),
+                field("types", field("name"), field("kind")),
+                field("directives",
+                        field("name"), field("isRepeatable"), field("locations"),
+                        field("args", field("name"), typeReference()))));
     }
 
-    private static String typeIntrospectionQuery(String typeName) {
-        String escapedTypeName = typeName.replace("\\", "\\\\").replace("\"", "\\\"");
-        return """
-                {
-                  __type(name: "%s") {
-                    name
-                    kind
-                    description
-                    fields {
-                      name
-                      description
-                      isDeprecated
-                      deprecationReason
-                      type { name kind ofType { name kind ofType { name kind } } }
-                      args {
-                        name
-                        description
-                        defaultValue
-                        isDeprecated
-                        deprecationReason
-                        type { name kind ofType { name kind ofType { name kind } } }
-                      }
-                    }
-                    inputFields {
-                      name
-                      description
-                      defaultValue
-                      isDeprecated
-                      deprecationReason
-                      type { name kind ofType { name kind ofType { name kind } } }
-                    }
-                    enumValues {
-                      name
-                      description
-                      isDeprecated
-                      deprecationReason
-                    }
-                  }
-                }
-                """.formatted(escapedTypeName);
+    private static GraphqlAst.AstOperation typeIntrospectionOperation(String typeName) {
+        return operation(new GraphqlAst.Field("__type", "__type",
+                Map.of("name", new GraphqlAst.StringValue(typeName)), List.of(), List.of(
+                        field("name"), field("kind"), field("description"),
+                        field("fields",
+                                field("name"), field("description"), field("isDeprecated"),
+                                field("deprecationReason"), typeReference(),
+                                field("args", field("name"), field("description"),
+                                        field("defaultValue"), field("isDeprecated"),
+                                        field("deprecationReason"), typeReference())),
+                        field("inputFields", field("name"), field("description"),
+                                field("defaultValue"), field("isDeprecated"),
+                                field("deprecationReason"), typeReference()),
+                        field("enumValues", field("name"), field("description"),
+                                field("isDeprecated"), field("deprecationReason")))));
+    }
+
+    private static GraphqlAst.Field typeReference() {
+        return field("type", field("name"), field("kind"),
+                field("ofType", field("name"), field("kind"),
+                        field("ofType", field("name"), field("kind"))));
+    }
+
+    private static GraphqlAst.AstOperation operation(GraphqlAst.Field root) {
+        return new GraphqlAst.AstOperation(GraphqlAst.OperationType.QUERY, "", List.of(), List.of(root), List.of());
+    }
+
+    private static GraphqlAst.Field field(String name, GraphqlAst.Selection... selections) {
+        return new GraphqlAst.Field(name, name, Map.of(), List.of(), List.of(selections));
     }
 
     private static List<String> typeNames(GraphqlSchema schema) {

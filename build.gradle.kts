@@ -12,7 +12,6 @@ import java.util.zip.ZipInputStream
 
 plugins {
     java
-    id("io.quarkus") version "3.36.0"
     id("io.titan.gradle")
 }
 
@@ -37,66 +36,27 @@ dependencyLocking {
 }
 
 dependencies {
-    implementation(enforcedPlatform("io.quarkus.platform:quarkus-bom:3.36.0"))
     implementation("io.titan:titan-dsl:0.1.0")
     implementation("io.titan:titan-management:0.1.0")
-    implementation("jakarta.ws.rs:jakarta.ws.rs-api:3.1.0")
-    implementation("io.quarkus:quarkus-rest-jackson")
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml")
-    // Live SQL execution mode (completion plan W5.1): the /graphql endpoint can answer from
-    // the deployed stored functions over the Quarkus default (Agroal) datasource.
-    implementation("io.quarkus:quarkus-agroal")
-    implementation("io.quarkus:quarkus-jdbc-postgresql")
-    implementation("io.quarkus:quarkus-jdbc-mysql")
-    // io.titan:titan-runtime-jdbc for the MAIN classpath (TitanExecutionListener +
-    // JdbcTelemetrySink, the SQL-mode telemetry wiring) is declared in the afterEvaluate
-    // block below — see the TG-BLK-009 workaround note there.
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.21.3")
+    implementation("io.titan:titan-runtime-jdbc:0.1.0") {
+        exclude(group = "org.junit.jupiter")
+        exclude(group = "org.testcontainers")
+        exclude(group = "com.mysql")
+    }
+    runtimeOnly("com.mysql:mysql-connector-j:8.4.0")
 
     testImplementation(platform("org.junit:junit-bom:5.10.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("io.quarkus:quarkus-junit5")
-    testImplementation("io.rest-assured:rest-assured")
-    // Core's live-database test harness (TitanTestExtension, EquivalenceOracle) for the
-    // SQL-mode equivalence leg (completion plan W2). Composite-substituted to vendor/titan; the
-    // harness manages its Testcontainers PostgreSQL internally (and carries Testcontainers
-    // plus the JDBC drivers on its runtime classpath), so no direct Testcontainers
-    // dependency is needed here.
     testImplementation("io.titan:titan-runtime-jdbc:0.1.0")
-    // The SQL-mode HTTP serving IT (W5.1) provisions its own PostgreSQL container and points
-    // the Quarkus datasource at it before boot, so it needs compile-time Testcontainers
-    // access (same version core's harness uses).
     testImplementation("org.testcontainers:postgresql:1.21.4")
-    // The dogfood Phase C management-store IT additionally drives the jdbc mode against live
-    // MySQL 8.4 (the second dialect core's JdbcManagementStoreDogfoodIT proves); the MySQL
-    // testcontainer is on the harness runtime classpath transitively but needs an explicit
-    // compile-time declaration (the connector itself, com.mysql:mysql-connector-j, is already
-    // a titanJdbc + transitive harness dependency).
     testImplementation("org.testcontainers:mysql:1.21.4")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     // Driver for core's scratch-container DDL introspection (ddlMode defaults to "container").
     titanJdbc("org.postgresql:postgresql:42.7.4")
-    // Driver for the MySQL scratch-container legs (W5.2: titanVerifyInstall + equivalence).
+    // Driver for MySQL scratch installation and installed-package tests.
     titanJdbc("com.mysql:mysql-connector-j:8.4.0")
-}
-
-// TG-BLK-009 workaround: core's published JDBC runtime surface (TitanExecutionListener +
-// JdbcTelemetrySink) is needed on the MAIN classpath for the W5.1 live SQL execution mode,
-// but the Quarkus plugin's configuration-time dependency walk recurses into the
-// composite-substituted titan-runtime-jdbc project. Declaring the dependency in afterEvaluate
-// (which runs after the
-// plugin's walk) keeps it out of that walk while remaining a fully ordinary dependency for
-// compilation, the Quarkus application model, dev mode, and tests. The excludes keep
-// titan-runtime-jdbc's implementation-scope test-harness dependencies (JUnit, Testcontainers,
-// MySQL driver — also TG-BLK-009) off the application classpath.
-afterEvaluate {
-    dependencies {
-        "implementation"("io.titan:titan-runtime-jdbc:0.1.0") {
-            exclude(group = "org.junit.jupiter")
-            exclude(group = "org.testcontainers")
-            exclude(group = "com.mysql")
-        }
-    }
 }
 
 java {
@@ -105,11 +65,7 @@ java {
     }
 }
 
-// Docker split (same convention as core's root build): plain `test` excludes @Tag("docker")
-// so `build`/`test` stay green without Docker. The generic `integrationTest` owns only the
-// generic compiled package; whole-request engine legs have isolated package directories and
-// explicitly configured Test tasks below.
-// `check` intentionally does NOT depend on integrationTest.
+// Plain tests exclude Docker-tagged cases; database-engine tasks own installed-package proofs.
 tasks.test {
     useJUnitPlatform {
         excludeTags("docker")
@@ -118,54 +74,19 @@ tasks.test {
         excludeTags("database-engine-package-replacement")
         excludeTags("database-engine-snapshot")
     }
-    // Docker-free runs cannot assume titanPackage/titanVerifyInstall output exists, so plain
-    // tests read GAP-005 package metadata from a checked-in, schema-faithful fixture package.
-    // The real-artifact integration leg lives in integrationTest (see below).
+    // Docker-free tests read package metadata from the checked-in fixture.
     systemProperty(
         "titan.graphql.artifacts.dir",
         layout.projectDirectory.dir("src/test/resources/titan-artifacts").asFile.absolutePath
     )
-    // Most Docker-free transport tests intentionally exercise the in-JVM reference fixture.
-    // Production application.properties remains fail-closed compiled mode.
-    systemProperty("titan.graphql.execution.mode", "java")
 }
 
-tasks.register<Test>("integrationTest") {
-    description = "Runs generic compiled-package Docker tests; isolated whole-request legs use dedicated tasks."
+tasks.register<Test>("databaseManagementStoreIntegrationTest") {
+    description = "Runs durable JDBC management-store tests on PostgreSQL and MySQL."
     group = "verification"
     testClassesDirs = sourceSets["test"].output.classesDirs
     classpath = sourceSets["test"].runtimeClasspath
-    // The generic compiled runtime installs this generated package. Model/generator changes must
-    // invalidate the live test even when the JUnit classes themselves have not changed.
-    inputs.dir(layout.buildDirectory.dir("generated/migrations/titan"))
-    useJUnitPlatform {
-        includeTags("docker")
-        excludeTags("commerce-compiled")
-        excludeTags("legacy-sql")
-        excludeTags("database-engine")
-        excludeTags("database-engine-mysql")
-        excludeTags("database-engine-commerce")
-        excludeTags("database-engine-commerce-mysql")
-        excludeTags("database-engine-http")
-    }
-    // Generic compiled-mode tests consume only the install-verified, model-bound generated package.
-    // Historical whole-request SQL equivalence tests run separately in legacySqlIntegrationTest.
-    dependsOn("titanGraphqlBindPackage")
-    systemProperty(
-        "titan.graphql.migrations.dir",
-        layout.buildDirectory.dir("generated/migrations/titan/postgresql").get().asFile.absolutePath
-    )
-    // The MySQL equivalence leg (W5.2) deploys the packaged MySQL migrations.
-    systemProperty(
-        "titan.graphql.migrations.dir.mysql",
-        layout.buildDirectory.dir("generated/migrations/titan/mysql").get().asFile.absolutePath
-    )
-    // Point the management plane's artifacts directory at the REAL titanPackage output.
-    systemProperty(
-        "titan.graphql.artifacts.dir",
-        layout.buildDirectory.dir("generated/migrations/titan").get().asFile.absolutePath
-    )
-    shouldRunAfter(tasks.test)
+    useJUnitPlatform { includeTags("database-management-store") }
 }
 
 configure<TitanExtension> {
@@ -192,7 +113,7 @@ configure<TitanExtension> {
     transpiler.sensitiveColumns.set(listOf("email"))
 
     deployment.mode.set("migration")
-    deployment.migrationsDir.set(layout.buildDirectory.dir("generated/migrations/titan").get().asFile.absolutePath)
+    deployment.migrationsDir.set(layout.buildDirectory.dir("generated/migrations/titan-core").get().asFile.absolutePath)
 }
 
 // Generated catalog sources are wired into sourceSets by the Titan plugin itself
@@ -200,21 +121,13 @@ configure<TitanExtension> {
 
 val titanGraphqlModelFile = providers.gradleProperty("titanGraphqlModel")
     .orElse("src/test/resources/graphql/demo-blog.titan.graphql.yaml")
-val titanGraphqlGeneratedRoutineSource = layout.buildDirectory.file(
-    "generated/sources/titan-graphql/io/titan/graphql/generated/GeneratedTitanGraphqlReads.java"
-)
-val titanGraphqlPackageDirectory = layout.buildDirectory.dir("generated/migrations/titan")
 
-// The final serving distribution must be able to contain only HTTP/JDBC transport code. Keep the
-// reusable database invocation client in an independent source set now, so it cannot import the
-// JVM GraphQL parser/planner/executor while the legacy application artifact is still being removed.
+// The reusable database invocation client cannot import GraphQL execution code.
 val databaseFrontend = sourceSets.create("databaseFrontend") {
     java.srcDir("src/database-frontend/java")
 }
 
-// This target serving host is separate from the transpilable engine and transitional Quarkus
-// application. It may decode HTTP/JSON and invoke the one-call client, but cannot link the JVM
-// GraphQL runtime.
+// The serving host may decode HTTP/JSON and invoke the one-call client, but cannot link the engine.
 val databaseHttpFrontend = sourceSets.create("databaseHttpFrontend") {
     java.srcDir("src/database-http-frontend/java")
 }
@@ -223,8 +136,7 @@ val databaseHttpFrontendTest = sourceSets.create("databaseHttpFrontendTest") {
     resources.srcDir("src/database-http-frontend-test/resources")
 }
 
-// The transitional application still adapts its existing runtime request/context records, but
-// delegates its JDBC boundary to the independently buildable frontend client.
+// Build/control-plane code also uses the independently buildable frontend client for attestation.
 sourceSets["main"].compileClasspath += databaseFrontend.output
 sourceSets["main"].runtimeClasspath += databaseFrontend.output
 sourceSets["test"].compileClasspath += databaseFrontend.output
@@ -236,9 +148,7 @@ tasks.named("compileTestJava") {
     dependsOn(databaseFrontend.classesTaskName)
 }
 tasks.named<Jar>("jar") {
-    // Quarkus packages the main application JAR. Include the extracted client while the
-    // transitional resource still delegates to it; the final frontend distribution will use
-    // databaseFrontendJar directly and omit the legacy application classes altogether.
+    // The control-plane JAR uses the client for installed-package attestation.
     from(databaseFrontend.output)
 }
 
@@ -295,10 +205,26 @@ val controlJobWorkerDistribution = tasks.register<Zip>("controlJobWorkerDistribu
     }
 }
 
-// This is deliberately a release *artifact* task rather than an alias for the root `assemble`
-// or `build` lifecycle. Those lifecycle tasks still build the transitional Quarkus application
-// while its source is being migrated. A deployer must receive this ZIP, never that application
-// archive: it has the small HTTP/JDBC closure and no local GraphQL implementation.
+val titanGraphqlVerifyControlJobWorkerDistribution =
+    tasks.register("titanGraphqlVerifyControlJobWorkerDistribution") {
+        description = "Verifies that the control worker ZIP can connect to the MySQL management database."
+        group = "verification"
+        dependsOn(controlJobWorkerDistribution)
+        val distribution = controlJobWorkerDistribution.flatMap { it.archiveFile }
+        inputs.file(distribution)
+        doLast {
+            ZipFile(distribution.get().asFile).use { zip ->
+                check(zip.getEntry("lib/mysql-connector-j-8.4.0.jar") != null) {
+                    "control worker distribution omits the MySQL JDBC driver"
+                }
+                check(zip.getEntry("bin/titan-graphql-control-worker") != null) {
+                    "control worker distribution omits its launcher"
+                }
+            }
+        }
+    }
+
+// Only the isolated ZIP is a serving artifact; the root JAR contains build/control-plane tools.
 val titanGraphqlDatabaseHttpFrontendReleaseArtifact =
     tasks.register("titanGraphqlVerifyDatabaseHttpFrontendReleaseArtifact") {
         description = "Verifies the standalone HTTP ZIP is the only database-serving release artifact."
@@ -370,9 +296,9 @@ val titanGraphqlDatabaseHttpFrontendReleaseArtifact =
 val titanGraphqlDatabaseEngineReleaseCheck = tasks.register("titanGraphqlDatabaseEngineReleaseCheck") {
     description = "Runs the local deployment gate for the database-resident GraphQL serving path."
     group = "verification"
-    // Do not add Quarkus, compiled, or historical SQL tests here. They are retained migration
-    // oracles, but this gate establishes the artifact a user may actually deploy.
+    // This gate establishes the artifact a user may deploy.
     dependsOn(
+        titanGraphqlVerifyControlJobWorkerDistribution,
         "titanGraphqlVerifyDatabaseEngineBoundary",
         "titanGraphqlVerifyDatabaseFrontendBoundary",
         "titanGraphqlVerifyDatabaseEnginePackagePrivacy",
@@ -386,6 +312,7 @@ val titanGraphqlDatabaseEngineReleaseCheck = tasks.register("titanGraphqlDatabas
         "databaseEnginePackageReplacementIntegrationTest",
         "databaseEngineSnapshotIntegrationTest",
         "databaseEngineCommerceHttpRestartIntegrationTest",
+        "databaseManagementStoreIntegrationTest",
         "databaseHttpFrontendIntegrationTest"
     )
 }
@@ -506,25 +433,6 @@ tasks.register("titanGraphqlVerifyDatabaseHttpFrontendBoundary") {
         check(forbiddenDistributionEntries.isEmpty()) {
             "database HTTP frontend distribution contains transitional application/runtime artifacts: " +
                     forbiddenDistributionEntries.joinToString()
-        }
-    }
-}
-
-tasks.register("titanGraphqlVerifyApplicationFrontendLink") {
-    description = "Verifies the transitional Quarkus application packages its extracted JDBC frontend."
-    group = "verification"
-    dependsOn("quarkusBuild")
-    doLast {
-        val applicationJar = layout.buildDirectory.file(
-            "quarkus-app/app/$titanGraphqlProjectName-$titanGraphqlProjectVersion.jar")
-                .get().asFile
-        check(applicationJar.isFile) { "Quarkus application JAR is missing: $applicationJar" }
-        val entries = mutableListOf<String>()
-        zipTree(applicationJar).visit {
-            if (isDirectory == false) entries.add(path)
-        }
-        check("io/titan/graphql/frontend/DatabaseWholeRequestClient.class" in entries) {
-            "Quarkus application JAR does not package the extracted database frontend client"
         }
     }
 }
@@ -987,34 +895,10 @@ tasks.register<Test>("databaseEngineIntegrationTest") {
     )
     useJUnitPlatform { includeTags("database-engine") }
     systemProperty(
-        "titan.graphql.migrations.dir",
-        titanGraphqlDatabaseEnginePackageDirectory.map { it.dir("postgresql") }.get().asFile.absolutePath
-    )
-    systemProperty("titan.graphql.artifacts.dir", titanGraphqlDatabaseEnginePackageDirectory.get().asFile.absolutePath)
-    shouldRunAfter(tasks.named("integrationTest"))
-}
-
-tasks.register<Test>("databaseEngineHttpIntegrationTest") {
-    description = "Boots Quarkus against the manifest-bound PostgreSQL whole-request engine."
-    group = "verification"
-    dependsOn("titanGraphqlBindDatabaseEnginePackage")
-    testClassesDirs = sourceSets["test"].output.classesDirs
-    classpath = sourceSets["test"].runtimeClasspath
-    // See databaseEngineIntegrationTest: do not claim the descriptor-producing package root as
-    // an input to the transitional Quarkus proof.
-    inputs.dir(titanGraphqlDatabaseEnginePackageDirectory.map { it.dir("postgresql") })
-    inputs.files(
-        titanGraphqlDatabaseEnginePackageDirectory.map { it.file("titan-graphql-package.json") },
-        titanGraphqlDatabaseEnginePackageDirectory.map { it.file("titan-graphql-database-runtime-identity.sha256") },
-        titanGraphqlDatabaseEnginePackageDirectory.map { it.file("titan-graphql-database-package-identity.sha256") }
-    )
-    useJUnitPlatform { includeTags("database-engine-http") }
-    systemProperty(
         "titan.graphql.database-engine.migrations.dir",
         titanGraphqlDatabaseEnginePackageDirectory.map { it.dir("postgresql") }.get().asFile.absolutePath
     )
     systemProperty("titan.graphql.artifacts.dir", titanGraphqlDatabaseEnginePackageDirectory.get().asFile.absolutePath)
-    shouldRunAfter(tasks.named("databaseEngineIntegrationTest"))
 }
 
 tasks.register<Test>("databaseHttpFrontendIntegrationTest") {
@@ -1033,8 +917,6 @@ tasks.register<Test>("databaseHttpFrontendIntegrationTest") {
     inputs.file(titanGraphqlMySqlDatabaseEngineFrontendDescriptor)
     inputs.file(databaseHttpFrontendDistribution.flatMap { it.archiveFile })
     useJUnitPlatform { excludeTags("database-engine-management-http") }
-    // The root project is Quarkus-based and exports this property to its normal test workers.
-    // The standalone host intentionally has no JBoss LogManager dependency.
     jvmArgs("-Djava.util.logging.manager=java.util.logging.LogManager")
     systemProperty(
         "titan.graphql.database-engine.migrations.dir",
@@ -1053,7 +935,6 @@ tasks.register<Test>("databaseHttpFrontendIntegrationTest") {
     systemProperty(
         "titan.graphql.database-frontend.distribution",
         databaseHttpFrontendDistribution.get().archiveFile.get().asFile.absolutePath)
-    shouldRunAfter(tasks.named("databaseEngineHttpIntegrationTest"))
 }
 
 tasks.register<Test>("databaseEngineMySqlIntegrationTest") {
@@ -1072,124 +953,11 @@ tasks.register<Test>("databaseEngineMySqlIntegrationTest") {
     )
     useJUnitPlatform { includeTags("database-engine-mysql") }
     systemProperty(
-        "titan.graphql.migrations.dir.mysql",
+        "titan.graphql.database-engine.mysql.migrations.dir",
         titanGraphqlMySqlDatabaseEnginePackageDirectory.map { it.dir("mysql") }.get().asFile.absolutePath
     )
     systemProperty("titan.graphql.artifacts.dir", titanGraphqlMySqlDatabaseEnginePackageDirectory.get().asFile.absolutePath)
     shouldRunAfter(tasks.named("databaseEngineIntegrationTest"))
-}
-
-tasks.register<JavaExec>("titanGraphqlGenerateRoutines") {
-    description = "Generates Titan-transpilable read routines from the reviewed GraphQL model."
-    group = "titan"
-    dependsOn("classes")
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("io.titan.graphql.codegen.TitanGraphqlRoutineSourceGeneratorCli")
-    args(titanGraphqlModelFile.get(), titanGraphqlGeneratedRoutineSource.get().asFile.absolutePath)
-    inputs.file(layout.projectDirectory.file(titanGraphqlModelFile.get()))
-    outputs.file(titanGraphqlGeneratedRoutineSource)
-}
-
-tasks.named<TitanTranspileTask>("titanTranspile") {
-    dependsOn("titanGraphqlGenerateRoutines")
-    // Production packages contain only schema-generated carriers. The historical whole-request
-    // demo kernel is compiled into a separate, explicitly legacy proof package below.
-    sourceFiles.setFrom(titanGraphqlGeneratedRoutineSource)
-}
-
-tasks.register<JavaExec>("titanGraphqlBindPackage") {
-    description = "Binds an install-verified Titan package to the exact reviewed GraphQL model."
-    group = "titan"
-    dependsOn("classes", "titanVerifyInstall")
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("io.titan.graphql.artifact.TitanGraphqlPackageBindingCli")
-    args(titanGraphqlModelFile.get(), titanGraphqlPackageDirectory.get().asFile.absolutePath)
-    inputs.file(layout.projectDirectory.file(titanGraphqlModelFile.get()))
-    inputs.files(
-        titanGraphqlPackageDirectory.map { it.file("titan-artifact.json") },
-        titanGraphqlPackageDirectory.map { it.file("titan-object-inventory.json") },
-        titanGraphqlPackageDirectory.map { it.file("titan-install-plan.json") },
-        titanGraphqlPackageDirectory.map { it.file("titan-install-verification.json") }
-    )
-    outputs.file(titanGraphqlPackageDirectory.map { it.file("titan-graphql-package.json") })
-}
-
-// Transitional equivalence-only package. It is deliberately isolated from the production
-// generated-carrier package and from compiledSchemaIntegrationTest.
-val legacySqlDirectory = layout.buildDirectory.dir("generated/proofs/legacy-sql/sql")
-val legacyPackageDirectory = layout.buildDirectory.dir("generated/proofs/legacy-sql/package")
-
-tasks.register<TitanTranspileTask>("titanGraphqlTranspileLegacySql") {
-    description = "Transpiles the historical demo whole-request kernel for equivalence tests only."
-    group = "verification"
-    dependsOn("classes", "titanGraphqlGenerateRoutines")
-    sourceFiles.setFrom(
-        layout.projectDirectory.file(
-            "src/main/java/io/titan/graphql/demo/blog/DemoBlogTitanGraphqlFunctions.java"
-        ),
-        titanGraphqlGeneratedRoutineSource
-    )
-    classpathFiles.from(sourceSets["main"].runtimeClasspath)
-    targets.set(listOf("postgresql", "mysql"))
-    schemas.set(listOf("public"))
-    strictWraparound.set(false)
-    sqlSafety.set("strict")
-    observability.set(true)
-    debugMode.set(false)
-    sensitiveColumns.set(listOf("email"))
-    outputDir.set(legacySqlDirectory)
-}
-
-tasks.register<TitanPackageTask>("titanGraphqlPackageLegacySql") {
-    description = "Packages the isolated historical SQL equivalence kernel."
-    group = "verification"
-    dependsOn("titanGraphqlTranspileLegacySql")
-    sqlInputDir.set(legacySqlDirectory)
-    mode.set("migration")
-    titanVersion.set(providers.provider { titanGraphqlProjectVersion })
-    outputDir.set(legacyPackageDirectory)
-}
-
-tasks.register<TitanVerifyInstallTask>("titanGraphqlVerifyLegacySqlInstall") {
-    description = "Install-verifies the isolated historical SQL equivalence package."
-    group = "verification"
-    dependsOn("titanGraphqlPackageLegacySql")
-    sqlInputDir.set(legacySqlDirectory)
-    artifactDir.set(legacyPackageDirectory)
-    mode.set("migration")
-    titanVersion.set(providers.provider { titanGraphqlProjectVersion })
-    jdbcUrl.set("")
-    username.set("")
-    password.set("")
-    dialect.set("postgresql")
-    failOnVerificationError.set(true)
-    jdbcDriverClasspath.from(configurations["titanJdbc"])
-    outputs.upToDateWhen { false }
-}
-
-tasks.register<JavaExec>("titanGraphqlBindLegacySqlPackage") {
-    description = "Binds the isolated historical SQL equivalence package to the demo model."
-    group = "verification"
-    dependsOn("classes", "titanGraphqlVerifyLegacySqlInstall")
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("io.titan.graphql.artifact.TitanGraphqlPackageBindingCli")
-    args(titanGraphqlModelFile.get(), legacyPackageDirectory.get().asFile.absolutePath)
-}
-
-tasks.register<Test>("legacySqlIntegrationTest") {
-    description = "Runs the isolated historical SQL-mode equivalence proofs."
-    group = "verification"
-    dependsOn("titanGraphqlBindLegacySqlPackage")
-    testClassesDirs = sourceSets["test"].output.classesDirs
-    classpath = sourceSets["test"].runtimeClasspath
-    inputs.dir(legacyPackageDirectory)
-    useJUnitPlatform { includeTags("legacy-sql") }
-    systemProperty("titan.graphql.migrations.dir",
-        legacyPackageDirectory.map { it.dir("postgresql") }.get().asFile.absolutePath)
-    systemProperty("titan.graphql.migrations.dir.mysql",
-        legacyPackageDirectory.map { it.dir("mysql") }.get().asFile.absolutePath)
-    systemProperty("titan.graphql.artifacts.dir", legacyPackageDirectory.get().asFile.absolutePath)
-    shouldRunAfter(tasks.named("integrationTest"))
 }
 
 // Isolated second-schema proof. Its generated source, SQL, package metadata, binding, and tests
@@ -1200,11 +968,6 @@ val commerceModelFile = layout.projectDirectory.file(
 val managementDatabaseModelFile = layout.projectDirectory.file(
     "src/main/resources/graphql/management-database.titan.graphql.yaml"
 )
-val commerceGeneratedRoutineSource = layout.buildDirectory.file(
-    "generated/proofs/commerce/sources/io/titan/graphql/generated/GeneratedTitanGraphqlReads.java"
-)
-val commerceSqlDirectory = layout.buildDirectory.dir("generated/proofs/commerce/sql")
-val commercePackageDirectory = layout.buildDirectory.dir("generated/proofs/commerce/package")
 val commerceDatabaseEngineGeneratedSource = layout.buildDirectory.file(
     "generated/proofs/database-engine-commerce/sources/io/titan/graphql/database/generated/GeneratedDatabaseGraphqlSchema.java"
 )
@@ -1317,9 +1080,7 @@ tasks.register<JavaExec>("titanGraphqlGenerateCommerceMySqlDatabaseEngineRuntime
     outputs.file(commerceMySqlDatabaseEngineRuntimeIdentity)
 }
 
-// The whole-request engine has its own pair of commerce outputs.  Do not reuse the older
-// carrier-only commerce package above: that would make this proof silently exercise the legacy
-// JVM-planned architecture rather than the generated database entry point.
+// The commerce whole-request package has a separate source, SQL, and package output root.
 tasks.register<JavaExec>("titanGraphqlGenerateCommerceDatabaseEngine") {
     description = "Generates the PostgreSQL whole-request database engine for the commerce proof model."
     group = "titan"
@@ -1506,8 +1267,8 @@ tasks.register("titanGraphqlVerifyDatabaseEnginePackagePrivacy") {
             credential.containsMatchIn(contents) -> "high-confidence credential"
             else -> null
         }
-        check(finding("/home/example-user/project/source.sql") == "private machine path")
-        check(finding("-----BEGIN PRIVATE KEY-----") == "high-confidence credential")
+        check(finding("/" + "home/example-user/project/source.sql") == "private machine path")
+        check(finding("-----BEGIN " + "PRIVATE KEY-----") == "high-confidence credential")
         check(finding("github_pat_" + "A".repeat(30)) == "high-confidence credential")
         check(finding("SELECT 1;") == null)
         val packageFiles = packageDirectories.flatMap { directory ->
@@ -2149,7 +1910,6 @@ tasks.register<Test>("databaseEngineManagementIntegrationTest") {
         layout.buildDirectory.file("generated/proofs/database-engine-management-postgresql/frontend-deployment.properties"),
         layout.buildDirectory.file("generated/proofs/database-engine-management-mysql/frontend-deployment.properties"))
     useJUnitPlatform { includeTags("database-engine-management") }
-    shouldRunAfter(tasks.named("integrationTest"))
 }
 
 tasks.register<Test>("databaseEngineManagementHttpIntegrationTest") {
@@ -2409,104 +2169,4 @@ tasks.register<Test>("databaseEngineControlJobRestartIntegrationTest") {
         "titan.graphql.control-job.worker.distribution",
         controlJobWorkerDistribution.get().archiveFile.get().asFile.absolutePath)
     shouldRunAfter(tasks.named("databaseEngineCommerceMySqlIntegrationTest"))
-}
-
-tasks.register<JavaExec>("titanGraphqlGenerateCommerceRoutines") {
-    description = "Generates Titan read carriers for the unrelated commerce proof model."
-    group = "titan"
-    dependsOn("classes")
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("io.titan.graphql.codegen.TitanGraphqlRoutineSourceGeneratorCli")
-    args(commerceModelFile.asFile.absolutePath, commerceGeneratedRoutineSource.get().asFile.absolutePath)
-    inputs.file(commerceModelFile)
-    outputs.file(commerceGeneratedRoutineSource)
-}
-
-tasks.register<TitanTranspileTask>("titanGraphqlTranspileCommerce") {
-    description = "Transpiles only the generated commerce carriers for PostgreSQL and MySQL."
-    group = "titan"
-    dependsOn("classes", "titanGraphqlGenerateCommerceRoutines")
-    sourceFiles.setFrom(commerceGeneratedRoutineSource)
-    classpathFiles.from(sourceSets["main"].runtimeClasspath)
-    targets.set(listOf("postgresql", "mysql"))
-    schemas.set(listOf("public"))
-    strictWraparound.set(false)
-    sqlSafety.set("strict")
-    observability.set(true)
-    debugMode.set(false)
-    sensitiveColumns.set(listOf("email"))
-    outputDir.set(commerceSqlDirectory)
-}
-
-tasks.register<TitanPackageTask>("titanGraphqlPackageCommerce") {
-    description = "Packages the isolated commerce carrier SQL."
-    group = "titan"
-    dependsOn("titanGraphqlTranspileCommerce")
-    sqlInputDir.set(commerceSqlDirectory)
-    mode.set("migration")
-    titanVersion.set(providers.provider { titanGraphqlProjectVersion })
-    outputDir.set(commercePackageDirectory)
-}
-
-tasks.register<TitanVerifyInstallTask>("titanGraphqlVerifyCommerceInstall") {
-    description = "Installs and verifies the isolated commerce package on both dialects."
-    group = "verification"
-    dependsOn("titanGraphqlPackageCommerce")
-    sqlInputDir.set(commerceSqlDirectory)
-    artifactDir.set(commercePackageDirectory)
-    mode.set("migration")
-    titanVersion.set(providers.provider { titanGraphqlProjectVersion })
-    jdbcUrl.set("")
-    username.set("")
-    password.set("")
-    dialect.set("postgresql")
-    failOnVerificationError.set(true)
-    jdbcDriverClasspath.from(configurations["titanJdbc"])
-    outputs.upToDateWhen { false }
-}
-
-tasks.register<JavaExec>("titanGraphqlBindCommercePackage") {
-    description = "Binds the verified commerce package to its exact reviewed model."
-    group = "titan"
-    dependsOn("classes", "titanGraphqlVerifyCommerceInstall")
-    classpath = sourceSets["main"].runtimeClasspath
-    mainClass.set("io.titan.graphql.artifact.TitanGraphqlPackageBindingCli")
-    args(commerceModelFile.asFile.absolutePath, commercePackageDirectory.get().asFile.absolutePath)
-    inputs.file(commerceModelFile)
-    inputs.files(
-        commercePackageDirectory.map { it.file("titan-artifact.json") },
-        commercePackageDirectory.map { it.file("titan-object-inventory.json") },
-        commercePackageDirectory.map { it.file("titan-install-plan.json") },
-        commercePackageDirectory.map { it.file("titan-install-verification.json") }
-    )
-    outputs.file(commercePackageDirectory.map { it.file("titan-graphql-package.json") })
-}
-
-tasks.register<Test>("commerceIntegrationTest") {
-    description = "Runs the isolated compiled commerce proof on PostgreSQL and MySQL."
-    group = "verification"
-    dependsOn("titanGraphqlBindCommercePackage")
-    testClassesDirs = sourceSets["test"].output.classesDirs
-    classpath = sourceSets["test"].runtimeClasspath
-    inputs.dir(commercePackageDirectory)
-    useJUnitPlatform { includeTags("commerce-compiled") }
-    systemProperty(
-        "titan.graphql.migrations.dir.commerce",
-        commercePackageDirectory.map { it.dir("postgresql") }.get().asFile.absolutePath
-    )
-    systemProperty(
-        "titan.graphql.migrations.dir.commerce.mysql",
-        commercePackageDirectory.map { it.dir("mysql") }.get().asFile.absolutePath
-    )
-    systemProperty(
-        "titan.graphql.artifacts.dir",
-        commercePackageDirectory.get().asFile.absolutePath
-    )
-    shouldRunAfter(tasks.named("integrationTest"))
-}
-
-tasks.register("compiledSchemaIntegrationTest") {
-    description = "Runs both independently packaged compiled-schema proofs."
-    group = "verification"
-    dependsOn("integrationTest", "commerceIntegrationTest")
 }

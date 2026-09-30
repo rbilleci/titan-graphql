@@ -50,17 +50,6 @@ import java.util.List;
 import java.util.Map;
 import javax.sql.DataSource;
 
-// TG-BLK-003 (CLOSED): durable JDBC management store available; durability depends on the injected
-// TransactionalMutationStore. Core dogfooded the management store — it now ships
-// JdbcTransactionalMutationStore over Titan-transpiled routines (+ JDBC idempotency/audit stores and
-// ManagementSchemaInstaller), proven durable + concurrent on PG 16 + MySQL 8.4. This store is built
-// over that JDBC store in the opt-in jdbc mode (titan.graphql.management.store=jdbc, wired by
-// TitanGraphqlManagementStoreFactory) — "durable" then means a real JDBC store on transpiled
-// routines. When built over FileTransactionalMutationStore (the file/in-memory DEFAULT) "durable"
-// means the file-backed, single-process boundary. Two recorded routine-design gaps are known and
-// non-blocking: the adapter performs the typed activate_deployment precondition in-transaction (the
-// void routine cannot return a typed failure), and passes the canonical input hash for the import
-// routine's single collapsed hash column.
 public final class TitanGraphqlDurableManagementStore implements TitanGraphqlManagementStore {
     private static final Instant DEFAULT_INSTANT = Instant.EPOCH;
 

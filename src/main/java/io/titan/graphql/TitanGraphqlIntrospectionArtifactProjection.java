@@ -3,20 +3,12 @@ package io.titan.graphql;
 import java.util.ArrayList;
 import java.util.List;
 
-final class GraphqlIntrospection {
+final class TitanGraphqlIntrospectionArtifactProjection {
 
-    private GraphqlIntrospection() {
+    private TitanGraphqlIntrospectionArtifactProjection() {
     }
 
-    static boolean isIntrospectionOperation(GraphqlAst.AstOperation operation) {
-        if (operation.selections().size() != 1 || operation.selections().getFirst() instanceof GraphqlAst.Field == false) {
-            return false;
-        }
-        GraphqlAst.Field root = (GraphqlAst.Field) operation.selections().getFirst();
-        return root.name().equals("__schema") || root.name().equals("__type");
-    }
-
-    static GraphqlExecution execute(GraphqlSchema schema, GraphqlAst.AstOperation operation) {
+    static String project(GraphqlSchema schema, GraphqlAst.AstOperation operation) {
         if (operation.fragments().isEmpty() == false) {
             throw new GraphqlException("introspection fragments are not supported yet");
         }
@@ -31,7 +23,7 @@ final class GraphqlIntrospection {
             throw new GraphqlException("unsupported introspection root field '" + root.name() + "'");
         }
         json.append("}}");
-        return new GraphqlExecution(json.toString(), new GraphqlPlan());
+        return json.toString();
     }
 
     private static GraphqlAst.Field requireSingleRootField(GraphqlAst.AstOperation operation) {
@@ -937,7 +929,7 @@ final class GraphqlIntrospection {
     }
 
     private static void appendStringField(StringBuilder json, String name, String value) {
-        json.append('"').append(name).append("\":\"").append(GraphqlJsonWriter.escape(value)).append('"');
+        json.append('"').append(name).append("\":\"").append(escape(value)).append('"');
     }
 
     private static void appendNullableStringField(StringBuilder json, String name, String value) {
@@ -945,7 +937,7 @@ final class GraphqlIntrospection {
         if (value == null) {
             json.append("null");
         } else {
-            json.append('"').append(GraphqlJsonWriter.escape(value)).append('"');
+            json.append('"').append(escape(value)).append('"');
         }
     }
 
@@ -955,6 +947,25 @@ final class GraphqlIntrospection {
 
     private static void appendBooleanField(StringBuilder json, String name, boolean value) {
         json.append('"').append(name).append("\":").append(value);
+    }
+
+    private static String escape(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder escaped = new StringBuilder();
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            switch (character) {
+                case '"' -> escaped.append("\\\"");
+                case '\\' -> escaped.append("\\\\");
+                case '\n' -> escaped.append("\\n");
+                case '\r' -> escaped.append("\\r");
+                case '\t' -> escaped.append("\\t");
+                default -> escaped.append(character);
+            }
+        }
+        return escaped.toString();
     }
 
     private record IntrospectionType(String name, String kind) {

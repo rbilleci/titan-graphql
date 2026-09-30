@@ -10147,10 +10147,9 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         if (sourceField == null) {
             sourceField = relationJoinField(document, sourceType, relation);
         }
-        // A target join key may deliberately be absent from the public object projection (as it
-        // is for Order.customer_id in the Commerce proof).  The source carrier is still typed
-        // and the target column remains model-reviewed static SQL, exactly like direct relation
-        // reads; requiring a public target field would incorrectly disable that generic shape.
+        // A target join key may be absent from the public projection. Requiring a public target
+        // field here would incorrectly disable a relation whose source carrier and target SQL
+        // column are both model-reviewed.
         if (sourceField == null) {
             return false;
         }

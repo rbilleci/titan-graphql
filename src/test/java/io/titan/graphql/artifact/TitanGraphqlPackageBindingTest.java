@@ -85,7 +85,7 @@ class TitanGraphqlPackageBindingTest {
         IllegalStateException failure = assertThrows(
                 IllegalStateException.class, () -> TitanGraphqlPackageBinding.read(temporaryDirectory));
 
-        assertTrue(failure.getMessage().contains("titanGraphqlBindPackage"), failure.getMessage());
+        assertTrue(failure.getMessage().contains("bind the reviewed model"), failure.getMessage());
     }
 
     private static TitanGraphqlModelDocument demoDocument() {

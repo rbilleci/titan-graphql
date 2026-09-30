@@ -36,21 +36,6 @@ public final class GraphqlCursorCodec {
     }
 
     public static CursorPayload payload(
-            GraphqlSelection.RootOrder ordering,
-            String value,
-            String tieBreakerValue
-    ) {
-        return new CursorPayload(
-                ordering.name(),
-                ordering.sortPath(),
-                ordering.direction(),
-                value,
-                ordering.tieBreakerColumnName(),
-                tieBreakerValue
-        );
-    }
-
-    public static CursorPayload payload(
             GraphqlFieldDescriptor.RelationSortPath ordering,
             String value,
             String tieBreakerValue
@@ -104,20 +89,6 @@ public final class GraphqlCursorCodec {
                 || payload.direction() != ordering.direction()
                 || payload.tieBreakerColumnName().equals(ordering.tieBreakerColumnName()) == false) {
             throw new GraphqlException("Relay cursor does not match root cursor ordering");
-        }
-        return payload;
-    }
-
-    static CursorPayload decodeForOrdering(
-            String cursor,
-            GraphqlSelection.RootOrder ordering
-    ) {
-        CursorPayload payload = decode(cursor);
-        if (payload.orderingName().equals(ordering.name()) == false
-                || payload.cursorPath().equals(ordering.sortPath()) == false
-                || payload.direction() != ordering.direction()
-                || payload.tieBreakerColumnName().equals(ordering.tieBreakerColumnName()) == false) {
-            throw new GraphqlException("Relay cursor does not match generated root ordering");
         }
         return payload;
     }
