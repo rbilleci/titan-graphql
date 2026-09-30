@@ -18,3 +18,26 @@ This map classifies every contract row in `query-contract-conformance.md` agains
 | `QC10-MATRIX` | Documentation inventory, not a request behavior. | Keep this map synchronized with the legacy contract inventory until M6 deletes it. |
 | `APP-MUTATION-EXECUTION` | Corpus mutation cases and M4 installed-package, HTTP replay, container, audit, idempotency, outbox, and rollback gates pass on both dialects. | The corpus pins later-field failure; the standalone HTTP test verifies the prior row and audit write are rolled back. |
 | `OOS-SUBSCRIPTION-EXECUTION`, `OOS-ACTOR-SHAPED-SCHEMA` | Deliberately excluded from the reviewed v1alpha1 runtime. Subscription requests fail inside the database engine; actor-shaped schema redaction is not claimed. | No parity case is required beyond explicit rejection and the documented exclusion. |
+
+## M6 case disposition
+
+`database-engine-m6-case-disposition.tsv` records a disposition for each case in the immutable
+`557eb3e:src/test/java/io/titan/graphql/conformance/GraphqlSqlModeConformanceCorpus.java`
+inventory. The historical corpus compared the old Java and SQL implementations with each other;
+it did not pin independent expected results. `portable-semantics` means the behavior survives in the
+reviewed database package, not that the old demo schema's response bytes are retained.
+
+| Evidence key | Current evidence |
+| --- | --- |
+| `portable-corpus` | `src/test/resources/database-engine-corpus/commerce-v1.json`, exercised by the installed PostgreSQL/MySQL package tests and standalone HTTP corpus test. |
+| `installed-read` | Read, filter, order, cursor, relation, count, and computed-field assertions in `CommerceDatabaseGraphqlEngineIT` and `CommerceDatabaseGraphqlMySqlEngineIT`. |
+| `installed-coercion` | Variable, typed-input, and argument validation assertions in the installed Commerce package tests and fixed corpus. |
+| `installed-introspection` | Schema/type/field/argument metadata and disabled-introspection assertions in the installed Commerce package tests and fixed corpus. |
+| `tenant-corpus` | The fixed corpus's tenant-A, tenant-B, and missing-context cases replace the demo's published-visibility policy with the reviewed tenant policy. |
+| `installed-mutations` | Installed Commerce mutation, rollback, audit, and idempotency assertions plus the container deployment gate replace the old read-only-mode rejection. |
+| `standalone-http` | `DatabaseGraphqlHttpFrontendIT` and `DatabaseGraphqlHttpServerPreviewTest` replace Quarkus GET/POST and preview transport assertions. |
+
+The `old-read-only-mode-obsolete`, `old-entry-shape-obsolete`, `context-policy-replaced`, and
+`transport-replaced` dispositions identify behavior that should not survive as a compatibility
+path. M6 still requires final source, dependency, artifact, and clean-checkout verification before
+this migration map can support the deletion gate.

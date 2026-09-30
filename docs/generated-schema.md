@@ -1,6 +1,6 @@
 # Generated Demo Schema
 
-This is the current GraphQL schema surface generated from the demo projection model:
+This is a test-fixture SDL snapshot for the demo projection model:
 
 ```text
 DemoBlogGraphqlSchema.projectionModel(policy)
@@ -8,35 +8,10 @@ DemoBlogGraphqlSchema.projectionModel(policy)
   -> GraphqlSchemaPrinter.print(...)
 ```
 
-The SDL below is an inspectable snapshot of the generated surface, not a second schema source.
-Projection definitions in `DemoBlogGraphqlSchema` remain the source of truth.
-Executable introspection is policy-disabled by default; root `__schema` and `__type` return
-GraphQL-shaped validation errors unless trusted request context enables introspection. The demo
-Java/legacy-SQL conformance subset and compiled-schema proofs cover
-`__schema { description mutationType { name } subscriptionType { name } queryType { name } types { name kind } }` and
-`__schema { directives { name description isRepeatable locations args { name type { name kind ofType { name kind } } } } }`,
-`__type(name:) { name kind description fields(includeDeprecated: true|false) { name description isDeprecated deprecationReason type { name kind description ofType { name kind description } } args { name description defaultValue isDeprecated deprecationReason type { name kind description ofType { name kind description ofType { name kind description } } } } } inputFields(includeDeprecated: true|false) { name description defaultValue isDeprecated deprecationReason type { name kind description ofType { name kind description } } } enumValues(includeDeprecated: true|false) { name description isDeprecated deprecationReason } }`.
-Argument introspection is bounded to generated root and relation argument names. Type-reference introspection
-now includes the bounded `ofType` wrapper chain for exposed field and argument references, including non-null
-root/relation fields, required point-id arguments, and list-valued generated `orderBy` arguments. Input-field
-introspection is bounded to generated filter and order input objects. Enum-value introspection is bounded to
-the generated `SortDirection` value names. Literal `includeDeprecated` is accepted on field and enum-value
-lists, and on input-field lists, though the generated demo schema does not expose deprecated members yet.
-`__InputValue.defaultValue`
-is exposed for the bounded argument and input-field surface and currently returns `null` because the generated
-demo schema has no declared argument defaults. `description` is exposed across the bounded type, field,
-input-value, enum-value, and type-reference surface and currently returns `null` because the generated demo
-schema has no declared description metadata. Field, enum-value, and input-value deprecation metadata is
-exposed for the bounded generated surface and currently returns `isDeprecated: false` and
-`deprecationReason: null` because the generated demo schema has no deprecated members. Broader
-introspection fields such as real generated descriptions and real generated deprecations remain pending.
-Directive introspection is bounded to names, null descriptions, repeatability, locations, and argument type
-references for the runtime `include`/`skip` directives and generated `relationSortPath` schema directive.
-Richer directive metadata such as non-null default literals and real generated descriptions remains pending.
-Schema description, mutation root, and subscription root introspection are exposed as nullable metadata.
-They return `null` for this demo snapshot because it declares no description and registers no application
-mutation provider. Compiled schemas with registered custom mutations expose `Mutation`; subscriptions are
-unsupported.
+The SDL block is checked against the test-only `DemoBlogGraphqlSchema` fixture. The reviewed YAML
+model and installed database package, not this file, define the deployed schema. Installed
+PostgreSQL/MySQL introspection and policy behavior is specified in
+[query-contract.md](query-contract.md) and tested by the release gate.
 
 ```graphql
 directive @relationSortPath(name: String!, column: String!, path: String!, hops: Int!, direction: String!, tieBreaker: String!) repeatable on FIELD_DEFINITION
@@ -149,6 +124,6 @@ type PageInfo {
 - Relay-capable `ProjectionRelation.many(...)` entries become connection fields such as `Article.comments: CommentConnection!`; relation connections expose `totalCount` only when the relation declares safe exact count support.
 - Scalar and relation-hop filter capability metadata is emitted as generated input types such as `ArticleFilter`, `IntFilter`, and `StringFilter`.
 - Root sort-path metadata is emitted as generated order input types such as `ArticleOrderBy` plus `SortDirection`.
-- Root context-filter metadata, such as the bounded `articles.publishedVisibility` filter over the `published` column, is carried into read plans, can be activated from trusted request context in compiled mode and the reference/equivalence modes, and is not exposed as a client argument or SDL field.
+- Root context-filter metadata, such as `articles.publishedVisibility`, is not exposed as a client argument or SDL field; the installed engine applies it from trusted request context.
 - Relation sort-path metadata is emitted as `@relationSortPath(...)` so generated SDL exposes the stable cursor/sort contract.
 - Field visibility policies, such as `User.email`, are enforced during validation and execution. They do not currently alter this static SDL snapshot.

@@ -7,8 +7,8 @@ shape. It is the contract developers should read before authoring
 `titan.graphql.yaml`.
 
 The format is an implemented source document, not generated output. The YAML parser, validator,
-projection adapter, carrier generator, package binding, and compiled runtime all consume this
-contract. Unsupported or unsafe shapes are rejected before generation or execution.
+projection adapter, database-engine generator, and package binder consume this contract.
+Unsupported or unsafe shapes are rejected before generation or execution.
 
 ## Design Goals
 
@@ -54,7 +54,7 @@ Fields:
 | `unions` | no | Reviewed GraphQL unions whose members are object projection types. |
 | `directives` | no | Reviewed executable conditional directives implemented by the transpiled engine. |
 | `policies` | no | Named root, row, field, and relation policy declarations. |
-| `mutations` | no | Explicit reviewed mutation bindings for the database-engine proof; not yet consumed by the legacy serving runtime. |
+| `mutations` | no | Explicit reviewed database mutation bindings; no CRUD or JVM handler is inferred. |
 | `contextFilters` | no | Named request-context filters that compose into roots. |
 | `artifacts` | no | Generated output options for reviewable artifacts. |
 | `deployment` | no | Deployment and preview metadata. |
@@ -308,14 +308,12 @@ Filter path fields:
 | `hops` | no | Relation hop count. Defaults to `0`. |
 | `operators` | yes | Allowed generated filter operators. |
 
-Compiled carriers support `eq`, `neq`, `isNull`, `lt`, `lte`, `gt`, `gte`, `contains`,
-`startsWith`, `endsWith`, and `in`. A single local `in` predicate uses static arities through 16
-values. Boolean `and`/`or`/`not` composition, combinations with one custom order, and reviewed
-one-hop to-one relation paths compile to a static 3 OR-group by 3 AND-term DNF carrier. Larger
-expressions and to-many or deeper paths fail closed with a carrier-budget error. Wildcards in
-string values are escaped and treated literally. Filter authorization is checked for every field
-and every segment of a relation path before execution; protected paths have no selector branch in
-the generated carrier.
+The installed engine supports `eq`, `neq`, `isNull`, `lt`, `lte`, `gt`, `gte`, `contains`,
+`startsWith`, `endsWith`, and `in` for reviewed types. Boolean `and`/`or`/`not` composition,
+combinations with one custom order, and reviewed one-hop to-one relation paths use a bounded
+three-OR-group by three-AND-term plan. Larger expressions and to-many or deeper paths fail
+closed. Wildcards in string values are escaped and treated literally. Filter authorization is
+checked for every field and relation-path segment before execution.
 
 Sort path fields:
 
@@ -325,20 +323,19 @@ Sort path fields:
 | `path` | yes | Model path used in the generated order input. |
 | `hops` | no | Relation hop count. Defaults to `0`. |
 | `direction` | no | Default direction, `asc` or `desc`. |
-| `nulls` | no | `last` in the compiled profile; `first` is reserved and rejected. |
+| `nulls` | no | `last` for the reviewed non-null path; `first` is reserved and rejected. |
 | `tieBreaker` | yes | Stable tie-breaker column, usually `id`. |
 
-The compiled carrier path supports local stored or reviewed computed sort values and one-hop
+The installed engine supports local stored or reviewed computed sort values and one-hop
 `relation.field` paths. A one-hop path must name a non-null to-one relation and a stored, non-null
 target scalar; `column` must equal that relation's `localColumn`. The generator emits a static,
 qualified join and uses the root scalar `tieBreaker` for deterministic cursors. Nullable, to-many,
 and multi-hop sort paths are rejected before deployment.
 
-## Database-engine custom mutation proof
+## Database-engine custom mutations
 
-`mutations` is an intentionally narrow, explicit source binding used by the in-progress
-database-resident engine. It is not generated CRUD and it is not the existing JVM application
-mutation registration API. The legacy serving runtime does not consume it.
+`mutations` is an explicit source binding used by the database-resident engine. It is not
+generated CRUD or a JVM application mutation registration API.
 
 ```yaml
 mutations:
@@ -822,7 +819,7 @@ Fields:
 | `description` | no | Human policy description. |
 | `appliesTo` | no | Model paths guarded by the policy. |
 | `input` | no | Required request-context keys and types. |
-| `mode` | yes | Must be `reject` for the current compiled named-policy language. |
+| `mode` | yes | Must be `reject` for the reviewed named-policy language. |
 | `expression.kind` | yes | `named` in v1alpha1. |
 | `expression.name` | yes | Reviewed named expression: `adminOnly`, `authenticated`, `allowAll`, `denyAll`, `roleEquals:<role>`, or `roleIn:<role,...>`. Multiple attached policies are ANDed. |
 
@@ -1222,14 +1219,11 @@ The schema is intentionally not the semantic validator. Model validation still
 must check cross-references, database bindings, policy references, drift, and
 runtime/lowered support before deployment.
 
-## Projection Adapter Boundary
+## Build-time projection adapter
 
-The first IR-to-projection adapter is deliberately narrower than the full
-v1alpha1 source vocabulary. It exists to prove that the demo-blog fixture can be
-adapted into the existing Java `ProjectionModel` without changing runtime model
-loading or application endpoint behavior.
-
-The adapter accepts the currently compiled subset:
+The IR-to-projection adapter is build-time tooling for reviewed model and schema artifacts. It
+is narrower than the full v1alpha1 source vocabulary and is not an alternate GraphQL executor.
+The adapter accepts:
 
 - point roots with local equality arguments typed as `Int`, `Long`, `String`, `ID`, `UUID`, or a
   declared enum, including explicitly declared composite keys
@@ -1246,18 +1240,13 @@ The adapter accepts the currently compiled subset:
   `allowAll`, `denyAll`, `roleEquals:<role>`, and `roleIn:<role,...>`; multiple attached policies
   are ANDed
 
-Unsupported adapter input fails explicitly with adapter diagnostics such as
+Unsupported adapter input fails explicitly with diagnostics such as
 `UNSUPPORTED_POLICY`, `UNSUPPORTED_FIELD_TYPE`,
 `UNSUPPORTED_FILTER_OPERATORS`, `UNSUPPORTED_CONTEXT_FILTER`,
-`UNSUPPORTED_RELATION_PAGINATION`, or `UNKNOWN_CONTEXT_FILTER`. Future roadmap
-slices should promote additional IR features only when the Java reference and
-SQL/lowered behavior have matching validation and equivalence coverage.
-
-The adapter bullets above describe the migration-only JVM oracle, not the database-engine schema.
-It and the matching legacy carrier/invoker path deliberately omit optional declared-enum equality
-arguments from Relay roots and relations because its projection descriptor has only `INT_EQUALS`.
-The generated database engine exposes and executes those enum arguments; the adapter and all legacy
-carrier/runtime code are M6 deletion targets rather than a second semantic implementation.
+`UNSUPPORTED_RELATION_PAGINATION`, or `UNKNOWN_CONTEXT_FILTER`. The adapter omits optional
+declared-enum equality arguments from Relay roots and relations because its projection descriptor
+has only `INT_EQUALS`. The generated database engine exposes and executes those enum arguments;
+the adapter's narrower artifact view does not constrain the serving contract.
 
 ## v1alpha1 Reserved Or Unsupported Fields
 
@@ -1276,7 +1265,7 @@ The following concepts are intentionally reserved:
 - automatic public exposure of every database table
 - relation filter/sort promotion beyond explicitly declared and validated paths
 - independent per-module runtime deployment
-- ad hoc runtime editing of compiled database artifacts
+- ad hoc runtime editing of generated database artifacts
 
 Future parsers should reject unsupported fields with precise source locations
 instead of silently ignoring them.

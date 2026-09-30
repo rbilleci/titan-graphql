@@ -1,6 +1,10 @@
 # Titan GraphQL Query Contract Conformance Matrix
 
-Status: QC10 working matrix.
+Status: archived M0–M5 migration matrix. This records historical Java/SQL equivalence evidence,
+not current tasks or the supported serving contract. The M5 parity map classifies every row against
+the installed database engine; M6 removed the old implementations and their test tasks. Use
+[database-engine-m5-parity.md](database-engine-m5-parity.md) and [query-contract.md](query-contract.md)
+for current evidence and behavior.
 
 This matrix classifies the accepted query contract from `docs/query-contract.md` against the current generated demo-blog runtime. A feature is `ACCEPTED` only when Java-mode is the reference behavior, SQL-mode can lower or evaluate the same supported surface, and tests prove equivalence where execution behavior is involved.
 

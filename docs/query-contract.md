@@ -1,7 +1,6 @@
 # Titan GraphQL Query Contract
 
-Status: active database-engine contract. The legacy compiled-query contract is retained only while
-its behavior is migrated or explicitly retired.
+Status: active database-engine contract for the standalone HTTP frontend and installed packages.
 
 This document states the behavior exposed by the schema-driven runtime. It is deliberately narrower
 than the full GraphQL specification. Parser support does not imply that every parsed shape can be
@@ -37,15 +36,12 @@ unsupported POST media type are rejected. Responses use
 `application/graphql-response+json` when accepted, with `application/json` fallback.
 
 `GET /graphql` accepts the same query document plus optional `operationName`, `variables`, and
-`extensions` query parameters, but only for query operations. The standard serving configuration
-allows only `database` mode and forwards the untouched document with
-`allowMutations=false`; the transpiled engine selects and rejects a mutation before effects.
-The historical transport parser is reachable only when an explicit test/reference configuration
-enables a legacy mode.
+`extensions` query parameters, but only for query operations. The frontend forwards the untouched
+document with `allowMutations=false`; the installed engine selects and rejects a mutation before
+effects.
 
-Every response names the selected execution mode in `X-Titan-Execution-Mode`. Database and legacy
-reference-mode responses also include `X-Titan-Deployment-Fingerprint`; unreadable binding metadata
-surfaces as `unavailable`, while request execution still fails closed.
+The frontend identifies the database path in `X-Titan-Execution-Mode` and sends the bound package
+fingerprint in `X-Titan-Deployment-Fingerprint`. Unreadable binding metadata fails closed.
 
 Caller-supplied `X-Titan-*` context headers are ignored by default. With no trusted gateway context,
 the actor role is blank. See [../SECURITY.md](../SECURITY.md).
@@ -129,8 +125,7 @@ rounding, and turns an out-of-range value into a GraphQL coercion error rather t
 
 Field nullability in SDL, execution, and introspection follows the reviewed model. A SQL `NULL` for a
 nullable field is rendered as JSON `null`; the runtime does not replace it with a scalar default.
-Nullable cursor and custom sort keys are not in the portable compiled contract and are rejected by
-model validation.
+Nullable cursor and custom sort keys are rejected by model validation.
 
 Normal quoted strings and triple-quoted GraphQL block strings are decoded by the installed database
 engine. Block strings normalize line endings and common indentation, trim outer blank lines, and may
@@ -153,11 +148,10 @@ location also receives the location default; explicit `null` remains distinct an
 the public argument type is non-null. Introspection returns the exact authored GraphQL source in
 `__InputValue.defaultValue`. The HTTP frontend does not inspect or apply any of these rules.
 
-Custom update bindings currently terminate at reviewed scalar or declared-enum leaves reached
-through nested input objects. The language core also coerces list input fields, but mutation binding
-paths do not address individual list elements. Mutation payloads remain direct scalar-like fields
-declared by the binding; general nested output payloads and write-null bindings are not yet part of
-the mutation contract.
+Custom update bindings terminate at reviewed scalar or declared-enum leaves reached through nested
+input objects. The engine coerces list input fields, but mutation binding paths do not address
+individual list elements. Mutation payloads remain direct scalar-like fields declared by the
+binding; general nested output payloads are not part of the first-deployment contract.
 
 ## Roots and Keys
 
@@ -192,48 +186,24 @@ shape.
 
 ## Filtering
 
-Only reviewed filter paths and operators appear in generated input objects. The compiled path
-supports declared equality/inequality, `in`, null checks, numeric comparison, and escaped string
-matching operators. Client predicates compose with declared context filters.
-
-The database-resident engine currently implements a narrower, explicitly tested subset: reviewed
-local scalar conjunctions using `eq`, `neq`, comparisons, `isNull`, `contains`, `startsWith`, and
-`endsWith`, plus reviewed `String`, `Int`/`Long`, `Float`/`Decimal`, `Boolean`, `UUID`, and
-integral-/string-backed `ID` `in` through a static carrier of at most 8 values. Each item is
-coerced and JDBC-bound from its declared scalar; an ID follows its reviewed `idStorage`, so an
-integral ID uses a numeric binder while a string-backed ID preserves GraphQL's text identity. Inputs may be
-GraphQL literals or JSON variables. The routine rejects duplicate input fields and applies the
-same generated predicates to page rows, counts, and cursor-boundary checks. `and`/`or`/`not`,
-relation/computed paths, and client ordering outside the narrow database tuple-order slice below
-remain pending there; the broader compiled/JVM
-contract described in this section must not be treated as database-engine feature parity.
-
-A single local `in` predicate uses static arities through 16. Boolean `and`, `or`, and `not`,
-filter-plus-order, and a reviewed non-null to-one relation filter hop use a static three-OR-group by
-three-AND-term DNF carrier plan. Larger plans, to-many paths, and deeper relation paths fail closed.
+Only reviewed filter paths and operators appear in generated input objects. The installed engine
+supports declared equality/inequality, `in`, null checks, comparisons, and escaped string matching
+for reviewed scalar types. Inputs may be literals or JSON variables; ID binding follows the model's
+integral or string storage. Client predicates compose with declared context filters and apply to
+page rows, counts, and cursor-boundary checks. Duplicate input fields reject before execution.
+Boolean `and`, `or`, and `not`, filter-plus-order, computed paths, and one reviewed to-one relation
+hop use a bounded three-OR-group by three-AND-term plan. Larger plans, to-many filter paths, and
+deeper hops fail closed.
 
 ## Ordering
 
-Only reviewed order paths appear in generated input objects. The compiled path supports a single
-custom key at a time over:
-
-- a local non-null scalar;
-- a reviewed deterministic row-local computed scalar; or
-- one non-null to-one relation hop.
-
-Every ordering includes a non-null stable tie breaker in both `ORDER BY` and cursor predicates.
-Ascending and descending carrier variants are generated statically; client direction values never
-become SQL fragments. Multiple simultaneous custom keys, nullable order keys, to-many paths, and
-deeper hops are rejected.
-
-The database-resident engine currently proves the first narrow custom-order slice on PostgreSQL and
-MySQL: one reviewed, local, non-null `String`, `UUID`, `Int`, `Long`, or integral `ID` order key with a
-reviewed non-null integral tie breaker. It accepts a literal or JSON-variable `orderBy`,
-emits/validates the established opaque tuple cursor, and supports `first`/`after` and
-`last`/`before` in both directions. The generated routine chooses among model-known branches
-inside one constant parameterized SQL statement; it never turns a client enum or cursor into SQL
-text. Other scalar tuple shapes, nullable values, computed/relation paths, and more than one
-custom key still fail closed in the database engine.
+Only reviewed order paths appear in generated input objects. The installed engine supports one
+non-null local scalar, deterministic computed scalar, or non-null to-one relation path as a custom
+key. Every ordering includes a stable non-null tie breaker in SQL ordering and cursor predicates.
+The engine accepts literal or JSON-variable `orderBy`, emits and validates an opaque tuple cursor,
+and supports forward and backward windows in both directions. Model-known branches use bound SQL
+parameters; a client enum or cursor never becomes an SQL fragment. Multiple simultaneous custom
+keys, nullable order keys, to-many paths, and deeper hops reject.
 
 `Float` and `Decimal` are deliberately among those excluded shapes: their cursor value needs a
 single Java-compatible finite-double text format across PostgreSQL and MySQL. Database casts do not
@@ -277,10 +247,10 @@ closed rather than falling back to a JVM resolver.
 
 ## Computed Fields
 
-The compiled path supports reviewed deterministic row-local SQL templates whose placeholders name
+The installed engine supports reviewed deterministic row-local SQL templates whose placeholders name
 declared required columns. A computed field declares GraphQL type, nullability, select/filter/sort
 capabilities, sensitivity, determinism, and cost class. Unsafe templates, relation-dependent
-expressions, and Java-only expressions fail validation/generation for compiled use.
+expressions, and Java-only expressions fail validation/generation.
 
 ## Policies and Context Filters
 
@@ -320,7 +290,7 @@ Every database-engine GraphQL error has a stable `extensions.code`. The complete
 
 Codes are selected at the transpilable failure site and are never inferred from message text. The
 thin HTTP frontend returns completed database GraphQL errors without rewriting their category,
-location, path, or data. Database-mode initialization/deployment failures that prevent a routine
+location, path, or data. Initialization/deployment failures that prevent a routine
 call become descriptive 503 GraphQL bodies at the HTTP boundary.
 
 Model page sizes, relation page sizes, static `in`/filter/batch arities, declared hop budgets, and
@@ -381,29 +351,22 @@ descriptors. They are artifacts, not separate sources of semantics.
 
 ## Custom Mutations
 
-Compiled application schemas have no mutation root by default. Explicit providers may add reviewed
-command descriptors and injected handlers. The runtime owns input validation, descriptor role checks,
-dispatch, payload selection/aliases, error shape, and audit-event delivery; the handler owns domain
-transactions, idempotency, persistence, rollback, and correctness-critical audit.
-
-See [custom-mutations.md](custom-mutations.md). Generated CRUD, nested writes, SQL-transpiled
-application handlers, and subscriptions are out of scope.
+Application schemas have no mutation root by default. Reviewed model descriptors may register
+source-local database procedure handlers. The installed engine validates typed input and policy,
+executes mutation roots serially in one transaction, completes payloads, and commits domain writes
+with durable receipt, audit, idempotency, and outbox effects. Failure in a later root rolls the
+transaction back. The first-deployment contract excludes generated CRUD, arbitrary nested output
+payloads, and subscriptions. See [custom-mutations.md](custom-mutations.md).
 
 ## Execution Modes
 
 The standalone database HTTP ZIP is the supported serving artifact. Its package-bound,
-explicit-dialect whole-request invocation never falls back to JVM GraphQL processing. The root
-application's `database`, `compiled`, `jdbc`, `java`, and `sql` modes are transitional reference
-paths while the remaining capability and deletion work is completed; there is no cross-mode
-fallback.
-
-Production package generation includes only model-generated carriers. The legacy kernel has its own
-package and test task and is not part of compiled serving.
+explicit-dialect whole-request invocation has no JVM GraphQL fallback or alternate execution mode.
 
 ## Conformance
 
-[query-contract-conformance.md](query-contract-conformance.md) records parser and legacy equivalence
-coverage. The database-serving proof is `titanGraphqlDatabaseEngineReleaseCheck`, which independently
-generates, packages, installs, binds, and invokes demo and commerce whole-request engines on
-PostgreSQL and MySQL, then starts the standalone ZIP on both dialects. Unsupported shapes listed
-above are acceptance boundaries, not silent roadmap promises.
+[database-engine-m5-parity.md](database-engine-m5-parity.md) maps the fixed expected-result corpus
+to installed PostgreSQL/MySQL execution and the standalone ZIP. The serving proof is
+`titanGraphqlDatabaseEngineReleaseCheck`, which independently generates, packages, installs,
+binds, and invokes blog and commerce whole-request engines on both dialects, then starts the ZIP.
+Unsupported shapes are acceptance boundaries, not silent fallback promises.

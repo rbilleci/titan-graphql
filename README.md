@@ -1,268 +1,63 @@
 # titan-graphql
 
-Titan GraphQL is a schema-driven GraphQL layer built around Titan. Titan codegen discovers
-database structure, a reviewed projection document controls exposure and policy, and a shared
-GraphQL engine plus generated schema bindings are transpiled into database-resident routines.
+Titan GraphQL generates a database-resident GraphQL engine from a reviewed model. The standalone
+HTTP frontend forwards a complete request to one installed PostgreSQL function or MySQL procedure.
+It does not parse, plan, authorize, or assemble GraphQL on the JVM. Model inference, projection,
+schema generation, artifact binding, and control-plane jobs remain build-time or operator tools.
 
-This project is licensed under [GPL-3.0-or-later](LICENSE). It is a pre-1.0 library and reference service;
-read [SECURITY.md](SECURITY.md) before exposing either HTTP endpoint.
+This is a pre-1.0 project licensed under [GPL-3.0-or-later](LICENSE). It is not deployed today and
+has no existing callers. The first deployment target is a container running the standalone frontend
+beside a separately supervised control-job worker. There is no compatibility cutover to perform.
 
-The product goal is to put GraphQL over supported schemas without handwritten read resolvers or
-queries. Custom mutations are explicit model-registered database operations. The default
-`database` runtime forwards each complete request once to a bound, generated whole-request package;
-it does not load a JVM GraphQL parser, planner, resolver, or JSON assembler. Two independently
-generated packages prove that route against unrelated blog and commerce models. Legacy runtime
-paths remain only as temporary migration/reference code and are tracked for removal in the plan.
-The standard serving configuration rejects them even if `execution.mode` is overridden; only an
-explicit test/reference configuration may set `titan.graphql.allow-legacy-execution-modes=true`.
+## What is implemented
 
-New developers should start with [docs/getting-started.md](docs/getting-started.md).
+The reviewed model defines public roots, fields, relationships, policies, context filters, and
+explicit custom mutations. Generated packages for unrelated blog and commerce schemas run on
+PostgreSQL and MySQL. Installed-package and standalone-HTTP tests cover document selection,
+variables, fragments, typed keys, Relay windows, bounded relation batching, introspection,
+tenant and policy isolation, serial atomic mutations, idempotency, audit, and transactional outbox
+delivery. A separate management package handles database-backed job requests; a worker performs
+model import, validation, artifact generation, and operation review. Preview publication binds a
+reviewed package and operation registry to a deployment-owned descriptor.
 
-## What The Proof Demonstrates Today
+The [M5 parity report](docs/database-engine-m5-parity.md) records the fixed expected-result corpus,
+package attestation, dual-dialect evidence, and measured local bounds. The
+[execution plan](docs/database-engine-execution-plan.md) tracks remaining milestone work. A passing
+test of an old JVM or carrier path is not release evidence for the standalone service.
 
-The full pipeline is automated and green on both supported dialects:
+## Build and verify
 
-- **Serve a reviewed model generically (reference only):** with the explicit
-  `titan.graphql.allow-legacy-execution-modes=true` test/reference opt-in,
-  `titan.graphql.execution.mode=jdbc` loads a
-  `titan.graphql.yaml` projection and executes supported point reads, direct relations, and
-  forward collection pages against live data. Declared fail-closed context predicates are
-  applied in SQL before client filters. Titan DSL renders bound SQL and Titan's JDBC
-  runtime executes it. A customers/orders integration fixture proves the same runtime on
-  PostgreSQL and MySQL and verifies that database changes appear immediately without generated
-  or handwritten schema-specific execution code.
-- **Exercise the full document in the database:** `titan.graphql.execution.mode=database` is the
-  fail-closed default. It requires a reviewed model, its exact bound generated
-  whole-request package, and an explicit PostgreSQL or MySQL dialect; the HTTP resource forwards
-  the complete document and trusted context once without a JVM GraphQL parser/planner fallback.
-  The unrelated commerce package is generated, installed, bound, and served through that JAX-RS
-  resource on both dialects. The broader database-engine feature and legacy-removal gates in
-  `docs/database-engine-execution-plan.md` remain incomplete.
-- **Start from Titan codegen metadata:** `TitanGraphqlSchemaInference` consumes the
-  `build/titan/schema.json` emitted by `titanIntrospect`, preserving tables, scalar columns,
-  keys, and foreign-key relation candidates in a fail-closed review draft. Public roots and
-  sensitive or relational exposure still require deliberate approval. Composite keys are
-  retained as diagnostics and are never silently reduced to their first column.
-- **Generate model-bound database reads:** `titanGraphqlGenerateRoutines` validates the selected
-  reviewed model and deterministically emits static point, connection-page, and direct-relation
-  carriers plus a model-hash attestation routine. The same generator produces unrelated
-  customers/orders routines without blog names or fixture rows. Titan transpiles these carriers
-  for PostgreSQL and MySQL; live tests prove that they read current rows, expose a reviewed
-  computed expression, enforce the first fail-closed context predicate, and expose a protected
-  scalar only through a reviewed SQL policy guard. See [docs/generated-routines.md](docs/generated-routines.md).
-- **Legacy compiled reference path:** with that same explicit test/reference opt-in,
-  `titan.graphql.execution.mode=compiled` uses the
-  generic parser, validator, and planner, resolves generated entry points from the verified package
-  inventory, and normalizes PostgreSQL JSONB functions and MySQL result-set procedures behind one
-  data model. The dual-dialect live proof covers aliases, a point root, a direct relation, computed
-  output, forward/backward cursors, reviewed local custom ordering with stable compound cursors,
-  page info, exact count, fail-closed row visibility, and a direct relation beneath a collection
-  in one bounded batch rather than N+1 reads.
-- **Keep application writes explicit:** optional `GraphqlApplicationMutationProvider` beans attach
-  reviewed command descriptors and dependency-injected handlers to the same compiled runtime.
-  The unrelated commerce proof performs an authorized live mutation, rejects an unauthorized call,
-  records audit events, and observes the write through generated reads on both dialects. GET remains
-  query-only; transactions, idempotency, and domain rollback remain handler-owned.
-- **Prove schema independence with an isolated package:** `commerceIntegrationTest` generates,
-  transpiles, packages, install-verifies, binds, deploys, and serves a customers/orders model from
-  a separate build tree. Its package inventory contains only generated carriers—no demo-blog class
-  or article routine—and the same runtime observes live mutations and a fresh-engine restart on
-  PostgreSQL and MySQL.
-- **Transpile (both dialects):** `titanTranspile` lowers only the model-generated carriers into
-  PostgreSQL **and MySQL** routines with zero validator diagnostics. Its inputs are an explicit
-  allowlist; unrelated demo, application, HTTP, inference, artifact, and management records do not
-  enter the production SQL package. `titanGraphqlTranspileLegacySql` separately lowers the
-  historical demo-blog whole-request kernel for its equivalence proof.
-- **Package (both dialects)**: `titanPackage` produces deterministic migration artifacts
-  per dialect (`R__titan_010_runtime.sql` + `R__titan_020_routines.sql`) plus
-  manifest/inventory/install-plan/verification JSON and rollback scripts, with zero
-  duplicate identities.
-- **Bind the reviewed model exactly**: `titanGraphqlBindPackage` validates the selected model,
-  runs package/install verification, and writes the deterministic
-  `titan-graphql-package.json` sidecar. It binds the normalized model semantic hash to Titan's
-  artifact id, manifest hash, and source-input hash. SQL serving rejects a missing or stale local
-  binding before opening the datasource and calls the generated attestation routine before its
-  first request, so deploying the otherwise-valid package to the wrong database also fails closed.
-- **Verify (both dialects)**: `titanVerifyInstall` installs the package into scratch
-  PostgreSQL and MySQL containers and verifies objects, routine signatures, and drift with
-  zero diagnostics.
-- **Prove equivalence (the finish line, both dialects)**: `integrationTest` deploys the
-  packaged migrations onto Testcontainers databases and runs a 97-case conformance corpus
-  through the deployed `public.execute_graphql*` stored functions, comparing every
-  response against the Java engine as canonical JSON via core's `EquivalenceOracle`.
-  The PostgreSQL leg (`GraphqlSqlModeEquivalenceIT`) is **97/97 equivalent, zero
-  divergences** against core HEAD; 41 of 42 conformance-matrix rows cite live SQL-mode
-  evidence ([docs/query-contract-conformance.md](docs/query-contract-conformance.md)).
-  The Java-vs-MySQL leg (`GraphqlSqlModeEquivalenceMySqlIT`) is now **97/97 strictly
-  equivalent, zero divergences** as well: core's B-10 fix (`TG-BLK-012`, titan f9e3b43)
-  makes MySQL render booleans `true`/`false` in JSON output, so the 6 formerly-tracked
-  boolean cases rejoined the strict corpus. The dual-dialect status is fully clean; the
-  `KNOWN_DIVERGENT_TG_BLK_012` allowlist is retired to `Set.of()`, kept as an empty guard
-  so any returning boolean-parity regression fails strict comparison loudly.
-- **Manage with real artifacts**: the `/admin/graphql` management plane consumes the
-  real `titanPackage`/`titanVerifyInstall` outputs (no fixture strings, no placeholder
-  metadata, no kernel reflection); deployment activation is gated on a passed install
-  verification, and rollback scripts are discovered and surfaced.
-- **Retain the historical database equivalence proof (reference-only opt-in)**: with
-  `titan.graphql.execution.mode=sql` and
-  `titan.graphql.allow-legacy-execution-modes=true` (a transitional Quarkus reference mode), the Quarkus `/graphql`
-  endpoint answers every request by calling the
-  DEPLOYED stored functions over the configured datasource instead of the Java kernel —
-  the proof as a demonstrable runtime. Every response names its engine
-  (`X-Titan-Execution-Mode`, plus the package fingerprint in compiled/SQL/database modes), execution
-  telemetry lands in the serving database's `titan_runtime.telemetry`, and an
-  unreachable/undeployed database answers a descriptive 503 GraphQL error — never a
-  silent fallback to Java mode. Demo walkthrough: see
-  [docs/getting-started.md](docs/getting-started.md), "Serve GraphQL From The Database".
-
-## Workflow
+Initialize the pinned Titan submodules and use JDK 21. Docker is required for installed-package,
+HTTP, and container-deployment tests; the ordinary unit suite does not require it.
 
 ```bash
-./gradlew test               # Docker-free tests (Java-mode reference + doc guards)
-./gradlew titanGraphqlGenerateRoutines # reviewed model -> deterministic Titan carrier source
-./gradlew titanPackage       # transpile + package migration artifacts (postgresql + mysql)
-./gradlew titanVerifyInstall # install + verify against scratch PG + MySQL containers (Docker)
-./gradlew titanGraphqlBindPackage # verify and bind package to the reviewed model (Docker)
-./gradlew integrationTest    # Java-vs-SQL equivalence on both dialects + live SQL-mode HTTP serving (Docker)
-./gradlew commerceIntegrationTest # isolated generated-only commerce package on both dialects (Docker)
-./gradlew compiledSchemaIntegrationTest # both independently packaged schema proofs (Docker)
-./gradlew legacySqlIntegrationTest # optional isolated historical whole-request equivalence proof
+git submodule update --init --recursive
+./gradlew test
+./gradlew titanGraphqlVerifyDatabaseEngineBoundary titanGraphqlVerifyDatabaseFrontendBoundary titanGraphqlVerifyDatabaseHttpFrontendBoundary
+./gradlew titanGraphqlDatabaseEngineReleaseCheck
+./gradlew databaseEngineContainerDeploymentIntegrationTest
 ```
 
-Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run under
-`integrationTest`, mirroring core's convention.
+The release check generates, transpiles, packages, install-verifies, binds, and exercises the
+whole-request engine on both dialects. It also extracts and starts the standalone HTTP ZIP. The
+container gate runs the frontend and worker separately, restarts them, and serves a published
+preview. These tasks do not deploy a persistent service or alter a live caller.
 
-## Honest Boundaries
+To build just the isolated frontend artifact and its verified descriptors, run
+`./gradlew titanGraphqlVerifyDatabaseHttpFrontendReleaseArtifact`. See the
+[frontend deployment guide](docs/database-http-frontend.md) and
+[container walkthrough](deployment/README.md) for package installation and runtime configuration.
 
-- **Generic JDBC execution is a bounded diagnostic/reference path.** It currently covers integer-key point
-  roots, direct one/many relations from point results, scalar and context filters, and the first
-  forward page of root Relay connections. Cursor continuation, backward pagination, relation
-  connections, computed SQL expressions, and batched relations beneath collection roots fail explicitly.
-  Production deployments must use the standalone database HTTP ZIP; JDBC does not inherit
-  database-engine coverage.
-- **Compiled mode is generic but still bounded; legacy SQL mode is demo-specific.** A reviewed model
-  now becomes Titan-compiled point, page, relation, computed-field, and attestation routines, and
-  `compiled` mode executes supported GraphQL plans through those inventory-resolved routines. The
-  older `sql` route still calls the bounded `DemoBlogTitanGraphqlFunctions` whole-request entry
-  point and remains only an isolated equivalence/compiler proof. It is excluded from the
-  production package and from `compiledSchemaIntegrationTest`; `legacySqlIntegrationTest` owns a
-  separate package/output tree. Generated carriers do not yet cover
-  multiple simultaneous custom order keys, nullable sort/cursor keys, relation ordering beyond a
-  reviewed non-null to-one hop, or row-value policy expressions beyond named gates/context filters.
-  Nullable scalar output and introspection metadata are preserved; nullable ordering models reject
-  before generation to keep pagination portable. Generated filters run in
-  static Titan carriers: one local predicate retains `in` arities through 16, while composed
-  `and`/`or`/`not`, filter-plus-order, and reviewed to-one relation paths use a bounded 3-by-3 DNF
-  plan. Expressions beyond that declared carrier budget fail closed.
-  Relay relation connections support forward/backward windows, cursors, and exact counts under
-  both point and collection roots. Direct relation and relation-connection reads immediately
-  beneath collection roots use fixed generated batch arities and do not issue one query per
-  parent. Nested collection paths recursively batch once per selected relation level within the
-  configured selection-depth budget. The current relation connection window is assembled from the ordered compiled carrier
-  result; reviewed local integer or declared-enum equality arguments are applied inside the carrier before counts
-  and windows, while SQL-side per-parent limiting remains an optimization boundary. A separately packaged
-  unrelated commerce model proves the same path independently of the demo package. The demo
-  whole-request kernel is already absent from production dispatch and retained only as compiler
-  equivalence evidence.
-- **Management storage: durable JDBC store available (opt-in `jdbc` mode); file-backed by
-  default.** Core dogfooded the management store — it transpiles the management mutation
-  routines in-tree and ships a durable JDBC-backed transactional store over them
-  (`JdbcTransactionalMutationStore` + JDBC idempotency/audit stores + `ManagementSchemaInstaller`),
-  proven on PG 16 + MySQL 8.4 — closing `TG-BLK-003`. This repo now runs on it: set
-  `titan.graphql.management.store=jdbc` and the `/admin/graphql` plane persists through core's
-  JDBC store on Titan-transpiled routines over the Quarkus datasource. A JDBC product-state
-  journal retains the GraphQL model source, wrappers, validation reports, and artifact records;
-  runtime startup verifies an installed schema without running DDL. The packaged
-  `titan-graphql-control install-management <postgresql|mysql> <jdbc-url>` command installs
-  the management schema, routines, and product-state journal before serving. A partial core
-  installation fails verification instead of being mistaken for a completed deployment. Stop
-  serving before running `titan-graphql-control repair-management <postgresql|mysql> <jdbc-url>`
-  to resume an interrupted installation. Repair checks existing core table and index shapes,
-  creates missing objects, reinstalls missing routines, and refuses incompatible objects; MySQL
-  schema changes and routine replacement cannot be rolled back as one transaction.
-  `GraphqlJdbcManagementStoreIT` proves the
-  `importModelDocument` path and generated artifact/draft wrappers survive a new store instance,
-  and proves idempotency and deployment-activation gating on live
-  PG 16 + MySQL 8.4. The DEFAULT remains `file` (file-backed/in-memory, Docker-free for plain
-  `test` and dev), so durable-JDBC claims are scoped to jdbc mode. The JDBC artifact job worker
-  commits its job result, core draft/reference seed, and product-state entry in one transaction.
-  File-backed jobs and other management workflows still have separate commit boundaries. Two
-  recorded routine-design gaps are known and non-blocking (adapter-side
-  `activate_deployment` typed preconditions; the import routine's collapsed hash column).
-- **Artifact job worker: JDBC management mode.** The packaged
-  `titan-graphql-control-worker` launcher accepts `jdbc` in place of a management transaction-log
-  path. It expects the control-job table, Titan management schema/routines, and
-  `management.graphql_product_state` table to exist on the configured JDBC server; it reads
-  credentials from `TITAN_GRAPHQL_CONTROL_DB_USER` and `TITAN_GRAPHQL_CONTROL_DB_PASSWORD`.
-  The packaged `titan-graphql-control serve-api <postgresql|mysql> <jdbc-url> <port>` command
-  starts a separate control-plane API. Set `TITAN_GRAPHQL_CONTROL_API_TOKEN`; it binds to
-  `127.0.0.1` unless `TITAN_GRAPHQL_CONTROL_API_HOST` specifies another loopback address. Put a
-  TLS proxy on the same host before exposing the API to remote clients. An operator sends
-  `POST /artifact-jobs` with a bearer token and JSON fields `requestKey`, `draftId`,
-  `generationProfile`, and `enableIntrospection`. The response includes a job ID and `Location`;
-  `GET /artifact-jobs/{id}` returns status, result, and failure code. A repeated request key
-  replays the same job, while different input under that key returns a conflict. This API only
-  enqueues work; the worker generates artifacts after the request commits. The API requires the
-  JDBC management schema and control-job table at startup and does not support file-backed
-  management state.
-  `databaseEngineControlJobRestartIntegrationTest` exercises file and JDBC management modes on
-  PostgreSQL and MySQL. The explicit install command provisions management state; a production
-  supervisor and rollout are not configured.
-- **SQL serving mode is reference-only and bounded.** The root Quarkus `/graphql` process is a transitional
-  compatibility seam; `titan.graphql.execution.mode=sql` together with the explicit
-  `titan.graphql.allow-legacy-execution-modes=true` test/reference opt-in serves the same demo
-  schema and entry points from the deployed stored functions — no new GraphQL features.
-  `/admin/graphql` requires a separately bound management database descriptor and returns HTTP
-  503 when it is absent; it cannot fall back to the Java management engine. Plan-level execution
-  (`executeWithPlan`) stays a Java-mode surface.
-- **Dual transpilation targets, both proven.** The kernel transpiles, packages, verifies,
-  and proves equivalence cleanly for PostgreSQL and MySQL (W5.2). Both live database legs
-  are green against core HEAD — **97/97 strictly equivalent on each dialect, zero
-  divergences** — after core closed `TG-BLK-011` (identifier overflow, titan 5649ebb) and
-  `TG-BLK-012` (MySQL boolean→JSON rendering, titan f9e3b43). The dual-dialect status is
-  fully clean; no consumer-side workaround remains for either entry.
-- Reviewed point roots support `Int`, `Long`, `String`, `ID`, and `UUID` keys plus explicit
-  multi-column composite keys. The compiled commerce proof exercises string, native PostgreSQL
-  UUID/MySQL `CHAR(36)`, and composite point lookups. Inference preserves composite-key discovery
-  but still requires an author to review and declare the public key arguments instead of silently
-  choosing one component. The projection adapter compiles the reviewed named-policy subset
-  (`adminOnly`, `authenticated`, `allowAll`, `denyAll`, `roleEquals:<role>`, and
-  `roleIn:<role,...>`) for fields and relations, conjoining multiple attached rules. Compiled
-  reads pass those reviewed decisions into generated carriers: protected scalar and relation-key
-  projections use SQL `CASE` guards, and protected relation routines also require an explicit
-  allow predicate. The dual-dialect demo proof covers an authorized protected scalar, direct
-  carrier masking, and an unauthorized rejection. The unrelated dual-dialect commerce proof
-  covers an authorized protected relation and rejects an unreviewed role; generated relation SQL
-  is also checked for guarded keys and direct/batch allow predicates. The same commerce package
-  proves a root policy rejects before I/O and a type-row policy filters roots and exact counts on
-  both dialects. Row-value expressions beyond the existing reviewed context-filter predicates
-  remain out of scope.
+## Trust boundary
 
-## Documentation Map
+Install a package only with its matching reviewed model, manifest, identity sidecars, and frontend
+descriptor. The frontend sends the expected model, runtime, and package identities on every call;
+the database rejects mismatches before executing GraphQL. Request-context headers are ignored by
+default. Enable them only behind an authenticated gateway that removes caller-supplied copies.
+The management route requires its own database package and bearer token. Read
+[SECURITY.md](SECURITY.md) before exposing either route.
 
-For architecture context, continue with [docs/design.md](docs/design.md).
-
-The bounded demo schema is described in [docs/generated-schema.md](docs/generated-schema.md).
-The supported query surface is specified in [docs/query-contract.md](docs/query-contract.md)
-and verified by [docs/query-contract-conformance.md](docs/query-contract-conformance.md).
-The source-model format is documented in [docs/model-document-format.md](docs/model-document-format.md),
-the public Java projection builder in [docs/projection-api.md](docs/projection-api.md),
-the compiled carrier contract in [docs/generated-routines.md](docs/generated-routines.md),
-and validation report text and JSON renderings in
-[docs/validation-diagnostics.md](docs/validation-diagnostics.md).
-Deployment trust, package binding, request-context, and current policy boundaries are documented
-in [SECURITY.md](SECURITY.md).
-Production configuration, state ownership, rollout, rollback, and incident boundaries are in
-[docs/operations.md](docs/operations.md); coordinated model/package upgrades are in
-[docs/migration.md](docs/migration.md); and the local release task matrix is in
-[docs/verification.md](docs/verification.md).
-The minimal mutation runtime lowering boundary is documented in
-[docs/mutation-runtime-lowering-boundary.md](docs/mutation-runtime-lowering-boundary.md).
-Explicit application mutation registration is documented in
-[docs/custom-mutations.md](docs/custom-mutations.md).
-The standalone database-only serving artifact and its transport contract are documented in
-[docs/database-http-frontend.md](docs/database-http-frontend.md); the executable migration plan is
-[docs/database-engine-execution-plan.md](docs/database-engine-execution-plan.md).
-
-This repo vendors pinned Titan sources as Git submodules. Initialize them with
-`git submodule update --init --recursive` before building.
+The source-model format is in [docs/model-document-format.md](docs/model-document-format.md), the
+active request contract in [docs/query-contract.md](docs/query-contract.md), and operator procedures
+in [docs/operations.md](docs/operations.md). [docs/verification.md](docs/verification.md) maps
+local checks to their evidence.

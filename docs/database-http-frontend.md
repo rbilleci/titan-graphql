@@ -99,9 +99,8 @@ validation, import, and operation-review jobs return their outcomes in `resultJs
 `X-Titan-Management-Request-Id` and `X-Titan-Management-Idempotency-Key`; the admin frontend
 supplies actor role and key from deployment configuration, not GraphQL input. The management package creates
 its request tables, while installation of the management draft store remains a separate prerequisite.
-It does not implement the complete legacy admin mutation and query inventory, so this opt-in route
-is a migration seam, not a replacement for the legacy Quarkus `/admin/graphql` endpoint. The
-packaged-process proof is `./gradlew databaseEngineManagementHttpIntegrationTest`; it checks
+It implements the reviewed first-deployment management inventory, not every historical admin
+field. The packaged-process proof is `./gradlew databaseEngineManagementHttpIntegrationTest`; it checks
 authorization and separate application/management package dispatch on PostgreSQL and MySQL.
 The model binds `observedOperation` to the durable management projection. The JDBC store writes that
 projection and its product-state journal in one transaction; the management integration gate
@@ -121,17 +120,6 @@ registry for the same model and environment before exposing a candidate package.
 the same database, then observes its persisted registry mode change from WARN to ENFORCE on both
 supported dialects.
 
-The Quarkus admin resource can use the same installed management package. Set
-`titan.graphql.admin.database-descriptor` to the package-generated
-`frontend-deployment.properties` path, keep `titan.graphql.admin.access-token` configured, and
-use the Quarkus default datasource for the database that contains the package. The resource
-reads the descriptor at startup, supplies its configured actor role and key, and invokes the
-whole-request routine without a JVM GraphQL fallback. A failed database call returns HTTP 503.
-GraphQL GET requests cannot execute mutations in this mode. An authenticated admin HTTP request
-returns HTTP 503 when the descriptor is unset; it cannot execute the legacy JVM implementation.
-`./gradlew databaseEngineManagementIntegrationTest` exercises the Quarkus resource against the
-installed management package on PostgreSQL and MySQL.
-
 Set `TITAN_GRAPHQL_PREVIEW_FRONTEND_REGISTRY` to a Java properties file to bind verified preview
 packages. Each property name is a preview-build ID that starts with a letter or digit and
 otherwise contains only letters, digits, periods, underscores, or hyphens. Each value is the
@@ -148,27 +136,13 @@ It returns HTTP 410 after expiration, before it opens a database connection. Mis
 metadata fails startup. Its registry remains fixed for
 the process lifetime, so replacing or removing a preview mapping requires a frontend restart.
 
-The Quarkus preview resource can use a descriptor registry too. Set
-`titan.graphql.preview.database-descriptor-registry` to a Java properties file whose keys are
-preview-build IDs and whose values are generated frontend descriptor paths. Relative descriptor
-paths resolve from the registry file's directory. The resource validates the registry at startup,
-returns HTTP 404 for unknown IDs, and returns HTTP 503 if a selected database package cannot
-serve the request; it does not fall back to the process-local preview runtime. In database mode,
-the resource ignores caller-supplied actor and policy headers unless
-`titan.graphql.preview.trust-request-context-headers=true` is configured behind a trusted gateway.
-The preview HTTP route returns HTTP 503 when the descriptor registry is unset, even if the
-process-local preview runtime has a candidate with the requested ID.
-
-The Quarkus resource re-reads the registry and selected descriptor for each request, so an
-atomic replacement or removal takes effect without a process restart. Every preview descriptor
-must set `preview-build-id` to match the registry key, `preview-expires-at` to an
-ISO-8601 instant, and `operation-registry-id` and `preview-deployment-sha256` to a sealed
-ENFORCE registry. The standalone preview route enforces the same binding at startup. At or after
-that instant, the route returns HTTP 410 without invoking the
-database package. A missing or malformed replacement returns HTTP 503 rather than serving the
-previous mapping. The durable `saveVerifiedPreviewBuild` publication boundary requires a READY
-build, a future expiration, and an ENFORCE operation registry for the same model and environment;
-the deployment publisher supplies these values in its descriptor.
+Every preview descriptor must set `preview-build-id` to match the registry key,
+`preview-expires-at` to an ISO-8601 instant, and `operation-registry-id` and
+`preview-deployment-sha256` to a sealed ENFORCE registry. At or after expiration, the standalone
+route returns HTTP 410 without invoking the database package. The durable
+`saveVerifiedPreviewBuild` publication boundary requires a READY build, a future expiration, and
+an ENFORCE operation registry for the same model and environment; the deployment publisher supplies
+these values in its descriptor.
 
 The packaged control-plane command
 `titan-graphql-control export-preview-draft <postgresql|mysql> <jdbc-url> <draft-id> <output.yaml>`
@@ -186,10 +160,7 @@ does not install the candidate into the serving database. The
 `databaseEnginePreviewCandidateIntegrationTest` Gradle task imports and validates a draft through
 the authenticated database-backed management GraphQL route, polls those jobs and an artifact job,
 approves a registered operation through the review job, then stages, publishes, and requests the
-candidate through the database-backed preview route on
-PostgreSQL and MySQL. The task also publishes a generated PostgreSQL candidate in a Quarkus test
-database and exercises POST and GET at the public `/preview/{previewBuildId}/graphql` URL with
-caller-supplied role headers disabled.
+candidate through the database-backed preview route on PostgreSQL and MySQL.
 
 For artifact workers handling more than one candidate, set
 `TITAN_GRAPHQL_ARTIFACT_PACKAGE_REGISTRY` to a deployment-owned Java properties file with
@@ -231,18 +202,14 @@ installed in that database. Artifact generation for the exported draft must also
 matching READY_FOR_REVIEW artifact set before publication. These export, build, install, artifact
 generation, and publication steps are not yet one coordinated deployment transaction. The command
 does not configure either HTTP host or coordinate a live package replacement. A standalone frontend
-must restart to read
-the new registry mapping; the Quarkus preview resource re-reads it per request. Preview routes
+must restart to read the new registry mapping. Preview routes
 reject unsealed descriptors. Published descriptors include
 `preview-deployment-sha256`, which binds the installed package identity and ENFORCE registry
-record and operation projection. Both HTTP hosts recompute that snapshot in the request's
+record and operation projection. The standalone HTTP host recomputes that snapshot in the request's
 repeatable-read database transaction before invoking the GraphQL routine; a mismatch returns
 HTTP 503. A hand-authored sealed descriptor can match the installed database state, but the seal
 alone does not prove that the durable preview-publication workflow approved it; use
 `publish-preview` to establish that record.
-The management-package fixture in
-`databaseEngineManagementIntegrationTest` proves Quarkus preview routing on PostgreSQL and MySQL;
-it does not establish that a real candidate package has been published.
 
 ## Transaction result protocol
 

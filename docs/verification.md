@@ -1,62 +1,40 @@
 # Verification
 
-The project intentionally does not use GitHub Actions. Maintainers run the checked-in local gate and
-attach its result to the release or pull request. JDK 21 is required; full verification also requires
-Docker capable of running the PostgreSQL and MySQL Testcontainers fixtures.
+Use JDK 21 and initialized Titan/Titan DSL submodules. Installed-package, standalone HTTP, and
+container-deployment checks require local Docker with PostgreSQL and MySQL fixtures. This project
+does not use hosted GitHub Actions; maintainers run the local gates on demand.
 
-## Release gates
+## Local release gates
 
-From a clean checkout with initialized submodules, run:
+From a clean checkout, run `scripts/release-check.sh` for repository hygiene and Docker-free
+tests, then `scripts/release-check.sh --full` for the deployable database-engine suite. The full
+gate approves the standalone HTTP ZIP only. It checks the engine/frontend source boundaries,
+dependency and ZIP closure, generated SQL package privacy, complete package attestation,
+PostgreSQL/MySQL installed execution, fixed expected-result corpus, package replacement,
+snapshot/deadline behavior, and extracted ZIP HTTP behavior. The separate
+`databaseEngineContainerDeploymentIntegrationTest` proves unprivileged frontend and worker
+containers, worker restart, reviewed preview publication, and frontend recreation on both
+dialects. No command deploys a persistent service.
 
-```bash
-scripts/release-check.sh
-scripts/release-check.sh --full
-```
-
-The fast gate checks the repository origin, clean worktree, submodule pins, tracked temporary files,
-high-confidence credential patterns, machine-local absolute paths, author email privacy, GPL license,
-and the Docker-free unit suite. The full gate approves only the deployable standalone HTTP ZIP: it
-verifies the transpilable-engine and thin-frontend boundaries, rejects an unreviewed runtime closure,
-directly installs and invokes independently packaged demo and commerce whole-request engines on
-PostgreSQL and MySQL, and launches the ZIP against both dialects. Quarkus, compiled-schema, and
-historical SQL checks remain migration-oracle tasks; they cannot approve a database-serving release.
-The gate is on-demand and local, not hosted CI.
-
-The built-in credential checks are intentionally high-confidence and bounded. Before a public
-release, also run an independent history-aware scanner such as gitleaks and review GitHub's secret
-and dependency alerts as described in [../RELEASING.md](../RELEASING.md).
-
-## Task matrix
-
-| Task | Purpose | Docker |
+| Task | Evidence | Docker |
 | --- | --- | --- |
-| `./gradlew test` | Parser, validation, planning, generation, runtime, policy, artifact, and documentation tests | No |
-| `./gradlew titanGraphqlGenerateRoutines` | Deterministically generate model-bound Titan carrier source | No |
-| `./gradlew titanTranspile titanPackage` | Lower and package PostgreSQL/MySQL migrations and metadata | No |
-| `./gradlew titanVerifyInstall` | Install and verify both dialect packages in scratch databases | Yes |
-| `./gradlew titanGraphqlBindPackage` | Verify and bind the reviewed model to the generated package | Yes |
-| `./gradlew titanGraphqlVerifyDatabaseEngineBoundary` | Reject non-transpilable/framework dependencies from the database engine source set | No |
-| `./gradlew titanGraphqlVerifyDatabaseFrontendBoundary titanGraphqlVerifyDatabaseHttpFrontendBoundary` | Prove the package-bound client and standalone HTTP distribution contain no JVM GraphQL runtime | No |
-| `./gradlew titanGraphqlVerifyDatabaseHttpFrontendReleaseArtifact` | Verify the deployable ZIP's launcher, exact reviewed runtime closure, and absence of local GraphQL classes | No |
-| `./gradlew titanGraphqlDatabaseEngineReleaseCheck` | Full deployable database-engine gate; this is the `release-check.sh --full` execution suite | Yes |
-| `./gradlew databaseEngineIntegrationTest databaseEngineMySqlIntegrationTest` | Install and directly invoke the demo whole-request package on PostgreSQL/MySQL | Yes |
-| `./gradlew databaseEngineCommerceIntegrationTest databaseEngineCommerceMySqlIntegrationTest` | Install and directly invoke an unrelated commerce whole-request package on PostgreSQL/MySQL | Yes |
-| `./gradlew databaseEngineHttpIntegrationTest` | Exercise the temporary package-bound Quarkus migration seam | Yes |
-| `./gradlew databaseHttpFrontendIntegrationTest` | Exercise the isolated standalone HTTP distribution | Yes |
-| `./gradlew compiledSchemaIntegrationTest` | Prove unrelated demo and commerce packages through the generic compiled runtime on both dialects | Yes |
-| `./gradlew legacySqlIntegrationTest` | Preserve the isolated Java-versus-whole-request SQL equivalence proof | Yes |
+| `./gradlew test` | Docker-free model, generator, engine-source, artifact, policy, and control-plane unit tests | No |
+| `./gradlew titanGraphqlVerifyDatabaseEngineBoundary titanGraphqlVerifyDatabaseFrontendBoundary titanGraphqlVerifyDatabaseHttpFrontendBoundary` | Source-set isolation and absence of a JVM GraphQL engine in the frontend | No |
+| `./gradlew titanGraphqlVerifyDatabaseHttpFrontendReleaseArtifact` | Exact standalone ZIP launcher, class, and runtime dependency closure | No |
+| `./gradlew databaseEngineIntegrationTest databaseEngineMySqlIntegrationTest` | Direct installed blog package on PostgreSQL/MySQL | Yes |
+| `./gradlew databaseEngineCommerceIntegrationTest databaseEngineCommerceMySqlIntegrationTest` | Direct installed unrelated commerce package on PostgreSQL/MySQL | Yes |
+| `./gradlew databaseManagementStoreIntegrationTest` | Durable JDBC management-store and activation tests on both dialects | Yes |
+| `./gradlew databaseHttpFrontendIntegrationTest` | Extracted standalone ZIP and HTTP transport on both dialects | Yes |
+| `./gradlew titanGraphqlDatabaseEngineReleaseCheck` | Combined deployable package/runtime parity and artifact gate | Yes |
+| `./gradlew databaseEngineContainerDeploymentIntegrationTest` | First-deployment container path, management worker, restart, and published preview | Yes |
 
-Use `./gradlew tasks --group verification` to inspect the current verification entry points. Build
-artifacts live under `build/`, are ignored by Git, and may be removed after retaining release
-evidence.
+The [M5 parity report](database-engine-m5-parity.md) records the fixed corpus, identity checks,
+measurements, and last complete parity run. A package is not deployable just because its Java
+source transpiles; scratch installation, binding, and runtime attestation must pass. A test of an
+obsolete JVM or carrier path cannot substitute for a standalone-ZIP result.
 
-## What constitutes a pass
-
-A release candidate passes only when commands exit successfully with no skipped required dialect,
-installation, attestation, or standalone-distribution leg. A generated artifact is not deployment
-evidence until its install verification passes. An endpoint response from `java`, `jdbc`, `compiled`,
-or transitional Quarkus `database` mode is not evidence that the shipping ZIP works.
-
-When a gate fails, keep the first actionable failure and its generated diagnostics, fix the source or
-model, rebuild all dependent artifacts, and rerun the entire affected gate from a clean worktree.
-Never edit a generated report merely to change its status.
+The built-in privacy checks are deliberately bounded. Before public publication, also use an
+independent history-aware secret scanner and review repository history, tracked temporary files,
+dependency pins, notices, and GPL consistency as directed by [RELEASING.md](../RELEASING.md).
+Keep the first actionable failure and generated diagnostics, fix source or model, then rerun the
+affected gate. Do not edit generated reports to alter their status.
