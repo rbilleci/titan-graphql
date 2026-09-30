@@ -58,4 +58,24 @@ class TitanGraphqlDatabasePackageIdentityCliTest {
         assertTrue(postgres.contains(identity));
         assertTrue(mysql.contains(identity));
     }
+
+    @Test
+    void separatesPackageIdentityByBoundEngineSchema() throws Exception {
+        Path sqlDirectory = temporaryDirectory.resolve("management-sql/postgresql");
+        Files.createDirectories(sqlDirectory);
+        Files.writeString(sqlDirectory.resolve("R__titan_020_routines.sql"), "SELECT 1;\n");
+        Path migration = sqlDirectory.resolve(TitanGraphqlDatabasePackageIdentityCli.IDENTITY_SQL_FILE);
+        String publicIdentity = TitanGraphqlDatabasePackageIdentityCli.inventoryIdentity(
+                "postgresql", sqlDirectory, migration);
+        String managementIdentity = TitanGraphqlDatabasePackageIdentityCli.inventoryIdentity(
+                "postgresql", sqlDirectory, migration, "management_graphql.execute_graphql_request");
+
+        assertNotEquals(publicIdentity, managementIdentity);
+        assertTrue(TitanGraphqlDatabasePackageIdentityCli.identityMigrationSql(
+                "postgresql", managementIdentity, "management_graphql.execute_graphql_request")
+                .contains("VALUES ('management_graphql.execute_graphql_request'"));
+        assertTrue(TitanGraphqlDatabasePackageIdentityCli.identityMigrationSql(
+                "mysql", managementIdentity, "management_graphql.execute_graphql_request")
+                .contains("VALUES ('management_graphql.execute_graphql_request'"));
+    }
 }

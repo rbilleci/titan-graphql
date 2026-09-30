@@ -47,6 +47,12 @@ final class DatabaseEngineTestRequestContract {
                 + actorRole + "\",\"includeExecutionMetrics\":true}";
     }
 
+    static String mutationDurabilityTrustedContext(String idempotencyKey) {
+        return "{\"contextVersion\":\"titan.graphql.request-context/v1\",\"actorRole\":\"editor\","
+                + "\"actorKey\":\"test-editor\",\"tenantId\":\"test-tenant\","
+                + "\"requestId\":\"test-request\",\"idempotencyKey\":\"" + idempotencyKey + "\"}";
+    }
+
     static String runtimeIdentity() {
         return TitanGraphqlDatabaseRuntimeIdentity.read(TitanGraphqlArtifactsDirectory.configuredDirectory());
     }

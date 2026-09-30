@@ -1,27 +1,10 @@
 package io.titan.graphql;
 
-import io.titan.graphql.artifact.TitanGraphqlArtifactSet;
-import io.titan.graphql.artifact.TitanGraphqlArtifactsDirectory;
-import io.titan.graphql.artifact.TitanGraphqlGap005ArtifactMetadata;
-import io.titan.graphql.artifact.TitanGraphqlGeneratedArtifactSet;
-import io.titan.graphql.artifact.TitanGraphqlIntrospectionArtifactPolicy;
-import io.titan.graphql.artifact.TitanGraphqlPackageBinding;
-import io.titan.graphql.management.TitanGraphqlArtifactSetRef;
-import io.titan.graphql.management.TitanGraphqlDurableManagementStore;
+import io.titan.graphql.controlplane.TitanGraphqlArtifactGenerationService;
+import io.titan.graphql.controlplane.TitanGraphqlModelValidationService;
 import io.titan.graphql.management.TitanGraphqlInMemoryManagementStore;
 import io.titan.graphql.management.TitanGraphqlManagementStore;
-import io.titan.graphql.management.TitanGraphqlManagedModel;
-import io.titan.graphql.management.TitanGraphqlModelDraft;
 import io.titan.graphql.management.TitanGraphqlObservedOperation;
-import io.titan.graphql.management.TitanGraphqlValidationReportRef;
-import io.titan.graphql.model.TitanGraphqlModelDocument;
-import io.titan.graphql.model.TitanGraphqlModelDocumentJson;
-import io.titan.graphql.model.TitanGraphqlModelDocumentYaml;
-import io.titan.graphql.validation.TitanGraphqlModelDocumentValidator;
-import io.titan.graphql.validation.TitanGraphqlValidationReport;
-import io.titan.management.ManagementCommands.CommandInvocation;
-import io.titan.management.ManagementTransactions.TransactionalCommandExecution;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 
@@ -92,125 +75,15 @@ final class GraphqlManagementMutationSupport {
     private GraphqlMutationCommandResult importModelDocument(
             GraphqlMutationCommandHandler.GraphqlMutationCommandRequest request
     ) {
-        CommandInvocation invocation = TitanGraphqlGap006CommandContext.importModelDocument(
-                request.input(),
-                request.context()
-        );
-        boolean durable = store instanceof TitanGraphqlDurableManagementStore;
-        if (!durable) {
-            TitanGraphqlGap006CommandContext.requireValid(invocation);
-        }
-        String workspaceId = text(request.input().get("workspaceId"));
-        String source = text(request.input().get("yaml"));
-        TitanGraphqlModelDocument document = TitanGraphqlModelDocumentYaml.parse(source);
-        String semanticHash = TitanGraphqlModelDocumentJson.semanticHash(document);
-        String modelId = "model-" + stableId(document.metadata().name());
-        String draftId = "draft-" + shortHash(semanticHash);
-        String canonicalJson = TitanGraphqlModelDocumentJson.canonicalJson(document);
-
-        TitanGraphqlValidationReport report = TitanGraphqlModelDocumentValidator.validate(document);
-        TitanGraphqlValidationReportRef reportRef = validationReportRef("validation-" + draftId, draftId, report);
-        TitanGraphqlModelDraft.ModelDraftStatus status = report.valid()
-                ? TitanGraphqlModelDraft.ModelDraftStatus.IMPORTED
-                : TitanGraphqlModelDraft.ModelDraftStatus.FAILED_VALIDATION;
-        TitanGraphqlManagedModel model = new TitanGraphqlManagedModel(
-                modelId,
-                workspaceId,
-                document.metadata().name(),
-                document.metadata().name(),
-                document.metadata().description(),
-                draftId,
-                "",
-                reportRef.id(),
-                "",
-                "",
-                ""
-        );
-        TitanGraphqlModelDraft draft = new TitanGraphqlModelDraft(
-                draftId,
-                modelId,
-                status,
-                TitanGraphqlModelDraft.SourceFormat.YAML,
-                source,
-                canonicalJson,
-                semanticHash,
-                reportRef.id(),
-                "",
-                "",
-                request.context().actorRole(),
-                "",
-                ""
-        );
-        if (store instanceof TitanGraphqlDurableManagementStore durableStore) {
-            TransactionalCommandExecution execution = durableStore.importModelDocument(
-                    invocation,
-                    model,
-                    draft,
-                    reportRef,
-                    Instant.now(),
-                    Instant.now());
-            if (execution.conflict()) {
-                throw new GraphqlException("idempotency input mismatch for mutation 'importModelDocument'");
-            }
-            if (!execution.success()) {
-                String message = execution.outcomeRecord().errorMessage() == null
-                        ? "durable importModelDocument transaction failed"
-                        : execution.outcomeRecord().errorMessage();
-                throw new GraphqlException(message);
-            }
-        } else {
-            store.saveModel(model);
-            store.saveDraft(draft);
-            store.saveValidationReport(reportRef);
-        }
-        return GraphqlMutationCommandResult.of(Map.of(
-                "accepted", report.valid(),
-                "draftId", draftId,
-                "modelId", modelId,
-                "semanticHash", semanticHash,
-                "validationReportId", reportRef.id(),
-                "status", status.name(),
-                "errors", Math.toIntExact(report.errorCount()),
-                "warnings", Math.toIntExact(report.warningCount())
-        ));
+        return GraphqlMutationCommandResult.of(new TitanGraphqlModelImportService(store)
+                .importDocument(request.input(), request.context()));
     }
 
     private GraphqlMutationCommandResult validateModelDraft(
             GraphqlMutationCommandHandler.GraphqlMutationCommandRequest request
     ) {
-        String draftId = text(request.input().get("draftId"));
-        TitanGraphqlModelDraft draft = requireDraft(draftId);
-        TitanGraphqlModelDocument document = TitanGraphqlModelDocumentYaml.parse(draft.sourceText());
-        TitanGraphqlValidationReport report = TitanGraphqlModelDocumentValidator.validate(document);
-        TitanGraphqlValidationReportRef reportRef = validationReportRef("validation-" + draftId, draftId, report);
-        TitanGraphqlModelDraft.ModelDraftStatus status = report.valid()
-                ? TitanGraphqlModelDraft.ModelDraftStatus.VALIDATED
-                : TitanGraphqlModelDraft.ModelDraftStatus.FAILED_VALIDATION;
-
-        store.saveValidationReport(reportRef);
-        store.saveDraft(new TitanGraphqlModelDraft(
-                draft.id(),
-                draft.modelId(),
-                status,
-                draft.sourceFormat(),
-                draft.sourceText(),
-                draft.canonicalJson(),
-                draft.semanticHash(),
-                reportRef.id(),
-                draft.artifactSetId(),
-                draft.driftReportId(),
-                draft.createdBy(),
-                draft.createdAt(),
-                ""
-        ));
-        return GraphqlMutationCommandResult.of(Map.of(
-                "accepted", report.valid(),
-                "draftId", draftId,
-                "validationReportId", reportRef.id(),
-                "status", status.name(),
-                "errors", Math.toIntExact(report.errorCount()),
-                "warnings", Math.toIntExact(report.warningCount())
-        ));
+        return GraphqlMutationCommandResult.of(new TitanGraphqlModelValidationService(store)
+                .validate(text(request.input().get("draftId"))));
     }
 
     private GraphqlMutationCommandResult generateModelArtifacts(
@@ -219,83 +92,8 @@ final class GraphqlManagementMutationSupport {
         String draftId = text(request.input().get("draftId"));
         String generationProfile = textOrDefault(request.input().get("generationProfile"), "development");
         boolean enableIntrospection = Boolean.TRUE.equals(request.input().get("enableIntrospection"));
-        TitanGraphqlModelDraft draft = requireDraft(draftId);
-        TitanGraphqlValidationReportRef validation = store.validationReport(draft.validationReportId());
-        if (validation == null || validation.blocksDeployment()) {
-            throw new GraphqlException("draft '" + draftId + "' must pass validation before artifacts can be generated");
-        }
-        TitanGraphqlModelDocument document = TitanGraphqlModelDocumentYaml.parse(draft.sourceText());
-        String artifactSetId = "artifact-" + draftId;
-        // Real-artifact wiring: when the model requests SQL artifacts, the GAP-005 metadata is
-        // read from the configured titanPackage output directory (default
-        // build/generated/migrations/titan; -Dtitan.graphql.artifacts.dir /
-        // TITAN_GRAPHQL_ARTIFACTS_DIR override). A missing package directory surfaces as a
-        // descriptive error — the former 'metadataOnly' placeholder is gone.
-        TitanGraphqlGap005ArtifactMetadata gap005Metadata = document.artifacts().generateSql()
-                ? TitanGraphqlArtifactsDirectory.readGap005Metadata()
-                : null;
-        TitanGraphqlPackageBinding packageBinding = document.artifacts().generateSql()
-                ? TitanGraphqlPackageBinding.read(TitanGraphqlArtifactsDirectory.configuredDirectory())
-                : null;
-        TitanGraphqlGeneratedArtifactSet generated = TitanGraphqlGeneratedArtifactWorkflow.generateFromModelDocument(
-                artifactSetId,
-                draftId,
-                document,
-                enableIntrospection
-                        ? TitanGraphqlIntrospectionArtifactPolicy.ENABLED
-                        : TitanGraphqlIntrospectionArtifactPolicy.DISABLED,
-                generationProfile,
-                "",
-                gap005Metadata,
-                packageBinding
-        );
-        TitanGraphqlArtifactSet manifest = generated.manifest();
-        TitanGraphqlArtifactSetRef ref = new TitanGraphqlArtifactSetRef(
-                manifest.id(),
-                manifest.draftId(),
-                manifest.semanticHash(),
-                manifest.validationHash(),
-                manifest.driftHash(),
-                manifest.sdlHash(),
-                manifest.introspectionHash(),
-                manifest.conformanceHash(),
-                manifest.generatedSqlHash(),
-                manifest.generationProfile(),
-                manifest.createdAt()
-        );
-        if (gap005Metadata != null && store instanceof TitanGraphqlDurableManagementStore durableStore) {
-            // Seeds the titan-store artifact ref AND the durable evidence (verification
-            // status/diagnostics, entry points, rollback summaries) from the real package.
-            durableStore.saveArtifactSet(ref, gap005Metadata);
-        } else {
-            store.saveArtifactSet(ref);
-        }
-        store.saveDraft(new TitanGraphqlModelDraft(
-                draft.id(),
-                draft.modelId(),
-                TitanGraphqlModelDraft.ModelDraftStatus.READY_FOR_REVIEW,
-                draft.sourceFormat(),
-                draft.sourceText(),
-                draft.canonicalJson(),
-                draft.semanticHash(),
-                draft.validationReportId(),
-                ref.id(),
-                draft.driftReportId(),
-                draft.createdBy(),
-                draft.createdAt(),
-                ""
-        ));
-        return GraphqlMutationCommandResult.of(Map.of(
-                "accepted", true,
-                "draftId", draftId,
-                "artifactSetId", ref.id(),
-                "semanticHash", ref.semanticHash(),
-                "sdlHash", ref.sdlHash(),
-                "introspectionHash", ref.introspectionHash(),
-                "conformanceHash", ref.conformanceHash(),
-                "generatedSqlHash", ref.generatedSqlHash(),
-                "generatedArtifacts", generated.artifacts().size()
-        ));
+        return GraphqlMutationCommandResult.of(new TitanGraphqlArtifactGenerationService(store)
+                .generate(draftId, generationProfile, enableIntrospection).payload());
     }
 
     private GraphqlMutationCommandResult approveObservedOperation(
@@ -322,45 +120,6 @@ final class GraphqlManagementMutationSupport {
                 reviewedAt
         );
         return operationReviewPayload(operation, true);
-    }
-
-    private TitanGraphqlModelDraft requireDraft(String draftId) {
-        TitanGraphqlModelDraft draft = store.draft(draftId);
-        if (draft == null) {
-            throw new GraphqlException("unknown model draft '" + draftId + "'");
-        }
-        return draft;
-    }
-
-    private static TitanGraphqlValidationReportRef validationReportRef(
-            String id,
-            String draftId,
-            TitanGraphqlValidationReport report
-    ) {
-        TitanGraphqlValidationReportRef.ValidationReportStatus status = TitanGraphqlValidationReportRef.ValidationReportStatus.PASS;
-        if (report.errorCount() > 0) {
-            status = TitanGraphqlValidationReportRef.ValidationReportStatus.FAIL;
-        } else if (report.warningCount() > 0) {
-            status = TitanGraphqlValidationReportRef.ValidationReportStatus.WARN;
-        }
-        return new TitanGraphqlValidationReportRef(
-                id,
-                draftId,
-                status,
-                summary(report),
-                Math.toIntExact(report.errorCount()),
-                Math.toIntExact(report.warningCount()),
-                Math.toIntExact(report.infoCount()),
-                report.blocksDeployment(),
-                ""
-        );
-    }
-
-    private static String summary(TitanGraphqlValidationReport report) {
-        if (report.valid()) {
-            return "validation passed";
-        }
-        return "validation failed with " + report.errorCount() + " error(s)";
     }
 
     private static GraphqlMutationDescriptor importModelDocument() {
@@ -526,13 +285,4 @@ final class GraphqlManagementMutationSupport {
         return text.isBlank() ? defaultValue : text;
     }
 
-    private static String stableId(String text) {
-        String normalized = text == null ? "" : text.toLowerCase(java.util.Locale.ROOT);
-        normalized = normalized.replaceAll("[^a-z0-9]+", "-").replaceAll("^-|-$", "");
-        return normalized.isBlank() ? "unnamed" : normalized;
-    }
-
-    private static String shortHash(String hash) {
-        return hash.length() <= 12 ? hash : hash.substring(0, 12);
-    }
 }

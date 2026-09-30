@@ -69,6 +69,7 @@ public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRun
     private final String expectedRuntimeIdentity;
     private final String expectedPackageIdentity;
     private final String connectionDescription;
+    private final String operationRegistryId;
     private final DatabaseWholeRequestClient client;
 
     public DatabaseGraphqlWholeRequestRuntime(
@@ -80,7 +81,7 @@ public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRun
             String connectionDescription
     ) {
         this(dialect, connectionProvider, expectedModelSemanticHash, expectedRuntimeIdentity, expectedPackageIdentity,
-                connectionDescription, DEFAULT_ENTRY_POINT);
+                connectionDescription, DEFAULT_ENTRY_POINT, "");
     }
 
     public DatabaseGraphqlWholeRequestRuntime(
@@ -91,6 +92,36 @@ public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRun
             String expectedPackageIdentity,
             String connectionDescription,
             EntryPoint entryPoint
+    ) {
+        this(dialect, connectionProvider, expectedModelSemanticHash, expectedRuntimeIdentity, expectedPackageIdentity,
+                connectionDescription, entryPoint, "");
+    }
+
+    public DatabaseGraphqlWholeRequestRuntime(
+            Dialect dialect,
+            ConnectionProvider connectionProvider,
+            String expectedModelSemanticHash,
+            String expectedRuntimeIdentity,
+            String expectedPackageIdentity,
+            String connectionDescription,
+            EntryPoint entryPoint,
+            String operationRegistryId
+    ) {
+        this(dialect, connectionProvider, expectedModelSemanticHash, expectedRuntimeIdentity,
+                expectedPackageIdentity, connectionDescription, entryPoint, operationRegistryId,
+                (connection, timeout) -> {});
+    }
+
+    public DatabaseGraphqlWholeRequestRuntime(
+            Dialect dialect,
+            ConnectionProvider connectionProvider,
+            String expectedModelSemanticHash,
+            String expectedRuntimeIdentity,
+            String expectedPackageIdentity,
+            String connectionDescription,
+            EntryPoint entryPoint,
+            String operationRegistryId,
+            DatabaseWholeRequestClient.ConnectionVerifier connectionVerifier
     ) {
         this.dialect = Objects.requireNonNull(dialect, "dialect");
         Objects.requireNonNull(connectionProvider, "connectionProvider");
@@ -104,6 +135,7 @@ public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRun
         this.expectedRuntimeIdentity = expectedRuntimeIdentity;
         this.expectedPackageIdentity = TitanGraphqlDatabasePackageIdentity.require(expectedPackageIdentity);
         this.connectionDescription = connectionDescription == null ? "configured database" : connectionDescription;
+        this.operationRegistryId = requireOperationRegistryId(operationRegistryId);
         EntryPoint verifiedEntryPoint = Objects.requireNonNull(entryPoint, "entryPoint");
         this.client = new DatabaseWholeRequestClient(
                 dialect == Dialect.POSTGRESQL
@@ -111,7 +143,9 @@ public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRun
                         : DatabaseWholeRequestClient.Dialect.MYSQL,
                 connectionProvider::open,
                 new DatabaseWholeRequestClient.EntryPoint(
-                        verifiedEntryPoint.schemaName(), verifiedEntryPoint.routineName()));
+                        verifiedEntryPoint.schemaName(), verifiedEntryPoint.routineName()),
+                DatabaseWholeRequestClient.DEFAULT_STATEMENT_TIMEOUT_SECONDS,
+                connectionVerifier);
     }
 
     @Override
@@ -126,7 +160,7 @@ public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRun
         try {
             return client.execute(new DatabaseWholeRequestClient.Request(
                     request.query(), request.operationName(), request.variablesJson(), request.extensionsJson(),
-                    trustedContextJson(context), request.allowMutations(), expectedModelSemanticHash,
+                    trustedContextJson(context, operationRegistryId), request.allowMutations(), expectedModelSemanticHash,
                     expectedRuntimeIdentity, expectedPackageIdentity, statementTimeoutSeconds(context))).responseJson();
         } catch (SQLException failure) {
             throw unavailable("the installed whole-request entry point could not be invoked", failure);
@@ -145,6 +179,10 @@ public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRun
     }
 
     static String trustedContextJson(GraphqlRequestContext context) {
+        return trustedContextJson(context, "");
+    }
+
+    static String trustedContextJson(GraphqlRequestContext context, String operationRegistryId) {
         return "{\"contextVersion\":\"" + CONTEXT_VERSION + "\",\"actorId\":" + context.actorId()
                 + ",\"actorRole\":\"" + jsonEscape(context.actorRole()) + "\",\"actorKey\":\""
                 + jsonEscape(context.actorKey()) + "\",\"tenantId\":\"" + jsonEscape(context.tenantId())
@@ -152,8 +190,16 @@ public final class DatabaseGraphqlWholeRequestRuntime implements GraphqlModelRun
                 + jsonEscape(context.idempotencyKey()) + "\",\"policyFlags\":" + jsonStringArray(context.policyFlags())
                 + ",\"enabledContextFilters\":" + jsonStringArray(context.enabledContextFilters())
                 + ",\"introspectionEnabled\":" + context.introspectionEnabled()
+                + ",\"operationRegistryId\":\"" + jsonEscape(requireOperationRegistryId(operationRegistryId)) + "\""
                 + ",\"contextValues\":" + contextValuesJson(context)
                 + ",\"deadlineEpochMillis\":" + context.deadlineEpochMillis() + "}";
+    }
+
+    private static String requireOperationRegistryId(String value) {
+        if (value == null || value.length() > 512 || (!value.isEmpty() && value.isBlank())) {
+            throw new IllegalArgumentException("operation registry ID must be empty or a nonblank value within 512 characters");
+        }
+        return value;
     }
 
     /**

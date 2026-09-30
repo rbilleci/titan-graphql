@@ -1,8 +1,8 @@
 # Database-resident GraphQL engine: target architecture and execution plan
 
-Status: active implementation contract, stopped at the requested milestone boundary. M0 inventory
+Status: active implementation contract, with M4 completed after the requested milestone pause. M0 inventory
 and M1 deployable-boundary stabilization completed on 2026-09-17; M2 and M3 completed on
-2026-09-23. M4 is the earliest unresolved milestone. Existing mutation, package, cleanup, and
+2026-09-23. M5 is the earliest unresolved milestone. Existing package, cleanup, and
 release slices remain partial evidence only and do not satisfy the overall completion contract.
 
 Baseline: `b1722b73553ab1b5c6a20e63692c8b350f964d34`. The previous completion claim did not satisfy
@@ -44,9 +44,9 @@ log below; do not replace an unresolved row with prose implying completion.
 | --- | --- | --- | --- | --- |
 | M0 | Build the authoritative remaining-work inventory: production routes, runtime closure, schema/operation semantics, mutation contracts, corpus cases, package contents, privacy/history, temporary files, remote state, and every legacy deletion target. | Complete inventory (2026-09-17) — `database-engine-runtime-inventory.md` reconciles the worktree, reachable history, local artifacts, both submodules, and remote state. Implementation rows remain visibly partial/contradicted/unstarted. | A requirement-to-evidence matrix with no unclassified production path or legacy runtime dependency. | Refresh after each milestone and re-run before M6/M7. |
 | M1 | Stabilize the deployable architecture boundary: one whole-envelope database call, fixed transport/transaction framing, package/identity selection, and a frontend artifact unable to load semantic GraphQL code. | Complete (2026-09-17) — the v1 nine-input contract, explicit route/class/dependency inventory, all source-set boundary tasks, exact ZIP closure, one-call client test, and fresh isolated PostgreSQL/MySQL integration passed. Transitional routes are inventoried M6 deletion targets and are absent from the release ZIP. | Fresh dual-dialect standalone artifact tests plus an explicit route/class/dependency inventory. | Preserve the M1 gates while M2–M5 add semantics; no legacy removal claim is allowed until their relevant rows are complete. |
-| M2 | Complete the shared database language core: typed AST/plans, operation and field validation, coercion/defaults, fragments/directives/merging, null/error behavior, introspection, and bounded semantic/database cost. | Complete for the v1alpha1 supported surface (2026-09-23) — the database core proves source-preserving operation/fragment handling, schema-wide structural/argument/directive validation, canonical variable/argument carriers, order-independent compatible field collection, duplicate-response-key rejection, introspection self-description, authored enums/input objects/interfaces/unions/directives and metadata, stable coded errors with locations/paths, and the complete current multi-dimensional request ledger. Generated descriptors drive recursive coercion/defaults, abstract overlap and per-runtime-type merge validation, concrete runtime-condition execution, wrapper/introspection relationships, and generated argument materialization. Fresh PostgreSQL/MySQL packages pass the 34-case shared corpus; all 636 JVM tests are green. Topology is 386 source-local helpers/383 emitted entry points per dialect and 387 MySQL whole-request routines. The v1alpha1 root contract binds exactly one physical projection and rejects unknown fields; heterogeneous multi-projection roots are a future versioned model capability requiring an explicit discriminator/order/cursor/policy/count contract, not an M2 fallback. | A shared, source-located conformance corpus run through fresh installed routines on both dialects, plus explicit schema closure for deliberately unsupported shapes. | Preserve this core while M3/M4 expand generic binding coverage; do not add model-specific runtime query branches to bypass a missing semantic. |
-| M3 | Complete generic schema-driven reads: reviewed fields, filters/order, point/list/connection reads, relation traversal and batching, policies, cursors, and response assembly. | Complete (2026-09-23) — AST-backed plan partitioning, the reviewed output/root inventory, request-reject policy preflight, fixed 64-slot unpaginated and Relay relation batches, exact ledgers, bounded 3x3 DNF filtering, computed/one-hop filtering and ordering, cursors/count/page flags, the 34-case corpus, repeatable-read request isolation, fail-closed string tenant isolation, and physically renamed-model source analysis are current. Fresh PostgreSQL/MySQL packages contain 470 entry points (473 reachable helpers; 474 MySQL routines), install and bind cleanly, and pass the consolidated live gate. | Corpus and measured query-count/row-budget evidence across unrelated models, relation shapes, and parent cardinalities on both dialects, plus every declared filter/order path. | Preserve the M3 gate while M4 adds explicit custom mutations; do not resume M4 until the requested milestone pause is lifted. |
-| M4 | Complete explicit custom mutations: typed input and operation prevalidation, serial atomic execution, policies, locks, audit/idempotency/outbox behavior, output completion, and route replacement. | Partial — constrained scalar/enum and nested authored-input update/rollback proofs exist, including a nested default applied inside the transpiled engine; nullable writes, concurrency, durable idempotency/audit/outbox, arbitrary procedures, and retained management mutations remain open. | Cross-dialect transaction, concurrency, idempotency, audit/outbox, and failure-path evidence. | Register every mutation in the package identity before deleting handler paths. |
+| M2 | Complete the shared database language core: typed AST/plans, operation and field validation, coercion/defaults, fragments/directives/merging, null/error behavior, introspection, and bounded semantic/database cost. | Complete for the v1alpha1 supported surface (2026-09-23) — the database core proves source-preserving operation/fragment handling, schema-wide structural/argument/directive validation, canonical variable/argument carriers, order-independent compatible field collection, duplicate-response-key rejection, introspection self-description, authored enums/input objects/interfaces/unions/directives and metadata, stable coded errors with locations/paths, and the complete current multi-dimensional request ledger. Generated descriptors drive recursive coercion/defaults, abstract overlap and per-runtime-type merge validation, concrete runtime-condition execution, wrapper/introspection relationships, and generated argument materialization. Fresh PostgreSQL/MySQL packages pass the portable corpus; all 636 JVM tests are green. Topology is 386 source-local helpers/383 emitted entry points per dialect and 387 MySQL whole-request routines. The v1alpha1 root contract binds exactly one physical projection and rejects unknown fields; heterogeneous multi-projection roots are a future versioned model capability requiring an explicit discriminator/order/cursor/policy/count contract, not an M2 fallback. | A shared, source-located conformance corpus run through fresh installed routines on both dialects, plus explicit schema closure for deliberately unsupported shapes. | Preserve this core while M3/M4 expand generic binding coverage; do not add model-specific runtime query branches to bypass a missing semantic. |
+| M3 | Complete generic schema-driven reads: reviewed fields, filters/order, point/list/connection reads, relation traversal and batching, policies, cursors, and response assembly. | Complete (2026-09-23) — AST-backed plan partitioning, the reviewed output/root inventory, request-reject policy preflight, fixed 64-slot unpaginated and Relay relation batches, exact ledgers, bounded 3x3 DNF filtering, computed/one-hop filtering and ordering, cursors/count/page flags, the portable corpus, repeatable-read request isolation, fail-closed string tenant isolation, and physically renamed-model source analysis are current. Fresh PostgreSQL/MySQL packages contain 470 entry points (473 reachable helpers; 474 MySQL routines), install and bind cleanly, and pass the consolidated live gate. | Corpus and measured query-count/row-budget evidence across unrelated models, relation shapes, and parent cardinalities on both dialects, plus every declared filter/order path. | Preserve the M3 gate while M4 adds explicit custom mutations; the requested pause has been lifted. |
+| M4 | Complete explicit custom mutations: typed input and operation prevalidation, serial atomic execution, policies, locks, audit/idempotency/outbox behavior, output completion, and route replacement. | Complete for the first-deployment scope (2026-09-27). Installed PostgreSQL and MySQL proofs cover nullable scalar/enum and nested-input writes, reviewed procedure policy and rollback, row locks, durable receipts/audit/idempotency, transactional outbox delivery, and HTTP replay after frontend restart. The management package handles import, validation, artifact, and review jobs through database-backed requests and a separate worker. The Compose gate installs application and management packages on both dialects, proves admin job polling after Docker restarts the worker, publishes a reviewed preview from a one-shot container, recreates the frontend, and serves the preview through the published registry. No service or callers currently run, so no caller migration or cutover applies. | Cross-dialect transaction, concurrency, idempotency, audit/outbox, and failure-path evidence, plus the passing container-run admin, worker, and published-preview gate. | Preserve M4 gates while M5 proves package/runtime parity; legacy implementation deletion belongs to M6. |
 | M5 | Prove full package and runtime parity: package/routine/mutation attestation, shared dual-dialect corpus, isolation/performance/budget evidence, replacement-package behavior, and adversarial security/privacy scans. | Partial — source/runtime and package identities plus selected corpus gates exist; final attestation and replacement evidence are open. | Fresh package/install/bind/HTTP proof on both dialects, measured bounds, and reproducible artifact/privacy reports. | Do not interpret package installation alone as semantic parity. |
 | M6 | Remove the superseded architecture and release debris: JVM engines, fallback modes, model-specific dispatch, obsolete routes/tests/tasks/dependencies/docs, private history/data, and unnecessary temporary/generated files. | Unstarted as a deletion milestone — transitional sources are intentionally still present. | Search-based absence evidence, dependency/artifact closure checks, migrated test coverage, and clean-clone verification. | Delete only after M1–M5 replacements have evidence; do not retain compatibility paths in production. |
 | M7 | Release and publish: public documentation/license/notice/security review, clean check-in, safe remote reconciliation, final verification without CI dependence, and push to `rbilleci/titan-graphql`. | Unstarted. | Clean clone, all required local gates, remote divergence review, and a reviewed atomic release commit. | This is the only milestone that authorizes the final push. |
@@ -1124,16 +1124,26 @@ HTTP-to-database call.
 
 ### Phase 4 — migrate custom mutations and auxiliary routes
 
-- [ ] Implement build-time mutation registration, signature validation, generated dispatch, typed
+- [x] Implement build-time mutation registration, signature validation, generated dispatch, typed
       inputs/payloads, role/domain policies, serial execution, and durable audit/idempotency contracts.
-- [ ] Prove successful writes, rejected inputs before writes, handler errors, transaction rollback,
+- [x] Prove successful writes, rejected inputs before writes, handler errors, transaction rollback,
       duplicate/conflicting idempotency keys, retry ambiguity, and restart behavior on both dialects.
-- [ ] Port useful management domain routines to explicit database mutation bindings where applicable.
-- [ ] Route any retained preview/admin GraphQL endpoint through the same transpiled query engine with
+- [x] Port useful management domain routines to explicit database mutation bindings where applicable.
+- [x] Route any retained preview/admin GraphQL endpoint through the same transpiled query engine with
       a separately bound model and permissions. There must be no residual JVM GraphQL exception.
-- [ ] Move filesystem/build/deployment work to explicit control-plane commands/jobs outside serving.
+- [x] Move filesystem/build/deployment work to explicit control-plane commands/jobs outside serving.
       If a management mutation requests such work, persist a job transactionally; test its lifecycle.
       Record API migration details before deleting the old synchronous workflow.
+
+The retained-route item is complete for the first container deployment. No production service or
+callers exist, so there is no deployed descriptor to cut over or synchronous caller to migrate.
+The Compose gate binds both packages, supervises the worker, polls the control jobs, and serves a
+published preview through the standalone HTTP route on PostgreSQL and MySQL. The public admin and
+preview resource classes no longer execute the JVM GraphQL runtime.
+`./gradlew databaseEngineManagementIntegrationTest --tests
+'*ManagementDatabaseGraphqlEngineIT.boundManagementReadsAndArtifactRequestCoexistWithCommerce'
+--console=plain` passed after scratch installation and binding on PostgreSQL and MySQL. It compares
+the reviewed management mutation names with introspection and executed roots on each dialect.
 
 Gate: every retained GraphQL endpoint satisfies the same execution boundary; custom mutation code
 does not depend on CDI callbacks, frontend state, or remote calls during database query processing.
@@ -1295,9 +1305,9 @@ evidence. Record failed probes and unresolved compiler gaps separately from pass
 | --- | --- | --- | --- | --- |
 | 0 Boundary/inventory | In progress | Uncommitted | `docs/database-engine-runtime-inventory.md`; `./gradlew titanGraphqlVerifyDatabaseFrontendBoundary titanGraphqlVerifyDatabaseHttpFrontendBoundary databaseHttpFrontendIntegrationTest` builds the descriptor-backed standalone HTTP distribution, rejects JVM GraphQL and `main`-output leakage, then extracts and runs it against both PostgreSQL and MySQL. `database-engine-corpus/commerce-v1.json` is a fixed, runtime-independent expected-result corpus exercised on both databases. | Expand the corpus with the remaining language, read, mutation, and adversarial cases. |
 | 1 Database feasibility | In progress | Uncommitted | `./gradlew databaseEngineIntegrationTest databaseEngineMySqlIntegrationTest databaseEngineCommerceIntegrationTest databaseEngineCommerceMySqlIntegrationTest`: independently generated demo and commerce packages are transpiled, packaged, install-verified, model-bound, and JAX-RS-served on PostgreSQL/MySQL. Fresh direct commerce-package evidence is 8 PostgreSQL tests and 9 MySQL tests; both include an expired trusted deadline rejected by the installed routine before schema work. Focused package/bind/install/execution proofs additionally cover `Customer.orders.customer.name` from both a point root and a Relay connection node within its declared two-hop budget, merge repeated compatible nested connection-node selections, merge the same point-root path through named and inline fragments, stop a corrupt non-null leaf at a nullable to-one boundary, and reject a third hop on both dialects. The fixed, runtime-independent expected-result corpus remains part of each suite. The current MySQL public routine is a 1.076 MB `CREATE PROCEDURE`; Titan's shared MySQL test container now sets `max_allowed_packet=16M` so package deployment proves database behavior rather than failing in the JDBC packet transport. Production packaging must retain an explicit package-size/packet preflight rather than rely on an obsolete 1 MiB assumption. | AST/plan and general connection semantics remain. |
-| 2 Language engine | Complete for v1alpha1 (2026-09-23) | Uncommitted | The bounded Titan-transpiled lexical/typed-AST core owns operation selection, fragment closure, built-in and model-registered conditional directives, schema-wide structural and argument validation, variable/default materialization, canonical `ma1`/`cv1` arguments, field collection, duplicate-response-key checks, coded null/error completion, introspection, and request/deadline bounds for the supported schema surface. Generated metadata drives Query/Mutation, Relay wrappers, scalars, model-declared enums, generated/authored input objects, model-declared interface/union point and static-projection Relay outputs, registered-directive behavior/location/introspection, and general point/root-connection/relation/flat-mutation/authored-mutation-input argument defaults without an HTTP/JVM semantic path. Every database GraphQL error carries a source-selected stable code; lexical failures retain locations and execution failures retain paths. The complete current request ledger bounds typed-input fan-out, introspection expansion, application statements, decoded rows, deadlines, and every shared JSON append plus the final response. Fresh packages pass the 34-case corpus on both dialects and all 636 JVM tests pass. Current topology is 386 source-local helpers and 383 emitted entry points per dialect and 387 MySQL whole-request routines; these are observed inventories, not project limits. The v1alpha1 JSON schema proves one physical root projection and rejects undeclared root members. | Preserve the language core while M3/M4 extend binding capabilities. A heterogeneous root is a future versioned feature and must first define cross-source discriminator, ordering, cursor, policy, count, and batching semantics. |
-| 3 Reads/policies | Complete for v1alpha1 (2026-09-23) | Uncommitted | PostgreSQL/MySQL packages prove the complete reviewed scalar/computed output and root inventory; typed point keys; point/list/Relay reads; stable forward/backward cursors and tuple ordering; bounded DNF local/computed/one-hop filters; computed/one-hop orders; exact counts/page flags; AST-identity-partitioned relation traversal; fixed 64-parent batching; request-reject policies; bounded statements/rows; repeatable-read request transactions; changed live rows; malformed cursors and context; fail-closed cross-tenant isolation; a physically renamed generator model; and the independent 34-case corpus. The final topology is 473 reachable helpers, 470 entry points per dialect, and 474 MySQL routines. Each dialect transpile action is below the one-minute ceiling. All 654 project tests and focused Titan lowering regressions pass. | None for M3. Preserve this gate while M4 adds custom mutations; broader legacy deletion remains M6 work. |
-| 4 Mutations/auxiliary routes | In progress | Uncommitted | Direct scalar/enum `update` mutation bindings are generated, policy-checked, prevalidated before any serial write, and lock their target row before updating. A mutation may now expose one required authored input object and map reviewed dotted leaf paths to database columns. The installed Commerce proof executes a nested JSON variable and an inline object whose omitted nested name receives its schema default entirely inside PostgreSQL/MySQL routines, then verifies caller rollback. Existing focused transaction tests prove serial execution, pre-execution rejection, staged-effect inspection, atomic rollback after a later-root failure, caller commit, and missing-target behavior. MySQL applies the procedure outcome and `COM_RESET_CONNECTION` only after each request transaction ends. | Nullable/write-null bindings, arbitrary procedure bindings, durable audit/idempotency/outbox, retained auxiliary routes, mutation-registry attestation, and the remaining concurrency contract remain. |
+| 2 Language engine | Complete for v1alpha1 (2026-09-23) | Uncommitted | The bounded Titan-transpiled lexical/typed-AST core owns operation selection, fragment closure, built-in and model-registered conditional directives, schema-wide structural and argument validation, variable/default materialization, canonical `ma1`/`cv1` arguments, field collection, duplicate-response-key checks, coded null/error completion, introspection, and request/deadline bounds for the supported schema surface. Generated metadata drives Query/Mutation, Relay wrappers, scalars, model-declared enums, generated/authored input objects, model-declared interface/union point and static-projection Relay outputs, registered-directive behavior/location/introspection, and general point/root-connection/relation/flat-mutation/authored-mutation-input argument defaults without an HTTP/JVM semantic path. Every database GraphQL error carries a source-selected stable code; lexical failures retain locations and execution failures retain paths. The complete current request ledger bounds typed-input fan-out, introspection expansion, application statements, decoded rows, deadlines, and every shared JSON append plus the final response. Fresh packages pass the portable corpus on both dialects and all 636 JVM tests pass. Current topology is 386 source-local helpers and 383 emitted entry points per dialect and 387 MySQL whole-request routines; these are observed inventories, not project limits. The v1alpha1 JSON schema proves one physical root projection and rejects undeclared root members. | Preserve the language core while M3/M4 extend binding capabilities. A heterogeneous root is a future versioned feature and must first define cross-source discriminator, ordering, cursor, policy, count, and batching semantics. |
+| 3 Reads/policies | Complete for v1alpha1 (2026-09-23) | Uncommitted | PostgreSQL/MySQL packages prove the complete reviewed scalar/computed output and root inventory; typed point keys; point/list/Relay reads; stable forward/backward cursors and tuple ordering; bounded DNF local/computed/one-hop filters; computed/one-hop orders; exact counts/page flags; AST-identity-partitioned relation traversal; fixed 64-parent batching; request-reject policies; bounded statements/rows; repeatable-read request transactions; changed live rows; malformed cursors and context; fail-closed cross-tenant isolation; a physically renamed generator model; and the independent portable corpus. The final topology is 473 reachable helpers, 470 entry points per dialect, and 474 MySQL routines. Each dialect transpile action is below the one-minute ceiling. All 654 project tests and focused Titan lowering regressions pass. | None for M3. Preserve this gate while M4 adds custom mutations; broader legacy deletion remains M6 work. |
+| 4 Mutations/auxiliary routes | Complete for first deployment (2026-09-27) | Uncommitted | Installed Commerce proofs cover prevalidated scalar/enum/nested-input mutations, nullable value/omission/null writes, policy checks, serial locking, rollback, durable receipt/audit/idempotency, source-local procedure handlers, transactional outbox delivery, and HTTP replay after frontend restart on PostgreSQL and MySQL. Reviewed Commerce and management package handlers pass registration, binding, attestation, and installed execution checks. `./gradlew databaseEngineContainerDeploymentIntegrationTest --console=plain` passes 2/2: each dialect installs both packages, runs admin import/validation/artifact/review requests through the containerized frontend and worker, restarts the worker under Docker, publishes an ENFORCE-registered preview from a one-shot container, recreates the frontend, and serves the reviewed operation through the preview URL. | None within M4. No existing service, deployed caller, or cutover exists. Preserve the gate; M5 parity and M6 legacy deletion remain separate milestones. |
 | 5 Frontend/artifacts | In progress | Uncommitted | The bound `database` mode resolves the generated nine-input manifest entry point, forwards the complete request once, and has JAX-RS route evidence for both models and dialects. `DatabaseGraphqlWholeRequestRuntimeTest` asserts exactly one manifest-selected JDBC call and all nine untouched envelope/transport/identity bindings. Reproducible runtime- and package-identity sidecars bind the model, dialect, transpilable engine/generator sources, build config, dependency lock, pinned Titan version, and staged SQL inventory; the public routine checks them before application-data access. PostgreSQL/MySQL Commerce tests prove a stale identity prevents a mutation. The transport validates an explicit PostgreSQL fixed frame or MySQL outcome column without examining GraphQL JSON. Serving configuration now default-denies Java/JDBC/compiled/SQL modes before the historical GET parser; only explicit test/reference wiring permits them. `databaseEngineHttpIntegrationTest` boots Quarkus in database mode against only the generated PostgreSQL package. `databaseHttpFrontendIntegrationTest` extracts the descriptor-backed distribution and runs it as an independent process against both PostgreSQL and MySQL; it proves nullable `variables`/`extensions` envelope members are forwarded as absent input rather than locally coerced, while duplicate JSON members are rejected before an HTTP JSON tree can collapse a variable value. `titanGraphqlVerifyDatabaseHttpFrontendBoundary` verifies its runtime closure. `titanGraphqlVerifyDatabaseHttpFrontendReleaseArtifact` also checks the ZIP's exact reviewed library closure, launcher, and frontend-only class inventory; `titanGraphqlDatabaseEngineReleaseCheck` is the standalone serving release gate. | Legacy-code deletion; custom-mutation registry identity; pooled replacement test. |
 | 6 Architecture removal | In progress | Uncommitted | Standard serving now denies every legacy execution mode before the historical GET parser; the remaining legacy classes are documented as deletion targets. | Delete the legacy engines, modes, parser, and runtime dependencies after database feature parity. |
 | 7 Release | In progress | Uncommitted | `./gradlew titanGraphqlDatabaseEngineReleaseCheck --no-daemon` passed after the token-derived selected-document, fragment-closure, operation-kind, root/field-boundary, and bounded scalar selection-index migration, regenerating, package-verifying, and directly invoking the demo and commerce packages: 2 PostgreSQL demo tests, 2 MySQL demo tests, 7 PostgreSQL commerce tests (including the fixed expected-result corpus), 7 MySQL commerce tests, and 3 isolated standalone-frontend tests all passed. The same gate previously passed after the point-root merge and deadline increment. The MySQL fixture paths now select `public` before the package runtime migration, placing its unqualified helpers beside the generated routines. `./gradlew test --no-daemon` also passed before this corpus/fixture increment. The release task's former package-directory/descriptor input overlap and Gradle-10 task-project deprecation were corrected. | Clean-checkout, independent history scan, all language/read/mutation coverage, architecture deletion, and final commit/push remain. |
@@ -3833,3 +3843,758 @@ comparison proved that the rewrite changed history metadata and topology without
 checkpoint contents. The release gate then validated the rewritten reachable history and the exact
 dependency pins. M4 through M7 remain unresolved; resumption starts with explicit custom mutation
 migration, not further expansion of the completed M3 read surface.
+
+### M4 nullable mutation bindings (partial, 2026-09-23)
+
+The Commerce `setCustomerNickname` and `setCustomerNicknameFlat` mutations bind nullable authored
+input and flat scalar arguments to a reviewed nullable column. The model validator rejects nullable
+key bindings and non-null storage. Generated prevalidation
+retains omission separately from explicit `null`; the update binds presence, null intent, and the
+coerced scalar before the key. An omitted nickname leaves the stored value unchanged, while an
+explicit null writes SQL NULL. The focused installed methods verify literal value, omitted field,
+nullable variable null, and caller rollback on both PostgreSQL and MySQL. The portable corpus
+expectation includes both Mutation introspection fields; its exact method passes on the final
+flat-binding snapshot in both dialects.
+
+The first generated implementation called `PreparedStatement.setNull(int,int)`. Titan `aa068aa`
+rejected that PostgreSQL source with `TITAN-E001` because the JDBC call remained unresolved in the
+entry-point lowering. Its minimal reproducer shape is
+`if (missing || explicitNull) statement.setNull(2, Types.VARCHAR);`; the MySQL transpiler was not
+run on that candidate. The final implementation uses fixed SQL `CASE` branches and unconditional
+Boolean/scalar bindings, which both dialect transpilers and installed packages accept; that write
+implementation did not change Titan or Titan-DSL source. The generator test asserts the fixed SQL shape and absence of
+`setNull` calls.
+
+Evidence commands for the flat-binding snapshot:
+
+```text
+./gradlew titanGraphqlPackageCommerceDatabaseEngine titanGraphqlPackageCommerceMySqlDatabaseEngine --parallel --no-daemon --console=plain
+./gradlew databaseEngineCommerceIntegrationTest --tests 'io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.installedMutationDistinguishesOmittedAndExplicitNullInput' --no-daemon --console=plain
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests 'io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.installedMutationDistinguishesOmittedAndExplicitNullInput' --no-daemon --console=plain
+./gradlew databaseEngineCommerceIntegrationTest --tests 'io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.installedEntryPointMatchesPortableExpectedResultCorpus' --no-daemon --console=plain
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests 'io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.installedProcedureMatchesPortableExpectedResultCorpus' --no-daemon --console=plain
+./gradlew test --no-daemon --console=plain
+```
+
+The package, focused mutation, and corpus commands completed successfully on the flat-binding
+snapshot. The installed methods used fresh package verification and binding. Subsequent installed
+tests expanded nullable payload evidence to Int, Boolean, Float, and enum fields, and added
+transactional receipts and audit. M4 remains partial: outbox/job lifecycle, reviewed procedure
+bodies, management and preview route disposition, and mutation-registry identity still require work.
+
+### M4 row-lock concurrency (partial, 2026-09-23)
+
+Titan's test context now opens a tracked additional connection to the same per-test database on
+either dialect. Each installed Commerce concurrency method holds a customer-row lock in one
+caller-managed transaction and submits a competing `renameCustomer` request on the additional
+connection. PostgreSQL observes the contender's `pg_stat_activity.wait_event_type = 'Lock'`;
+MySQL observes its requesting thread in `performance_schema.data_lock_waits`. After the first
+transaction commits, the competing request returns its own payload and commits the final value.
+These tests prove row-level serialization for the modeled `update` binding; they do not yet prove
+durable idempotency, retry recovery, or registry-wide transaction behavior.
+
+The installed-package commands passed on 2026-09-23:
+
+```text
+./gradlew databaseEngineCommerceIntegrationTest --tests 'io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.installedConcurrentMutationsSerializeOnTheTargetRow' --no-daemon --console=plain
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests 'io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.installedConcurrentMutationsSerializeOnTheTargetRow' --no-daemon --console=plain
+```
+
+The Titan harness change and its focused cross-dialect test live in
+`vendor/titan/titan-runtime-jdbc`; the test passed on 2026-09-23 with
+`./gradlew :titan:titan-runtime-jdbc:integrationTest --tests 'io.titan.runtime.testing.TitanTestExtensionIT.additionalConnectionsShareThePerTestDatabase' --no-daemon --console=plain`.
+
+### M4 nullable mutation payloads (partial, 2026-09-23)
+
+The model validator now permits a nullable assignment to supply its matching stored field as a
+mutation payload and rejects payload names that do not match their bound stored field. The generated
+lock query projects the prior value and an explicit SQL-null marker. When the input omits the
+assignment, response completion uses that locked value; a supplied value uses the coerced input;
+an explicit null renders GraphQL `null`. The Commerce nested and flat nickname mutations prove
+those cases on installed PostgreSQL and MySQL packages, including omission when the stored value
+starts as null. The payload projection uses the existing lock statement, so it does not add an
+application statement or a decoded row to the request ledger.
+
+The current payload snapshot passed these installed-package commands on 2026-09-23:
+
+```text
+./gradlew databaseEngineCommerceIntegrationTest --tests 'io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.installedMutationDistinguishesOmittedAndExplicitNullInput' --no-daemon --console=plain
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests 'io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.installedMutationDistinguishesOmittedAndExplicitNullInput' --no-daemon --console=plain
+```
+
+The `nullable-mutation-payload-sequence` portable corpus case also passed through freshly
+installed PostgreSQL and MySQL packages on 2026-09-23. It compares exact response JSON for a
+supplied nickname, an omitted nickname after that write, and an explicit-null clear in one serial
+mutation operation. The commands were:
+
+```text
+./gradlew databaseEngineCommerceIntegrationTest --tests 'io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.installedEntryPointMatchesPortableExpectedResultCorpus' --no-daemon --console=plain
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests 'io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.installedProcedureMatchesPortableExpectedResultCorpus' --no-daemon --console=plain
+```
+
+The generated value projection selects type-specific JDBC getters for integral, Boolean, decimal,
+and string-backed fields. Later installed PostgreSQL and MySQL tests prove value, omission, and
+explicit-null payloads for nullable Int, Boolean, Float, and declared enum fields in addition to
+String. The expanded portable corpus passes on both dialects. The focused commands are:
+
+```text
+./gradlew databaseEngineCommerceIntegrationTest --tests '*installedNullableIntegerAndBooleanPayloadsDistinguishOmissionFromNull*' --no-daemon --console=plain
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests '*installedNullableIntegerAndBooleanPayloadsDistinguishOmissionFromNull*' --no-daemon --console=plain
+./gradlew databaseEngineCommerceIntegrationTest --tests '*installedNullableFloatAndEnumPayloadsDistinguishOmissionFromNull*' --no-daemon --console=plain
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests '*installedNullableFloatAndEnumPayloadsDistinguishOmissionFromNull*' --no-daemon --console=plain
+```
+
+### M4 durable mutation receipts and audit (partial, 2026-09-24)
+
+The generated mutation path now validates bounded trusted actor, tenant, request, and optional
+idempotency metadata before writing. A keyed request reserves one receipt under a unique
+model/tenant/actor/key scope and stores a SHA-256 fingerprint of the selected operation,
+materialized variables, extensions, and actor role. A committed matching request replays the
+stored JSON without repeating the domain write or audit insert; conflicting reuse returns
+`IDEMPOTENCY_CONFLICT`. Replay also requires the receipt's recorded package identity to match
+the installed package; a receipt from another package is rejected rather than returned under
+changed executable code. Every successful mutation inserts an audit row, even without an
+idempotency key. The receipt, audit row, and domain update share the caller-owned transaction.
+The HTTP adapters forward `Idempotency-Key` only when trusted context headers are enabled;
+ambiguous connection failures are not retried automatically.
+
+Focused installed PostgreSQL/MySQL tests prove that two named mutations in one document cannot
+share a keyed receipt across different selected operations, and that a receipt bearing a
+different package identity returns `IDEMPOTENCY_CONFLICT` without another domain write or
+audit row. Both dialect packages were regenerated and installed from scratch for the
+package-identity check.
+
+Both Commerce packages transpile, package, and install from scratch with the mutation-state
+tables. The focused `installedMutationReceiptAndAuditCommitAtomically` test passes separately on
+PostgreSQL and MySQL. It proves commit, replay from a new connection, conflicting reuse,
+prevalidation with no receipt or audit row, unkeyed audit insertion, caller rollback, and retry
+after rollback. The complete PostgreSQL Commerce integration class passes on the current model.
+The complete MySQL Commerce integration class also passes on the current package under
+`./gradlew databaseEngineCommerceMySqlIntegrationTest --console=plain`. Its earlier full run
+exposed a test-isolation error in the unkeyed audit assertion: the count included rows committed
+by earlier methods. The assertion now compares the count before and after its own request, and
+the corrected focused method and full class both pass.
+
+The focused installed commands were:
+
+```text
+./gradlew databaseEngineCommerceIntegrationTest --tests '*installedMutationReceiptAndAuditCommitAtomically*' --no-daemon --console=plain
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests '*installedMutationReceiptAndAuditCommitAtomically*' --no-daemon --console=plain
+```
+
+This is not yet the entire M4 durability gate. The Commerce outbox proof below covers one
+transactional event and worker lifecycle, not general control-plane jobs. The receipt contains
+only a fingerprint and bounded response, not raw input; the audit row contains identity metadata
+and the fingerprint, not request contents.
+
+The focused `installedConcurrentIdempotencyKeyCanBeRetriedAfterTheWinnerCommits` test also
+passes on each dialect. It holds the first keyed mutation uncommitted, observes the second
+request waiting on a database lock, commits the winner, and retries on a fresh transaction.
+The final response matches the committed receipt, with one receipt and one audit row. The
+test permits either immediate replay or a database duplicate-key error from the waiting call,
+then proves recovery by retry. The client does not automatically retry that error. These
+commands produced the installed evidence:
+
+```text
+./gradlew databaseEngineCommerceIntegrationTest --tests '*installedConcurrentIdempotencyKeyCanBeRetriedAfterTheWinnerCommits*' --no-daemon --console=plain
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests '*installedConcurrentIdempotencyKeyCanBeRetriedAfterTheWinnerCommits*' --no-daemon --console=plain
+```
+
+The `installedCommittedMutationCanBeRetriedWhenItsResponseIsLost` method passes on both dialects.
+It discards the first completed response, verifies the domain row, receipt, and audit were
+committed, then retries through an additional connection. The replay returns the first mutation
+result while receipt and audit counts remain one. This simulates a response lost after the
+database committed; it does not sever an HTTP/TCP connection or restart the serving process.
+
+```text
+./gradlew databaseEngineCommerceIntegrationTest --tests '*installedCommittedMutationCanBeRetriedWhenItsResponseIsLost*' --no-daemon --console=plain
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests '*installedCommittedMutationCanBeRetriedWhenItsResponseIsLost*' --no-daemon --console=plain
+```
+
+The `databaseEngineCommerceHttpRestartIntegrationTest` task deploys the bound Commerce package
+to PostgreSQL and MySQL containers and runs the distribution's standalone HTTP frontend as a
+child process. Each dialect test sends a complete keyed mutation over HTTP, closes its request
+output without reading the response, and confirms that the domain row, receipt, and audit
+committed. The test stops that frontend, starts a new process against the same database, and
+retries the same HTTP request. The retry returns the stored result with one receipt and one audit
+row. This proves recovery when the client never consumes the first HTTP response after commit;
+it does not prove what happens if a connection fails before the server commits.
+
+```text
+./gradlew databaseEngineCommerceHttpRestartIntegrationTest --no-daemon --console=plain
+```
+
+General control-plane job lifecycle was unverified at this checkpoint. A model-identity unit test proves that
+changing a reviewed mutation column changes the semantic hash, but registry-wide attestation
+remains open.
+
+### M4 reviewed procedure handler lowering (partial)
+
+Titan now omits Java `Connection` and `DataSource` infrastructure arguments from a statement-level
+call to a source-local helper, matching the SQL routine signature it emits. The previous
+statement-level lowering passed `connection` into a helper whose SQL signature omitted it.
+PostgreSQL reported an unknown `connection` column, while MySQL reported an extra argument.
+The focused Titan compiler test covers a helper in a separate source file. The installed Titan
+test calls that helper's bound JDBC update on both databases, commits the first call, and rolls
+back the second call. The full Titan transpiler unit suite and the Commerce package transpilation
+tasks pass with this dependency fix.
+
+```text
+./gradlew :titan:titan-transpiler:test --no-daemon --console=plain
+./gradlew :titan:titan-transpiler:integrationTest --tests '*ReviewedHandlerDeployabilityIT*' --no-daemon --console=plain
+./gradlew titanGraphqlPackageCommerceDatabaseEngine titanGraphqlPackageCommerceMySqlDatabaseEngine --no-daemon --console=plain
+```
+
+The Commerce model now also declares a reviewed `procedure` mutation whose source-local handler
+is part of both package runtime identities. Generated dispatch applies the existing argument,
+policy, target-lock, statement, and row-budget checks; it invokes the void handler in the caller's
+transaction and reads payload values back from the target row. The canonical model identity now
+attests the handler class, method, and declared cost alongside the hashed handler source. The
+Commerce build checks each procedure's source path and compiled `Connection`-plus-argument
+signature before transpilation. Its runtime identity hashes the handler source tree rather than
+one named source file. The handler's domain update and change-record insert show that the payload
+reflects the transformed stored value, not the argument. Focused installed PostgreSQL and MySQL tests prove commit, rollback
+when a later mutation root fails, and a generic GraphQL execution error when the handler throws
+a reviewed `SQLException` after staging writes. The transport rolls that request back without
+exposing the handler's exception text.
+
+Both packages transpile, pass scratch install verification, and pass the portable expected-result
+corpus with the new mutation in introspection.
+
+The Commerce package also registers a procedure mutation using the authored
+`SetCustomerNicknameInput` object and its nested `patch.nickname` binding. Installed PostgreSQL
+and MySQL tests confirm that an omitted nested field preserves the stored nickname, a supplied
+value changes it, an explicit null clears it, and a denied role does not write. Both portable
+corpus runs pass with the new mutation in introspection. This extends the procedure proof to
+typed nested inputs; it does not close general procedure registration across models.
+
+A complete Commerce integration run exposed a mismatch between a typed-scalar filter request and
+the reviewed model: the test queried `CustomerFilter.rating.in`, but `Customer.rating` had no
+filter declaration. The model now declares `eq` and `in` for that stored field. Regenerated
+PostgreSQL and MySQL packages pass the exact formerly failing request; the complete PostgreSQL
+class also passes. This is a model-binding correction, not an implicit filter added by the
+runtime.
+
+The build verifier also rejects a public source-local database handler that has no procedure
+declaration in the model. Installed Commerce tests compare the complete declared mutation-name
+set with their request inventory, then execute every declared root against fresh PostgreSQL and
+MySQL packages. The generated package exposes `mutation_registry_identity`, a hash of the
+canonical mutation declarations covering typed bindings, policies, payloads, and procedure
+handler contracts. The installed tests compare this routine with the reviewed Commerce model;
+the package SQL identity also covers the registry routine. The installed management test now
+compares its declaration names with both introspection and successfully executed mutation roots
+on PostgreSQL and MySQL. It also compares the installed registry routine with the reviewed
+management model. These checks cover the current reviewed Commerce and management packages.
+
+The handler verifier accepts the reviewed package models as an aggregate before it scans the
+shared handler source tree. A unit test registers separate compiled handlers from separate model
+documents, exercises the command-line entry point, and confirms that omitting the second model
+rejects its source handler as unregistered. The package build supplies the Commerce and management
+models together, and both package generators include reviewed handler sources in their runtime
+identity and transpilation inputs. The package binding step checks exact prevalidation and
+execution dispatch names, reachable handler procedures, SQL source hashes, and registry identity
+for Commerce, management, and candidate preview packages. The installed coexistence test compares
+each schema-qualified registry routine with its own reviewed model hash. This attests the declared
+package mutations; it does not replace the legacy management mutation inventory or migrate its callers.
+
+```text
+./gradlew test --tests 'io.titan.graphql.model.TitanGraphqlModelDocumentTest' --tests 'io.titan.graphql.validation.TitanGraphqlModelDocumentValidatorTest' --tests 'io.titan.graphql.codegen.TitanGraphqlDatabaseEngineSourceGeneratorTest'
+./gradlew titanGraphqlVerifyDatabaseMutationHandlers test --tests 'io.titan.graphql.codegen.TitanGraphqlMutationHandlerVerifierCliTest'
+./gradlew databaseEngineCommerceIntegrationTest --tests '*installedPackageDispatchesEveryDeclaredCommerceMutation'
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests '*installedPackageDispatchesEveryDeclaredCommerceMutation'
+./gradlew databaseEngineCommerceIntegrationTest --tests '*procedureMutationReturnsStoredValuesAndRollsBackLaterFailure'
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests '*procedureMutationReturnsStoredValuesAndRollsBackLaterFailure'
+./gradlew databaseEngineCommerceIntegrationTest --tests '*installedEntryPointMatchesPortableExpectedResultCorpus'
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests '*installedProcedureMatchesPortableExpectedResultCorpus'
+```
+
+The Commerce handler also inserts one `commerce.customer_renamed` outbox event in the same
+transaction as the domain writes. A request that fails in the handler after those staged writes,
+or in a later mutation root, leaves no additional event. A committed keyed replay returns the
+stored response without inserting a second event. The control-plane worker claims events
+with a bounded lease and row lock, calls delivery outside the claim transaction, and acknowledges
+only a matching live lease token. Installed tests on both databases prove locked-row skipping,
+expired-lease reclamation, stale-token rejection, explicit release, callback-failure release and
+retry, and successful acknowledgment. A crash after external delivery but before acknowledgment
+can deliver the event again, so consumers must be idempotent. This is a domain-event proof, not
+a general job runner.
+
+This is one source-local procedure binding, not a general registry. Titan emits write-capable
+source-local helpers as void stored procedures on MySQL. The generated catch recognizes the
+SQLSTATE for an explicitly thrown `SQLException`; it does not yet normalize every vendor SQL
+error or provide domain-specific public error codes. Handler statement and row maxima are reviewed
+reservations, not dynamic measurement inside the helper. General control-plane jobs and retained
+management routes remain M4 work.
+
+Whole-request package binding compares each reviewed source-local procedure handler with Titan's
+hash-checked object inventory, rejects missing or extra handler routines, and walks dependencies
+from `execute_graphql_request` to reject unreachable handlers. It also hashes the dispatch,
+registry-identity, and handler SQL embedded in the install script against Titan's manifest and
+object inventory. The packaged prevalidation and execution branches must each match the reviewed
+mutation names; each generated update branch must target its modeled table, assignments, and key
+predicate. The packaged registry identity must match the reviewed model's mutation registry hash.
+Preview staging and publication repeat those checks against the selected draft. On 2026-09-26,
+`./gradlew titanGraphqlBindCommerceDatabaseEnginePackage titanGraphqlBindCommerceMySqlDatabaseEnginePackage titanGraphqlBindManagementPostgreSqlDatabaseEnginePackage titanGraphqlBindManagementMySqlDatabaseEnginePackage --console=plain`
+passed with scratch-verified Commerce and management packages on PostgreSQL and MySQL after the
+dispatch and SQL-source checks were added. This closes package-side mutation dispatch attestation;
+installed retained-route parity and route replacement remain open. The legacy synchronous artifact
+path still accepts a carrier package without a whole-request routine, so it does not run this
+attestor.
+On 2026-09-26, `./gradlew test controlJobWorkerDistribution --console=plain` passed, and
+`./gradlew databaseEnginePreviewCandidateIntegrationTest
+-PtitanGraphqlPreviewModel=src/test/resources/graphql/demo-blog.titan.graphql.yaml
+-PtitanGraphqlPreviewId=preview-proof --console=plain` passed on PostgreSQL and MySQL after the
+SQL-source and dispatch checks were added. The latter exercises candidate binding, staging, and
+publication through the selected package.
+After the prevalidation and key-predicate checks were added on 2026-09-26,
+`./gradlew test controlJobWorkerDistribution titanGraphqlBindCommerceDatabaseEnginePackage
+titanGraphqlBindCommerceMySqlDatabaseEnginePackage --console=plain` passed with scratch-verified
+Commerce packages on both dialects. The later container gate closed the remaining M4 job
+orchestration and first-deployment admin/preview route activation on 2026-09-27. No service or
+callers currently run, so no caller migration or cutover applies.
+
+### M4 control-plane artifact jobs (complete for first deployment, 2026-09-27)
+
+The database package now installs `titan_graphql_control_jobs` beside the outbox. The
+control-plane queue requires a caller-owned transaction to enqueue a job. Its request key
+deduplicates the same type and payload; reuse with a different payload fails. Workers claim
+committed jobs through `FOR UPDATE SKIP LOCKED`, record an attempt and bounded lease, and
+complete, retry, or fail only while they hold the live lease token. The artifact-generation runner
+claims only `artifact.generate` jobs and calls the extracted artifact-generation service after
+the request commits. The service is shared with the existing management mutation, so the legacy
+`generateModelArtifacts` route still performs work synchronously.
+
+The installed `controlPlaneJobLifecycleIsDurableAndLeaseFenced` tests pass on PostgreSQL and
+MySQL. They prove rollback visibility, duplicate-key replay and conflict, locked-row skipping,
+lease expiry and stale-token rejection, retry and terminal failure, successful result persistence,
+and an artifact-generation job against the management model fixture. The artifact-generation
+test uses an in-memory management store; it does not prove atomic publication of management
+records with job completion in a production store. `TitanGraphqlArtifactJobCli` defines the
+control-plane commands in its `usage()` method. The command reads
+database credentials from `TITAN_GRAPHQL_CONTROL_DB_USER` and
+`TITAN_GRAPHQL_CONTROL_DB_PASSWORD`. Its management-store argument accepts a transaction-log
+path for `run-one`, or `jdbc`; the latter requires the management schema, routines, and
+`management.graphql_product_state` table on the same database server as the control-job table.
+The continuous `run-worker` and `check-worker-ready` commands require `jdbc`, because only JDBC
+management state can publish artifacts and complete the job in the same transaction. File-backed
+`run-one` remains available for migration and recovery tests but has a split commit boundary.
+The command does not import file-backed drafts into JDBC management state. An operator must move
+each draft needed by a pending job into that state before switching its worker to `jdbc`; a job
+whose draft exists only in the file store cannot complete through the continuous worker.
+The runner renews its fenced claim after artifact preparation and before publication. Renewal
+requires the original token and an unexpired lease; a worker whose claim fails this check exits
+without publishing the prepared artifact. The packaged `run-worker` command also renews the
+claim during preparation through separate database connections. A renewal failure prevents
+publication, and the final renewal still checks the lease before writes. The installed lifecycle
+test covers renewal, rejection of a stale token, an expired preparation path without a heartbeat,
+and successful preparation longer than the initial lease with a heartbeat on both dialects.
+The worker opens fresh management connections and reloads product state only after claiming a
+job. `databaseEngineControlJobRestartIntegrationTest` starts
+separate command processes to request, inspect, execute, inspect, and replay the same job against
+each dialect. It reloads the file-backed management store and verifies the artifact reference.
+The same task also abandons a lease after artifact generation writes the file-backed management
+store, then reclaims and completes that job in another command process without changing the
+artifact reference. This proves retry after a completed file management write and lost
+acknowledgment. Artifact generation now
+records its artifact set, draft, and evidence in one product-state journal entry. When GAP-005
+metadata is available, Titan seeds the core draft and artifact reference in one file-log batch
+or JDBC transaction. The file-backed store still commits the core batch before the product-state
+entry; a fault-path test interrupts between them and proves replay repairs the missing product
+records. In JDBC mode the core draft/reference seed and product-state entry now share one
+caller-owned transaction. A PostgreSQL/MySQL fault test removes the product table before
+publication and proves that neither core record commits; retry publishes both core records and
+the product entry. The JDBC artifact worker now prepares generation before publication, then
+updates its live job lease, seeds the core draft/reference, and appends product state in one
+transaction. The packaged restart task faults product publication after the job update on both
+dialects; the job remains running, no new artifact state commits, and retry commits the job and
+artifacts together. File-backed job completion remains a separate commit. The file product-state
+journal now forces complete newline-terminated entries to disk. On reload or append, it retains
+an unterminated tail in a separate backup before truncating that tail; a complete but malformed
+entry still fails startup. The focused torn-tail test proves recovery and retry, not atomicity
+between the core file log, product journal, and job state. The opt-in JDBC management store
+persists the GraphQL product-state journal in `management.graphql_product_state`. A fresh store
+instance reloads the complete imported
+model source, model wrapper, validation report, and paired generated artifact/draft on PostgreSQL
+and MySQL. The packaged `titan-graphql-control install-management` command installs the Titan
+management schema, routines, and product-state journal before serving. The runtime JDBC factory
+verifies those objects without running DDL. The installer rejects a partial core installation.
+The explicit packaged `repair-management` command checks the columns, SQL types, nullability,
+and primary key of each existing core table against the bundled DDL. It checks the named index
+layout, creates missing schema objects, reinstalls routines if any are missing, and verifies the
+result. It refuses an incompatible existing table or index before changing missing objects.
+Repair requires an auto-commit connection and must run with serving stopped because MySQL DDL
+and routine replacement do not share a rollback boundary. The focused
+`GraphqlJdbcManagementStoreIT` repair tests pass on PostgreSQL and MySQL with a retained row, a
+missing routine, repeated repair, and an incompatible partial table. The packaged restart task
+invokes `repair-management` after dropping a routine before continuing the JDBC worker flow.
+Automated production rollout remains open.
+`controlJobWorkerDistribution` packages a
+separate runnable worker ZIP. Its `run-worker` command polls for committed jobs, uses fresh
+database connections for queue operations and lease renewal, reloads management state after
+each claim, and exits on an uncaught database or
+processing error so a process supervisor can restart it. The restart test extracts this ZIP,
+starts its launcher, submits another job after startup, and verifies completion on both
+dialects with the JDBC management store. The packaged CLI still exercises file-backed `run-one`
+recovery, while both continuous-worker commands reject a file-backed store before opening a
+database connection. The `check-worker-ready` command and worker startup verify that the
+control-job table exposes the columns the queue uses and that the JDBC management schema is
+installed. The packaged restart test proves `READY` in JDBC mode and rejects a control-job table
+missing a required column on both dialects. Preflight also rejects a missing `job_id` primary key
+or `(job_type, request_key)` uniqueness constraint, including before the direct job-request
+command can enqueue.
+The worker now also checks the named status constraint and the ordered
+`(status, lease_until, created_at, job_id)` ready index before starting. The packaged restart
+test removes each in turn and confirms `check-worker-ready` refuses the drifted schema on
+PostgreSQL and MySQL. The first full run exposed a JDBC catalog/schema lookup mistake; after
+correcting it, `./gradlew databaseEngineControlJobRestartIntegrationTest --console=plain
+-x titanGraphqlVerifyCommerceDatabaseEngineInstall
+-x titanGraphqlVerifyCommerceMySqlDatabaseEngineInstall` passed. The excluded scratch
+package-install gates passed in the first run. At that proof point, no deployment supervisor or
+rollout was configured. The
+packaged restart test also injects a file product-journal append failure after
+the core draft log commits. It observes a pending job and a core-only write, reloads the store,
+then retries the job and verifies a completed result without a duplicate product-journal generation entry
+on PostgreSQL and MySQL. This proves retry repair for that split; it does not make the separate
+files atomically committed. Production job supervision and management GraphQL route replacement
+remain open.
+
+The packaged `serve-api` command exposes a separate bearer-protected control-plane HTTP API.
+It verifies the installed JDBC management schema and control-job table before accepting traffic.
+`POST /artifact-jobs` requires a request key, draft ID, generation profile, and introspection
+choice; it commits the queued request before returning a job ID and `Location`. A repeated key
+with the same payload returns that job, and conflicting reuse returns HTTP 409. Authenticated
+`GET /artifact-jobs/{id}` returns the job status, result object, and failure code. The API
+accepts only loopback bind addresses, including values from `TITAN_GRAPHQL_CONTROL_API_HOST`,
+and it requires `TITAN_GRAPHQL_CONTROL_API_TOKEN`. Remote clients require an operator-managed
+TLS proxy on the same host. The API performs no artifact generation in the HTTP process. The
+packaged restart test exercises authorization, request replay/conflict, status polling, and
+worker completion on PostgreSQL and MySQL.
+
+The current `generateModelArtifacts` GraphQL mutation returns artifact data immediately. A
+client moving to the control-plane HTTP API must submit a keyed request and poll its returned
+job ID for completion. No callers currently use the synchronous GraphQL route; its embedded
+handler remains until database route permissions and retained operation parity are verified.
+The reviewed management database package also declares `requestArtifactGeneration`. Its caller
+supplies a UUID job ID, draft ID, generation profile, and introspection choice. The mutation
+returns the job ID and typed request fields after its reviewed procedure inserts the management
+request record and `artifact.generate` control job in one transaction. An authenticated client
+then polls `controlJob(id: ...)` through the same database-backed admin GraphQL route for status,
+attempt count, result JSON, or failure code. The client must use the same GraphQL idempotency key
+when retrying an ambiguous request; the job ID also serves as the control-job request key.
+The installed management integration test submits the mutation for a validated JDBC-backed draft,
+runs the artifact worker against the resulting job, and reads the succeeded status and artifact-set
+result through `controlJob` on PostgreSQL and MySQL. The standalone HTTP integration test verifies
+submission and pending-status polling through `/admin/graphql` on both dialects.
+Management installation and preflight reject an artifact-request table without the `job_id`
+primary key, so a partial or altered table cannot silently weaken request uniqueness.
+This is an additive migration path, not yet permission to remove the synchronous JVM mutation.
+The database management package also declares `requestModelValidation(id: ..., draftId: ...)`.
+The client supplies a UUID job ID and a GraphQL idempotency key, receives a typed request, and
+polls `controlJob(id: ...)`. A succeeded job's `resultJson` contains the validation outcome fields
+returned by the synchronous `validateModelDraft` mutation. The control-plane worker parses and
+validates the draft outside GraphQL serving. With a JDBC management store, the worker commits the
+core draft update, product-state validation report and draft records, and succeeded job result in
+one transaction. The installed direct test on PostgreSQL and MySQL hides the product-state table
+during publication, verifies that the job returns to pending with its draft unchanged, restores
+the table, and verifies that a retry succeeds. The synchronous mutation remains until clients
+adopt the request-and-poll contract and route permissions are verified.
+Management installation and preflight also reject a validation-request table without its
+`job_id` primary key on PostgreSQL and MySQL.
+The standalone HTTP test submits the validation mutation through the authenticated admin route
+on PostgreSQL and MySQL. The packaged continuous-worker restart test processes validation and
+import jobs alongside an artifact job on both dialects.
+The installed evidence command is:
+
+```text
+./gradlew databaseEngineCommerceIntegrationTest --tests '*controlPlaneJobLifecycleIsDurableAndLeaseFenced'
+./gradlew databaseEngineCommerceMySqlIntegrationTest --tests '*controlPlaneJobLifecycleIsDurableAndLeaseFenced'
+./gradlew databaseEngineControlJobRestartIntegrationTest
+./gradlew databaseEngineManagementIntegrationTest
+./gradlew databaseEngineManagementHttpIntegrationTest
+./gradlew integrationTest --tests '*GraphqlJdbcManagementStoreIT.interruptedManagementInstallationCanBeRepairedWithoutLosingRows' --tests '*GraphqlJdbcManagementStoreIT.partialManagementSchemaCannotPassInstallation'
+./gradlew controlJobWorkerDistribution
+./gradlew test --tests '*generatedArtifactAndDraftPublishAsOneProductJournalEntry' --tests '*generatedArtifactRetryRepairsInterruptedProductPublication'
+./gradlew test --tests '*tornProductJournalTailIsRetainedAndRetryCanPublish' --tests '*completeMalformedProductJournalEntryFailsClosed'
+./gradlew :titan:titan-management:test --tests '*artifactGenerationSeedsCommitAsOneFileBatch' :titan:titan-management:integrationTest --tests '*artifactGenerationSeedsDraftAndReferenceTogether'
+./gradlew :titan:titan-management:integrationTest --tests '*callerTransactionCanRollBackArtifactGenerationSeeds'
+./gradlew integrationTest --tests '*GraphqlJdbcManagementStoreIT'
+```
+
+`deployment/compose.yaml` now requests Docker restart supervision for the separate HTTP frontend
+and control-job worker images. The images consume the verified ZIP distributions and run as
+unprivileged users. `./gradlew titanGraphqlVerifyDatabaseHttpFrontendReleaseArtifact
+controlJobWorkerDistribution --console=plain`, `docker compose -f deployment/compose.yaml
+config --quiet`, and the Compose image build passed for the first-deployment configuration.
+`./gradlew databaseEngineContainerDeploymentIntegrationTest --console=plain` passed 2/2 on
+2026-09-27. It installs distinct application and management packages in fresh PostgreSQL and
+MySQL databases and runs both Compose services as unprivileged containers. The admin route
+imports a draft, observes its successful job receipt, kills the worker's Java process, confirms
+Docker restarted the container, and validates the draft through the restarted worker. It then
+imports and validates the reviewed application model, generates artifacts through the mounted
+draft-to-package registry, and approves an observed operation through the worker. A one-shot
+control-plane container publishes an ENFORCE-registered preview, the frontend is recreated with
+the published registry, and the preview URL serves the approved operation. This is first-deployment
+evidence, not a migration or cutover; no service or callers currently exist.
+
+### M4 management database package (complete for first deployment, 2026-09-27)
+
+The reviewed `management-database.titan.graphql.yaml` model binds management draft, control-job,
+observed-operation, and operation-registry point reads, plus artifact, validation, import, and
+review request procedures, to installed management and control-job tables. These roots reject
+callers outside the reviewed management roles. PostgreSQL and MySQL each
+transpile and verify a separate `management_graphql.execute_graphql_request` package with its
+own model, runtime, and package identity. The installed coexistence test applies the packaged
+migrations beside the Commerce package, reads a draft as an operator, rejects a reader, and
+then reads Commerce through its original entry point. Titan's PostgreSQL emitter now pins
+non-public invoker routines to their installed schema before `public`; the MySQL management
+package installs its required integer-division helper in the routine database. These are
+package-level name-resolution fixes, not caller search-path requirements.
+The management package creates its typed request, review-serialization, observed-operation, and
+operation-registry projection tables during installation;
+the standalone HTTP test creates only the external management-draft fixture before applying the
+package and then submits artifact, validation, import, and review requests on both dialects.
+
+This is a database-engine projection proof, not complete first-deployment route verification.
+The Quarkus admin and preview HTTP endpoints require their database descriptor or registry and
+return HTTP 503 when the binding is absent. The embedded Java runtime still retains its legacy
+paths. The first-deployment admin contract uses request IDs and job-result polling; with no
+existing callers, it need not reproduce synchronous legacy payloads. The old management data
+model declares query roots but returns `UNSUPPORTED_OPERATION` for their execution, so M4 does
+not add database implementations for those unused shapes. The installed proof is
+`./gradlew databaseEngineManagementIntegrationTest`.
+`GraphqlManagementMutationSupport.withManagementMutations` defines the five-operation legacy
+mutation inventory. Each operation now has a database-backed request binding or an explicit
+control-plane job; deleting the embedded legacy implementation is an M6 task.
+
+Dogfood first-deployment ledger:
+
+| Retained operation | Database path | First-deployment requirement |
+| --- | --- | --- |
+| `importModelDocument` | `requestModelImport` enqueues `model.import`; the worker publishes the Titan draft and GraphQL product state atomically. | Prove request ID and terminal `controlJob` result polling through the containerized admin endpoint. |
+| `validateModelDraft` | `requestModelValidation` enqueues `model.validate`. | Prove the terminal result and failure/retry semantics through the containerized admin endpoint. |
+| `generateModelArtifacts` | `requestArtifactGeneration` enqueues `artifact.generate`. The worker can select an exact package for the claimed draft through a deployment-owned draft-to-package registry. | Prove the terminal result through the containerized admin endpoint; the containerized worker and artifact publication must use a deployment-owned package registry. |
+| `approveObservedOperation`, `rejectObservedOperation` | `requestObservedOperationReview` enqueues `operation.review` with trusted reviewer context; the worker commits the status, registry journal entry, projection, and successful job receipt together. A database mutex serializes registry decisions across store instances. | Prove request ID and terminal job polling through the containerized admin endpoint and its worker. |
+| Management queries | The database package binds `modelDraft`, `controlJob`, `observedOperation`, and `operationRegistry` point reads. The legacy schema declares more management roots, but its `GraphqlManagementDataModel.execute` returns `UNSUPPORTED_OPERATION` for all queries. | Keep the functional database point reads; do not implement legacy roots that always returned `UNSUPPORTED_OPERATION`. |
+| Preview GraphQL | The standalone frontend and opt-in Quarkus route can bind a preview ID to a fixed database descriptor supplied in a deployment registry. Unknown IDs fail without JVM fallback in database mode. Both hosts require a matching descriptor build ID, expiration, registry ID, and deployment seal and return HTTP 410 when `preview-expires-at` has passed; the Quarkus route re-reads mappings per request, while the standalone host requires restart for replacement. Durable preview publication requires a matching ENFORCE registry and future expiry. The preview deployment publisher derives a descriptor from verified package metadata, checks its model and artifact binding against the recorded preview, probes the installed whole-request routine, compares the installed package identity and registry projection, and atomically switches the ID mapping after writing an immutable descriptor. The control-plane `publish-preview` command supplies a durable draft-based handoff to that publisher. A validated JDBC draft can now be exported and built into an isolated per-source candidate package; explicit tasks scratch-verify and install that package on a selected database. Both HTTP hosts check the installed package and full registry projection against the seal inside each request transaction before routine invocation. Installed management-package fixtures prove post-publication tampering fails on PostgreSQL and MySQL through both preview routes. | Coordinate draft export, candidate build/install, artifact generation, ENFORCE registry publication, and live activation; then retire the process-local `GraphqlPreviewRuntimeRouter` path. |
+
+The installed database, standalone HTTP, and container deployment tests prove the new serving seam. The management
+integration test also exercises `GraphqlAdminHttpResource` against the installed package on both
+dialects when `titan.graphql.admin.database-descriptor` is configured; a database failure returns
+HTTP 503 without JVM fallback. A PostgreSQL-backed Quarkus test now exercises the public
+`/admin/graphql` URL with the installed management package: bearer authentication, a draft read,
+validation-job enqueue, pending-job polling, worker completion, and terminal-result polling. The
+worker commits the Titan draft status transition in the same JDBC transaction as its job receipt
+and product-state journal entry; an installed PostgreSQL/MySQL test checks that the database GraphQL
+draft projection changes from `imported` to `validated`. The same test interrupts product-state
+publication after the status transition, confirms the draft remains `imported` and the job remains
+pending, then retries to completion. The Quarkus admin and preview HTTP entry points return HTTP
+503 when their database descriptor or registry is unset, even if the process has a
+legacy JVM candidate. The first container deployment now has bound descriptors,
+Docker-supervised worker jobs, and activation of a published preview candidate on both dialects.
+No caller migration applies.
+
+The admin and preview resource request methods now reject an absent database binding even when
+called without the public HTTP method. They no longer invoke the JVM management runtime or the
+process-local preview router. Legacy-runtime assertions use test-only clients, while a direct
+resource regression checks the unavailable response. `./gradlew test --console=plain`,
+`./gradlew databaseEngineManagementIntegrationTest --tests
+'io.titan.graphql.ManagementDatabaseGraphqlHttpIT' --console=plain`, and
+`./gradlew databaseEnginePreviewCandidateIntegrationTest
+-PtitanGraphqlPreviewModel=src/test/resources/graphql/demo-blog.titan.graphql.yaml
+-PtitanGraphqlPreviewId=preview-proof --tests
+'io.titan.graphql.PreviewCandidateGraphqlHttpIT' --console=plain` pass with installed package
+checks. The embedded legacy runtimes and their direct contract tests remain for later deletion;
+this change does not migrate deployed callers or supervise a production worker.
+
+On 2026-09-26, `./gradlew test --console=plain` passed after the Quarkus admin and preview HTTP
+entry points began rejecting absent database bindings. The Quarkus preview test registers a
+process-local candidate and proves that the public URL still returns HTTP 503; the focused
+`./gradlew test --tests io.titan.graphql.GraphqlPreviewRuntimeRouterTest --console=plain` run
+also proves this for GET. The configured-descriptor path remained live on PostgreSQL and MySQL:
+`./gradlew databaseEngineManagementIntegrationTest --tests
+'*ManagementDatabaseGraphqlEngineIT.installedRegistryEnforcesOrderedDocumentAndScopeDecisions'
+--tests '*ManagementDatabaseGraphqlEngineIT.verifiedPreviewPublicationBindsPackageAndReplacesRegistryMapping'
+--console=plain` passed. These results remove the HTTP JVM fallback but do not prove worker
+orchestration, migrated production callers, or successful serving in a production deployment.
+`./gradlew databaseEngineManagementIntegrationTest --tests
+io.titan.graphql.ManagementDatabaseGraphqlHttpIT --console=plain` passed with the scratch package
+install checks enabled. Its PostgreSQL fixture applies the mutation-state, outbox, and control-job
+migrations before the management package and exercises the authenticated Quarkus URL from draft
+read through validation enqueue and pending-job read. The expanded test runs the existing validation
+worker and reads its successful result and updated draft status through the same URL. The focused
+`ManagementDatabaseGraphqlEngineIT.boundManagementReadsAndArtifactRequestCoexistWithCommerce`
+method also passed on PostgreSQL and MySQL after its imported-to-validated projection assertion
+was added. `./gradlew test --console=plain` passed after these changes.
+
+The legacy observed-operation review store stages its status and registry change before
+writing one `operationReview` journal entry. A failed append leaves both in-memory values unchanged;
+replay restores both values from the same entry. The JDBC path now locks a database review mutex,
+reloads the current registry under that lock, and writes the projection and combined journal entry
+in one transaction. The database GraphQL review request is policy-checked, carries reviewer identity
+only from trusted context, and queues a typed control job. Its worker completes the job in the same
+transaction as the review decision. Installed PostgreSQL/MySQL tests prove request replay, denied
+roles, invalid decisions, worker completion, a fresh database read of the changed status, and
+transactional rollback after an injected journal-append failure before a successful retry.
+Focused JDBC tests prove failure/retry/reload and preservation of two concurrent registry decisions.
+The store projects registry mode and the complete registry document into
+`management.graphql_operation_registries`, and it maintains indexed decision rows in
+`management.graphql_registry_operations` in the same transaction. Startup backfills missing rows
+from journal-only installations, and an operator mode change updates both projections. The
+installed management package reads the registry header through `operationRegistry` with the same
+role policy as other management roots. Each indexed decision retains its registry-list position,
+so the serving engine can preserve first-match precedence while looking up candidate documents
+without loading the complete registry into each request. The cross-dialect concurrent-review test
+checks that indexed positions and operation IDs match the recovered registry order.
+Each row also retains a digest of its exact document, allowing the generated serving routine to
+look up hash or document candidates without a full registry read. A deployment-owned
+`operation-registry-id` binds the routine to one registry; it hashes the original request document,
+applies operation-name and role/client scopes in registry order, returns an ENFORCE rejection before
+mutation execution, and adds a WARN extension to successful completed responses. The installed
+`ManagementDatabaseGraphqlEngineIT.installedRegistryEnforcesOrderedDocumentAndScopeDecisions`
+test exercises those decisions, first-match order, a blocked control-job write, and the configured
+Quarkus admin route on PostgreSQL and MySQL. Requests without a deployment-bound registry retain
+the existing unguarded path. `databaseEngineManagementHttpIntegrationTest` launches the packaged
+frontend against the same database before and after a process restart; a persisted registry mode
+change moves the request from WARN to ENFORCE on PostgreSQL and MySQL. First-deployment registry
+binding, worker orchestration, and preview candidate publication remain open.
+`databaseEngineManagementIntegrationTest` also publishes approved and rejected decisions through
+review jobs, changes the durable registry to ENFORCE, and executes those documents through fresh
+database connections on both dialects. That proof joins the review job to serving, but it does
+not restart the review worker process.
+`databaseEngineManagementHttpIntegrationTest` now also sends review mutations through the packaged
+standalone admin endpoint, processes the queued approvals and rejections in separate packaged worker
+processes, reads their completed jobs and registry through a restarted frontend, then binds that
+registry in a subsequent frontend process and checks approved serving and rejected enforcement on
+PostgreSQL and MySQL. The fixture seeds observed operations and switches the registry to ENFORCE
+directly; production observation ingestion, registry-mode administration, and deployment binding
+are not established by this test.
+
+The JDBC management store now writes each observed operation to
+`management.graphql_observed_operations` and the product journal in one transaction. On startup it
+backfills rows missing from journal-only installations without replacing existing rows. Separate
+store instances use a row lock when merging observations, so concurrent observations preserve the
+durable count. `databaseEngineManagementIntegrationTest` reads the projection through the installed
+GraphQL package on PostgreSQL and MySQL, checks its role policy, and reads the changed status
+after a database-backed review job. The focused
+`GraphqlJdbcManagementStoreIT.concurrentObservationsMergeThroughLockedDatabaseRow`
+test verifies the cross-instance write path. The generated serving routine enforces a bound
+registry as described in the management database package proof.
+
+Titan's single-row JDBC lowerer now rejects non-getter statements inside an
+`if (rs.next())` read block. It previously emitted only the projected column assignments and
+silently dropped another assignment in that block. `JdbcLoweringTest` covers this rejection;
+the Commerce and management package transpilation gates pass with the stricter rule.
+
+The standalone HTTP distribution can now bind an optional `/admin/graphql` route to that
+separately verified management package. A deployment descriptor fixes its model and routine;
+the server requires a configured bearer token and supplies the operator role from deployment
+configuration rather than request headers. `./gradlew databaseEngineManagementHttpIntegrationTest`
+extracts the distribution, installs application and management packages together, rejects
+missing and wrong tokens, ignores a spoofed reader role, and reads through both HTTP routes on
+PostgreSQL and MySQL. The management HTTP proof also submits a review request and reads its queued
+control job through the
+database-backed admin route. The Quarkus admin resource can opt into the same package, and the
+management integration test proves that resource on PostgreSQL and MySQL. No existing callers
+require legacy operation names or payloads; the first-deployment request/job contract still
+needs container-run verification. The Quarkus
+preview route can select a database package from a deployment-owned descriptor registry,
+returning HTTP 404 for unknown IDs and HTTP 503 on database failure or absent registry without
+JVM fallback. The standalone frontend can register
+`/preview/{previewBuildId}/graphql` from a deployment-owned preview-build-to-descriptor registry.
+The packaged HTTP test uses the management package as a separately bound preview fixture on
+PostgreSQL and MySQL, checks its database policy and deployment fingerprint, and rejects unknown
+preview IDs. This proves preview transport routing, not the publication or complete operation
+parity of a real preview candidate. The installed management test uses that package as a Quarkus
+preview fixture on PostgreSQL and MySQL and verifies that database mode ignores a spoofed operator
+role unless trusted-context headers are enabled. The Quarkus descriptor loader additionally
+re-reads replacement mappings, requires matching build-ID and expiry metadata, and fails closed on
+malformed replacements. `saveVerifiedPreviewBuild` rejects non-READY builds, missing or mismatched
+registries, registries outside ENFORCE mode, and expired builds. Those management-package fixtures
+do not publish a real candidate package or remove the legacy Quarkus preview mode. The standalone
+handler also checks descriptor expiry before database access. The publisher can now bind a READY preview with future
+expiry and ENFORCE registry to its verified package, write a deployment descriptor containing that
+build ID, expiry, registry ID, and deployment snapshot, and atomically replace the preview ID mapping. Publication now
+requires a serving database: it compares the installed package identity and ENFORCE registry
+record with the candidate, verifies every projected registry operation, and probes the compiled
+whole-request routine before exposing the descriptor. Its package-backed test checks both SQL
+dialects, stale-manifest refusal, installed-identity and registry-projection refusal, and same-ID
+replacement. The `publish-preview` control-plane command loads a generated READY_FOR_REVIEW draft
+from JDBC management state, checks its source semantic hash against its artifact set, and invokes
+the attested publisher with an operator-supplied package directory. The installed test exercises
+that draft-based handoff and refuses stale YAML source on PostgreSQL and MySQL. A sealed descriptor
+checks the installed package and registry projection inside each request transaction; the installed
+preview route test refuses mode, projection, and package changes after publication on both dialects.
+The separate `export-preview-draft` command verifies a passing YAML draft and its semantic hash
+before writing immutable build input. With matching `titanGraphqlPreviewModel` and
+`titanGraphqlPreviewId` properties, `titanGraphqlBuildPreviewPostgreSql` and
+`titanGraphqlBuildPreviewMySql` produce source-revision-isolated candidate schemas and packages;
+each task runs a scratch install and package binding. The explicit
+`titanGraphqlInstallPreviewPostgreSql` and `titanGraphqlInstallPreviewMySql` tasks install the
+candidate against a selected JDBC database. On 2026-09-26, both builds passed scratch install,
+both target-install tasks passed against disposable PostgreSQL and MySQL containers, and direct
+SQL reads found the candidate entry point and 64-character package identity in each target.
+The first MySQL target attempt failed because its fresh server lacked `titan_runtime` and
+stored-function creation prerequisites; after creating that database and setting
+`log_bin_trust_function_creators=1`, the same target passed. The exporter unit test passes stale
+source and conflicting-output refusal. The `databaseEnginePreviewCandidateIntegrationTest` task
+now installs only the deployable candidate migrations, imports and validates the model through
+the authenticated database-backed management GraphQL route, runs and polls the corresponding
+jobs, exports the validated JDBC draft, and generates its artifact set from the same source and
+package. It approves a seeded observed operation through the database-backed management GraphQL
+review request and worker, moves the resulting registry to ENFORCE, and publishes the
+candidate, and receives a GraphQL response through the database-backed preview route on both
+dialects. This caught a transport-owned filesystem path in the artifact record and a MySQL
+runtime-helper namespace mismatch. Artifact generation now records a portable package label,
+while Titan installs and inventories additional runtime helpers in the candidate schema and
+verifies MySQL routines against their exact schema. The existing Commerce MySQL package still
+passes scratch installation with that stricter verifier. The artifact worker now accepts a
+deployment-owned draft-to-package registry, so one worker can select a candidate by claimed
+draft ID without accepting a package path from GraphQL input. The registry rejects duplicate or
+missing mappings and absent package directories; those configuration errors leave claimed jobs
+pending instead of marking the draft request invalid. The candidate integration test exercises
+that failure, then stages the verified candidate package and completes the same job on both dialects.
+The packaged `stage-preview-package` command checks the current validated draft and candidate
+binding before atomically recording its absolute package path. The integration test refuses a
+different model package, permits an idempotent repeat, and refuses a conflicting package selection.
+It also submits the artifact request and reads the completed control job through that route. The
+exporter and generation worker both reject a failed report, and
+the worker additionally rejects a report for another draft or source changed after validation.
+The same Gradle task now runs `PreviewCandidateGraphqlHttpIT`: its PostgreSQL fixture installs the
+generated candidate, publishes a verified descriptor from matching draft, artifact, and ENFORCE
+registry records, and checks successful POST and GET requests plus unknown-ID rejection at the
+public Quarkus `/preview/{previewBuildId}/graphql` URL. It leaves caller-supplied context headers
+untrusted and confirms that a spoofed `operator` role cannot run a role-restricted registered
+operation. The existing cross-dialect method proves the full draft-to-
+candidate workflow; the Quarkus method proves the published descriptor reaches the actual URL.
+This is an integration proof, not a production orchestrator: the test creates the workspace and
+initial observed-operation record directly, switches the reviewed registry to ENFORCE directly,
+and no single
+command coordinates artifact generation, package installation, and live activation. Neither
+package build task coordinates live package/registry replacement.
+Both preview hosts reject descriptors without a deployment snapshot. A manually
+computed seal can match the database but cannot prove durable publication provenance.
+`./gradlew databaseEnginePreviewCandidateIntegrationTest -PtitanGraphqlPreviewModel=src/test/resources/graphql/demo-blog.titan.graphql.yaml -PtitanGraphqlPreviewId=preview-proof`,
+`./gradlew :titan:titan-gradle-plugin:test test controlJobWorkerDistribution`, and
+`./gradlew titanGraphqlVerifyCommerceMySqlDatabaseEngineInstall` passed on 2026-09-26 after the
+candidate integration and Titan helper fix. The focused Docker-backed Titan verifier and rollback
+tests passed with `./gradlew :titan:titan-gradle-plugin:integrationTest --tests io.titan.gradle.TitanVerifyAndRollbackIT --tests io.titan.gradle.TitanArtifactInstallVerifierIT`;
+their MySQL rollback fixture now installs runtime helpers in the inventoried schema. Earlier
+`./gradlew test`, `./gradlew controlJobWorkerDistribution`, and
+`./gradlew databaseEngineManagementIntegrationTest --tests '*ManagementDatabaseGraphqlEngineIT.verifiedPreviewPublicationBindsPackageAndReplacesRegistryMapping'`
+pass with the attestor and projection-tamper checks.
+
+Model import now has a shared preparation service for the legacy mutation and the control-job
+worker. Titan's JDBC command store accepts a caller-owned transaction, so the worker commits the
+import command's core draft and audit/idempotency records, the GraphQL model/draft/report journal,
+and the successful job receipt together. The database management model registers a typed import
+request procedure that queues the server-built actor and request context without accepting
+identity fields from the GraphQL input. The installed PostgreSQL/MySQL management test forces a
+journal-write failure, checks that the core draft and job success did not commit, then retries and
+checks the imported draft and completed receipt. The standalone HTTP test submits the import
+request through `/admin/graphql` and reads its queued job. The continuous worker can claim import
+jobs, but the existing Quarkus import mutation remains synchronous until clients migrate to the
+database-backed admin route. The shared database string decoder now advances past escaped control
+characters and appends unescaped segments; its previous loop stalled on escaped newlines in YAML
+variables. Installation and preflight reject an import-request table without its `job_id` primary
+key. The management integration, standalone HTTP, and packaged worker restart gates pass with the
+corrected decoder and import job path.

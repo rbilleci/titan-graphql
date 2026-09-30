@@ -3,6 +3,8 @@ package io.titan.graphql;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.enterprise.inject.Instance;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.HeaderParam;
@@ -15,6 +17,10 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+import javax.sql.DataSource;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @Path("/preview/{previewBuildId}/graphql")
 public final class GraphqlPreviewHttpResource {
@@ -22,6 +28,37 @@ public final class GraphqlPreviewHttpResource {
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final TypeReference<Map<String, Object>> JSON_OBJECT = new TypeReference<>() {
     };
+    private final GraphqlPreviewDatabaseRuntime databasePreviews;
+    private final boolean trustRequestContextHeaders;
+
+    @Inject
+    public GraphqlPreviewHttpResource(
+            @ConfigProperty(name = "titan.graphql.preview.database-descriptor-registry")
+            Optional<String> databaseDescriptorRegistry,
+            @ConfigProperty(name = "titan.graphql.preview.trust-request-context-headers", defaultValue = "false")
+            boolean trustRequestContextHeaders,
+            Instance<DataSource> dataSources
+    ) {
+        this(databaseDescriptorRegistry.orElse(""), dataSources::get, trustRequestContextHeaders);
+    }
+
+    public GraphqlPreviewHttpResource(
+            String databaseDescriptorRegistry,
+            Supplier<DataSource> dataSources,
+            boolean trustRequestContextHeaders
+    ) {
+        this.databasePreviews = databaseDescriptorRegistry == null || databaseDescriptorRegistry.isBlank()
+                ? null
+                : GraphqlPreviewDatabaseRuntime.fromRegistry(
+                        java.nio.file.Path.of(databaseDescriptorRegistry), dataSources);
+        this.trustRequestContextHeaders = trustRequestContextHeaders;
+    }
+
+    public GraphqlPreviewHttpResource() {
+        this("", () -> {
+            throw new IllegalStateException("preview database mode has no data source");
+        }, false);
+    }
 
     record GraphqlPreviewHttpResult(int status, String mediaType, String body) {
     }
@@ -44,22 +81,16 @@ public final class GraphqlPreviewHttpResource {
             @HeaderParam("X-Titan-Context-Filters") String enabledContextFiltersHeader,
             @HeaderParam("X-Titan-Deadline-Budget-Millis") String deadlineBudgetMillisHeader
     ) {
+        if (databasePreviews == null) {
+            return missingDatabaseDescriptorRegistry(acceptHeader);
+        }
         GraphqlPreviewHttpResult result = negotiatePost(
                 previewBuildId,
                 request,
                 acceptHeader,
-                GraphqlHttpResource.httpContext(
-                        actorIdHeader,
-                        actorRoleHeader,
-                        publishedVisibilityHeader,
-                        articleVisibilityHeader,
-                        introspectionHeader,
-                        tenantIdHeader,
-                        requestIdHeader,
-                        policyFlagsHeader,
-                        enabledContextFiltersHeader,
-                        deadlineBudgetMillisHeader
-                )
+                httpContext(actorIdHeader, actorRoleHeader, publishedVisibilityHeader,
+                        articleVisibilityHeader, introspectionHeader, tenantIdHeader, requestIdHeader,
+                        policyFlagsHeader, enabledContextFiltersHeader, deadlineBudgetMillisHeader)
         );
         return Response
                 .status(result.status())
@@ -88,6 +119,9 @@ public final class GraphqlPreviewHttpResource {
             @HeaderParam("X-Titan-Context-Filters") String enabledContextFiltersHeader,
             @HeaderParam("X-Titan-Deadline-Budget-Millis") String deadlineBudgetMillisHeader
     ) {
+        if (databasePreviews == null) {
+            return missingDatabaseDescriptorRegistry(acceptHeader);
+        }
         GraphqlPreviewHttpResult result = negotiateGet(
                 previewBuildId,
                 query,
@@ -95,23 +129,30 @@ public final class GraphqlPreviewHttpResource {
                 variablesJson,
                 extensionsJson,
                 acceptHeader,
-                GraphqlHttpResource.httpContext(
-                        actorIdHeader,
-                        actorRoleHeader,
-                        publishedVisibilityHeader,
-                        articleVisibilityHeader,
-                        introspectionHeader,
-                        tenantIdHeader,
-                        requestIdHeader,
-                        policyFlagsHeader,
-                        enabledContextFiltersHeader,
-                        deadlineBudgetMillisHeader
-                )
+                httpContext(actorIdHeader, actorRoleHeader, publishedVisibilityHeader,
+                        articleVisibilityHeader, introspectionHeader, tenantIdHeader, requestIdHeader,
+                        policyFlagsHeader, enabledContextFiltersHeader, deadlineBudgetMillisHeader)
         );
         return Response
                 .status(result.status())
                 .type(result.mediaType())
                 .entity(result.body())
+                .build();
+    }
+
+    private static Response missingDatabaseDescriptorRegistry(String acceptHeader) {
+        String responseType = GraphqlHttpResource.responseMediaType(acceptHeader);
+        if (responseType.isEmpty()) {
+            return Response.status(Response.Status.NOT_ACCEPTABLE)
+                    .type(GraphqlHttpResource.GRAPHQL_RESPONSE_JSON)
+                    .entity(GraphqlHttpResource.errorJson("GraphQL response media type is not acceptable"))
+                    .build();
+        }
+        return Response.status(Response.Status.SERVICE_UNAVAILABLE)
+                .type(responseType)
+                .entity(GraphqlHttpResource.errorJson(
+                        "preview database descriptor registry is not configured",
+                        GraphqlHttpResource.EXECUTION_MODE_UNAVAILABLE))
                 .build();
     }
 
@@ -140,18 +181,9 @@ public final class GraphqlPreviewHttpResource {
                     GraphqlHttpResource.errorJson(transportError)
             );
         }
-        return new GraphqlPreviewHttpResult(
-                Response.Status.OK.getStatusCode(),
-                responseType,
-                execute(
-                        previewBuildId,
-                        (String) request.get("query"),
-                        stringField(request, "operationName"),
-                        jsonObjectField(request, "variables"),
-                        jsonObjectField(request, "extensions"),
-                        context
-                )
-        );
+        return execute(previewBuildId, (String) request.get("query"),
+                stringField(request, "operationName"), jsonObjectField(request, "variables"),
+                jsonObjectField(request, "extensions"), context, responseType, true);
     }
 
     GraphqlPreviewHttpResult negotiateGet(
@@ -193,25 +225,21 @@ public final class GraphqlPreviewHttpResource {
                     GraphqlHttpResource.errorJson(ex.getMessage())
             );
         }
-        return new GraphqlPreviewHttpResult(
-                Response.Status.OK.getStatusCode(),
-                responseType,
-                execute(previewBuildId, query, operationName == null ? "" : operationName, variables, extensions, context)
-        );
+        return execute(previewBuildId, query, operationName == null ? "" : operationName,
+                variables, extensions, context, responseType, false);
     }
 
-    private static String execute(
+    private GraphqlPreviewHttpResult execute(
             String previewBuildId,
             String query,
             String operationName,
             Map<String, Object> variables,
             Map<String, Object> extensions,
-            GraphqlHttpResource.GraphqlHttpContext context
+            GraphqlHttpResource.GraphqlHttpContext context,
+            String responseType,
+            boolean allowMutations
     ) {
-        return GraphqlPreviewRuntimeRouter.execute(
-                previewBuildId,
-                new GraphqlRequest(query, operationName, variables, extensions),
-                new GraphqlRequestContext(
+        GraphqlRequestContext trustedContext = new GraphqlRequestContext(
                         context.actorId(),
                         context.actorRole(),
                         context.actorId() > 0L ? "actor-" + context.actorId() : "",
@@ -223,9 +251,64 @@ public final class GraphqlPreviewHttpResource {
                         context.enableIntrospection(),
                         context.hasArticleVisibility(),
                         context.articleVisibility(),
-                        context.deadlineBudgetMillis()
-                )
-        ).json();
+                        context.deadlineBudgetMillis());
+        if (databasePreviews == null) {
+            return new GraphqlPreviewHttpResult(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), responseType,
+                    GraphqlHttpResource.errorJson("preview database descriptor registry is not configured",
+                            GraphqlHttpResource.EXECUTION_MODE_UNAVAILABLE));
+        }
+        try {
+            GraphqlPreviewDatabaseRuntime.PreviewSelection preview = databasePreviews.find(previewBuildId);
+            if (preview == null) {
+                return new GraphqlPreviewHttpResult(Response.Status.NOT_FOUND.getStatusCode(), responseType,
+                        GraphqlHttpResource.errorJson("preview build '" + previewBuildId + "' is not registered"));
+            }
+            if (preview.expired()) {
+                return new GraphqlPreviewHttpResult(Response.Status.GONE.getStatusCode(), responseType,
+                        GraphqlHttpResource.errorJson("preview build '" + previewBuildId + "' has expired"));
+            }
+            return new GraphqlPreviewHttpResult(Response.Status.OK.getStatusCode(), responseType,
+                    preview.runtime().execute(new GraphqlRuntimeRequest(query, operationName,
+                            jsonObject(variables), jsonObject(extensions), allowMutations), trustedContext));
+        } catch (GraphqlExecutionModeUnavailableException unavailable) {
+            return new GraphqlPreviewHttpResult(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), responseType,
+                    GraphqlHttpResource.errorJson(
+                            unavailable.getMessage(), GraphqlHttpResource.EXECUTION_MODE_UNAVAILABLE));
+        } catch (RuntimeException unavailable) {
+            return new GraphqlPreviewHttpResult(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), responseType,
+                    GraphqlHttpResource.errorJson(
+                            "preview deployment registry could not be read",
+                            GraphqlHttpResource.EXECUTION_MODE_UNAVAILABLE));
+        }
+    }
+
+    private GraphqlHttpResource.GraphqlHttpContext httpContext(
+            String actorId,
+            String actorRole,
+            String publishedVisibility,
+            String articleVisibility,
+            String introspection,
+            String tenantId,
+            String requestId,
+            String policyFlags,
+            String enabledContextFilters,
+            String deadlineBudgetMillis
+    ) {
+        if (databasePreviews != null && !trustRequestContextHeaders) {
+            return GraphqlHttpResource.httpContext(null, null, null, null, null,
+                    null, null, null, null, null);
+        }
+        return GraphqlHttpResource.httpContext(actorId, actorRole, publishedVisibility,
+                articleVisibility, introspection, tenantId, requestId, policyFlags,
+                enabledContextFilters, deadlineBudgetMillis);
+    }
+
+    private static String jsonObject(Map<String, Object> value) {
+        try {
+            return JSON.writeValueAsString(value);
+        } catch (JsonProcessingException failure) {
+            throw new IllegalArgumentException("GraphQL request object could not be serialized", failure);
+        }
     }
 
     private static List<String> commaSeparatedList(String value) {

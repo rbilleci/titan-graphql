@@ -30,9 +30,26 @@ public final class TitanGraphqlModelDocumentJson {
     }
 
     public static String semanticHash(TitanGraphqlModelDocument document) {
+        return sha256(canonicalJson(document));
+    }
+
+    public static String mutationRegistryHash(TitanGraphqlModelDocument document) {
+        if (document == null) {
+            throw new IllegalArgumentException("document is required");
+        }
+        try {
+            return sha256(JSON.writeValueAsString(sorted(document.mutations(),
+                    Comparator.comparing(TitanGraphqlMutationDocument::name))
+                    .stream().map(TitanGraphqlModelDocumentJson::normalizeMutation).toList()));
+        } catch (JsonProcessingException failure) {
+            throw new IllegalArgumentException("mutation registry could not be serialized", failure);
+        }
+    }
+
+    private static String sha256(String value) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(canonicalJson(document).getBytes(StandardCharsets.UTF_8));
+            byte[] hash = digest.digest(value.getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(hash);
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 digest is not available", ex);
@@ -137,7 +154,8 @@ public final class TitanGraphqlModelDocumentJson {
                         TitanGraphqlMutationDocument.MutationDocumentInputBinding::name)),
                 sortedStrings(mutation.policies()),
                 sorted(mutation.payload(), Comparator.comparing(
-                        TitanGraphqlMutationDocument.MutationDocumentPayloadField::name))
+                        TitanGraphqlMutationDocument.MutationDocumentPayloadField::name)),
+                mutation.handler()
         );
     }
 

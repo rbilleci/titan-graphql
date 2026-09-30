@@ -170,19 +170,51 @@ Plain `test` stays Docker-free; the SQL-mode legs are tagged `docker` and run un
   (`JdbcTransactionalMutationStore` + JDBC idempotency/audit stores + `ManagementSchemaInstaller`),
   proven on PG 16 + MySQL 8.4 — closing `TG-BLK-003`. This repo now runs on it: set
   `titan.graphql.management.store=jdbc` and the `/admin/graphql` plane persists through core's
-  JDBC store on Titan-transpiled routines over the Quarkus datasource, with the schema bootstrapped
-  at startup. `GraphqlJdbcManagementStoreIT` proves the `importModelDocument` path is durable
-  (survives a new store instance), idempotent, and keeps deployment-activation gating on live
+  JDBC store on Titan-transpiled routines over the Quarkus datasource. A JDBC product-state
+  journal retains the GraphQL model source, wrappers, validation reports, and artifact records;
+  runtime startup verifies an installed schema without running DDL. The packaged
+  `titan-graphql-control install-management <postgresql|mysql> <jdbc-url>` command installs
+  the management schema, routines, and product-state journal before serving. A partial core
+  installation fails verification instead of being mistaken for a completed deployment. Stop
+  serving before running `titan-graphql-control repair-management <postgresql|mysql> <jdbc-url>`
+  to resume an interrupted installation. Repair checks existing core table and index shapes,
+  creates missing objects, reinstalls missing routines, and refuses incompatible objects; MySQL
+  schema changes and routine replacement cannot be rolled back as one transaction.
+  `GraphqlJdbcManagementStoreIT` proves the
+  `importModelDocument` path and generated artifact/draft wrappers survive a new store instance,
+  and proves idempotency and deployment-activation gating on live
   PG 16 + MySQL 8.4. The DEFAULT remains `file` (file-backed/in-memory, Docker-free for plain
-  `test` and dev), so durable-JDBC claims are scoped to jdbc mode. Two recorded routine-design
-  gaps are known and non-blocking (adapter-side `activate_deployment` typed preconditions; the
-  import routine's collapsed hash column).
+  `test` and dev), so durable-JDBC claims are scoped to jdbc mode. The JDBC artifact job worker
+  commits its job result, core draft/reference seed, and product-state entry in one transaction.
+  File-backed jobs and other management workflows still have separate commit boundaries. Two
+  recorded routine-design gaps are known and non-blocking (adapter-side
+  `activate_deployment` typed preconditions; the import routine's collapsed hash column).
+- **Artifact job worker: JDBC management mode.** The packaged
+  `titan-graphql-control-worker` launcher accepts `jdbc` in place of a management transaction-log
+  path. It expects the control-job table, Titan management schema/routines, and
+  `management.graphql_product_state` table to exist on the configured JDBC server; it reads
+  credentials from `TITAN_GRAPHQL_CONTROL_DB_USER` and `TITAN_GRAPHQL_CONTROL_DB_PASSWORD`.
+  The packaged `titan-graphql-control serve-api <postgresql|mysql> <jdbc-url> <port>` command
+  starts a separate control-plane API. Set `TITAN_GRAPHQL_CONTROL_API_TOKEN`; it binds to
+  `127.0.0.1` unless `TITAN_GRAPHQL_CONTROL_API_HOST` specifies another loopback address. Put a
+  TLS proxy on the same host before exposing the API to remote clients. An operator sends
+  `POST /artifact-jobs` with a bearer token and JSON fields `requestKey`, `draftId`,
+  `generationProfile`, and `enableIntrospection`. The response includes a job ID and `Location`;
+  `GET /artifact-jobs/{id}` returns status, result, and failure code. A repeated request key
+  replays the same job, while different input under that key returns a conflict. This API only
+  enqueues work; the worker generates artifacts after the request commits. The API requires the
+  JDBC management schema and control-job table at startup and does not support file-backed
+  management state.
+  `databaseEngineControlJobRestartIntegrationTest` exercises file and JDBC management modes on
+  PostgreSQL and MySQL. The explicit install command provisions management state; a production
+  supervisor and rollout are not configured.
 - **SQL serving mode is reference-only and bounded.** The root Quarkus `/graphql` process is a transitional
   compatibility seam; `titan.graphql.execution.mode=sql` together with the explicit
   `titan.graphql.allow-legacy-execution-modes=true` test/reference opt-in serves the same demo
-  schema and entry points from the deployed stored functions — no new GraphQL features, and
-  the `/admin/graphql` management plane always executes in Java (only the application kernel
-  is transpiled). Plan-level execution (`executeWithPlan`) stays a Java-mode surface.
+  schema and entry points from the deployed stored functions — no new GraphQL features.
+  `/admin/graphql` requires a separately bound management database descriptor and returns HTTP
+  503 when it is absent; it cannot fall back to the Java management engine. Plan-level execution
+  (`executeWithPlan`) stays a Java-mode surface.
 - **Dual transpilation targets, both proven.** The kernel transpiles, packages, verifies,
   and proves equivalence cleanly for PostgreSQL and MySQL (W5.2). Both live database legs
   are green against core HEAD — **97/97 strictly equivalent on each dialect, zero

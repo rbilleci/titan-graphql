@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import io.titan.graphql.artifact.TitanGraphqlArtifactKind;
 import io.titan.graphql.artifact.TitanGraphqlGap005ArtifactMetadata;
+import io.titan.graphql.controlplane.TitanGraphqlControlJobQueue;
 import io.titan.management.ManagementAudit.AuditRecord;
 import io.titan.management.ManagementCommands.CommandInvocation;
 import io.titan.management.ManagementIdempotency.IdempotencyRecord;
+import io.titan.management.JdbcTransactionalMutationStore;
 import io.titan.management.ManagementRecords.ArtifactRef;
 import io.titan.management.ManagementRecords.Deployment;
 import io.titan.management.ManagementRecords.DeploymentStatus;
@@ -18,22 +20,35 @@ import io.titan.management.ManagementTransactions.DeploymentActivationExecution;
 import io.titan.management.ManagementTransactions.DeploymentActivationRequest;
 import io.titan.management.ManagementTransactions.FileTransactionalMutationStore;
 import io.titan.management.ManagementTransactions.TransactionalCommandExecution;
+import io.titan.management.ManagementTransactions.TransactionalCommandHandler;
 import io.titan.management.ManagementTransactions.TransactionalCommandResult;
 import io.titan.management.ManagementTransactions.TransactionalMutationStore;
 import io.titan.graphql.artifact.TitanGraphqlEntryPointRef;
 import io.titan.graphql.artifact.TitanGraphqlRollbackScriptRef;
 import io.titan.graphql.artifact.TitanGraphqlVerificationDiagnostic;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import javax.sql.DataSource;
 
 // TG-BLK-003 (CLOSED): durable JDBC management store available; durability depends on the injected
 // TransactionalMutationStore. Core dogfooded the management store — it now ships
@@ -62,7 +77,11 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
     }
 
     public TitanGraphqlDurableManagementStore(TransactionalMutationStore titanStore) {
-        this(titanStore, null);
+        this(titanStore, (ProductStateJournal) null);
+    }
+
+    public TitanGraphqlDurableManagementStore(TransactionalMutationStore titanStore, DataSource productStateDataSource) {
+        this(titanStore, new ProductStateJournal(productStateDataSource));
     }
 
     private TitanGraphqlDurableManagementStore(
@@ -73,6 +92,8 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
         this.productStateJournal = productStateJournal;
         if (productStateJournal != null) {
             productStateJournal.loadInto(graphQlStore, artifactEvidenceByArtifactSetId);
+            productStateJournal.backfillObservedOperations(graphQlStore.observedOperations());
+            productStateJournal.backfillOperationRegistries(graphQlStore.operationRegistries());
         }
     }
 
@@ -108,17 +129,8 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
             Instant attemptAt,
             Instant outcomeAt
     ) {
-        TransactionalCommandExecution execution = titanStore.execute(invocation, (command, transaction) -> {
-            Draft titanDraft = toTitanDraft(draft, model.workspaceId());
-            // The file store stages the draft on the in-process TransactionContext; the JDBC store
-            // (jdbc mode) passes a null transaction because its Titan-transpiled import routine is the
-            // durable authority that upserts the draft server-side from the invocation + this result's
-            // resultRef. Guard the staging call so the same handler is faithful over BOTH stores.
-            if (transaction != null) {
-                transaction.putDraft(titanDraft);
-            }
-            return TransactionalCommandResult.success("sha256:" + sha256(titanDraft.stableJson()), titanDraft.id());
-        }, attemptAt, outcomeAt);
+        TransactionalCommandExecution execution = titanStore.execute(invocation,
+                importCommandHandler(model, draft), attemptAt, outcomeAt);
         if (execution.success()) {
             graphQlStore.saveModel(model);
             graphQlStore.saveDraft(draft);
@@ -132,6 +144,78 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
             }
         }
         return execution;
+    }
+
+    public boolean importModelDocumentAndCompleteJob(
+            CommandInvocation invocation,
+            TitanGraphqlManagedModel model,
+            TitanGraphqlModelDraft draft,
+            TitanGraphqlValidationReportRef validationReport,
+            Instant attemptAt,
+            Instant outcomeAt,
+            TitanGraphqlControlJobQueue queue,
+            TitanGraphqlControlJobQueue.ClaimedJob job,
+            String resultJson
+    ) {
+        if (!supportsAtomicJobCompletion()) {
+            throw new IllegalStateException("atomic import job completion requires JDBC management state");
+        }
+        java.util.Objects.requireNonNull(queue, "queue");
+        JdbcTransactionalMutationStore jdbcStore = (JdbcTransactionalMutationStore) titanStore;
+        try (Connection connection = productStateJournal.dataSource.getConnection()) {
+            if (!connection.getAutoCommit()) {
+                throw new IllegalStateException("model import requires an auto-commit connection");
+            }
+            connection.setAutoCommit(false);
+            try {
+                TransactionalCommandExecution execution = jdbcStore.execute(connection, invocation,
+                        importCommandHandler(model, draft), attemptAt, outcomeAt);
+                if (!execution.success()) {
+                    throw new IllegalStateException("model import command failed: "
+                            + execution.outcomeRecord().errorCode());
+                }
+                if (!queue.complete(connection, job, resultJson)) {
+                    connection.rollback();
+                    return false;
+                }
+                productStateJournal.append(connection, "model", model);
+                productStateJournal.append(connection, "draft", draft);
+                if (validationReport != null) {
+                    productStateJournal.append(connection, "validationReport", validationReport);
+                }
+                connection.commit();
+            } catch (SQLException | RuntimeException failure) {
+                try {
+                    connection.rollback();
+                } catch (SQLException rollbackFailure) {
+                    failure.addSuppressed(rollbackFailure);
+                }
+                throw failure;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException failure) {
+            throw new IllegalStateException("failed to publish model import in the management database", failure);
+        }
+        graphQlStore.saveModel(model);
+        graphQlStore.saveDraft(draft);
+        if (validationReport != null) {
+            graphQlStore.saveValidationReport(validationReport);
+        }
+        return true;
+    }
+
+    private TransactionalCommandHandler importCommandHandler(
+            TitanGraphqlManagedModel model,
+            TitanGraphqlModelDraft draft
+    ) {
+        return (command, transaction) -> {
+            Draft titanDraft = toTitanDraft(draft, model.workspaceId());
+            if (transaction != null) {
+                transaction.putDraft(titanDraft);
+            }
+            return TransactionalCommandResult.success("sha256:" + sha256(titanDraft.stableJson()), titanDraft.id());
+        };
     }
 
     public TransactionalCommandExecution importModelDocument(
@@ -201,6 +285,214 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
         artifactEvidenceByArtifactSetId.put(evidence.artifactSetId(), evidence);
         appendProductState("artifactEvidence", evidence);
         return this;
+    }
+
+    public TitanGraphqlDurableManagementStore saveGeneratedArtifacts(
+            TitanGraphqlArtifactSetRef artifactSet,
+            TitanGraphqlModelDraft draft,
+            TitanGraphqlGap005ArtifactMetadata metadata
+    ) {
+        persistGeneratedArtifacts(artifactSet, draft, metadata, null);
+        return this;
+    }
+
+    public boolean supportsAtomicArtifactJobCompletion() {
+        return supportsAtomicJobCompletion();
+    }
+
+    public boolean supportsAtomicJobCompletion() {
+        return titanStore instanceof JdbcTransactionalMutationStore
+                && productStateJournal != null && productStateJournal.dataSource != null;
+    }
+
+    public void saveValidationOutcome(
+            TitanGraphqlValidationReportRef report,
+            TitanGraphqlModelDraft draft
+    ) {
+        persistValidationOutcome(report, draft, null);
+    }
+
+    public boolean saveValidationOutcomeAndCompleteJob(
+            TitanGraphqlValidationReportRef report,
+            TitanGraphqlModelDraft draft,
+            TitanGraphqlControlJobQueue queue,
+            TitanGraphqlControlJobQueue.ClaimedJob job,
+            String resultJson
+    ) {
+        if (!supportsAtomicJobCompletion()) {
+            throw new IllegalStateException("atomic validation job completion requires JDBC management state");
+        }
+        java.util.Objects.requireNonNull(queue, "queue");
+        return persistValidationOutcome(report, draft,
+                connection -> queue.complete(connection, job, resultJson));
+    }
+
+    private boolean persistValidationOutcome(
+            TitanGraphqlValidationReportRef report,
+            TitanGraphqlModelDraft draft,
+            CompletionGate completionGate
+    ) {
+        if (report == null || draft == null || !report.draftId().equals(draft.id())
+                || !report.id().equals(draft.validationReportId())) {
+            throw new IllegalArgumentException("validation report and draft must reference each other");
+        }
+        Draft titanDraft = toTitanDraft(draft);
+        if (supportsAtomicJobCompletion()) {
+            JdbcTransactionalMutationStore jdbcStore = (JdbcTransactionalMutationStore) titanStore;
+            try (Connection connection = productStateJournal.dataSource.getConnection()) {
+                if (!connection.getAutoCommit()) {
+                    throw new IllegalStateException("validation publication requires an auto-commit connection");
+                }
+                connection.setAutoCommit(false);
+                try {
+                    if (completionGate != null && !completionGate.complete(connection)) {
+                        connection.rollback();
+                        return false;
+                    }
+                    jdbcStore.seedDraft(connection, titanDraft);
+                    jdbcStore.transitionDraftStatus(connection, titanDraft);
+                    productStateJournal.append(connection, "validationReport", report);
+                    productStateJournal.append(connection, "draft", draft);
+                    connection.commit();
+                } catch (SQLException | RuntimeException failure) {
+                    try {
+                        connection.rollback();
+                    } catch (SQLException rollbackFailure) {
+                        failure.addSuppressed(rollbackFailure);
+                    }
+                    throw failure;
+                } finally {
+                    connection.setAutoCommit(true);
+                }
+            } catch (SQLException failure) {
+                throw new IllegalStateException("failed to publish validation in the management database", failure);
+            }
+        } else {
+            if (completionGate != null) {
+                throw new IllegalStateException("atomic validation job completion requires JDBC management state");
+            }
+            titanStore.seedDraft(titanDraft);
+            if (productStateJournal != null) {
+                productStateJournal.append("validationReport", report);
+                productStateJournal.append("draft", draft);
+            }
+        }
+        graphQlStore.saveValidationReport(report);
+        graphQlStore.saveDraft(draft);
+        return true;
+    }
+
+    public boolean saveGeneratedArtifactsAndCompleteJob(
+            TitanGraphqlArtifactSetRef artifactSet,
+            TitanGraphqlModelDraft draft,
+            TitanGraphqlGap005ArtifactMetadata metadata,
+            TitanGraphqlControlJobQueue queue,
+            TitanGraphqlControlJobQueue.ClaimedJob job,
+            String resultJson
+    ) {
+        if (!supportsAtomicArtifactJobCompletion()) {
+            throw new IllegalStateException("atomic artifact job completion requires JDBC management state");
+        }
+        java.util.Objects.requireNonNull(queue, "queue");
+        return persistGeneratedArtifacts(artifactSet, draft, metadata,
+                connection -> queue.complete(connection, job, resultJson));
+    }
+
+    private boolean persistGeneratedArtifacts(
+            TitanGraphqlArtifactSetRef artifactSet,
+            TitanGraphqlModelDraft draft,
+            TitanGraphqlGap005ArtifactMetadata metadata,
+            CompletionGate completionGate
+    ) {
+        if (artifactSet == null || draft == null || !artifactSet.draftId().equals(draft.id())
+                || !artifactSet.id().equals(draft.artifactSetId())) {
+            throw new IllegalArgumentException("generated artifact set and draft must reference each other");
+        }
+        Draft titanDraft = toTitanDraft(draft);
+        ArtifactRef titanArtifactRef = metadata == null ? null : toTitanArtifactRef(artifactSet, metadata);
+        TitanGraphqlArtifactEvidenceRef evidence = null;
+        if (metadata != null) {
+            evidence = new TitanGraphqlArtifactEvidenceRef(
+                    artifactSet.id(),
+                    metadata.artifactId(),
+                    metadata.verificationStatus(),
+                    metadata.verificationDiagnostics(),
+                    metadata.entryPoints(),
+                    metadata.rollbackScripts());
+        }
+        if (titanStore instanceof JdbcTransactionalMutationStore jdbcStore
+                && productStateJournal != null && productStateJournal.dataSource != null) {
+            if (!publishGeneratedArtifactsJdbc(
+                    jdbcStore, titanDraft, titanArtifactRef, artifactSet, draft, evidence, completionGate)) {
+                return false;
+            }
+        } else {
+            if (completionGate != null) {
+                throw new IllegalStateException("atomic artifact job completion requires JDBC management state");
+            }
+            if (titanArtifactRef == null) {
+                titanStore.seedDraft(titanDraft);
+            } else {
+                titanStore.seedArtifactGeneration(titanDraft, titanArtifactRef);
+            }
+            if (productStateJournal != null) {
+                productStateJournal.appendArtifactGeneration(artifactSet, draft, evidence);
+            }
+        }
+        graphQlStore.saveArtifactSet(artifactSet);
+        graphQlStore.saveDraft(draft);
+        if (evidence != null) {
+            artifactEvidenceByArtifactSetId.put(evidence.artifactSetId(), evidence);
+        }
+        return true;
+    }
+
+    private boolean publishGeneratedArtifactsJdbc(
+            JdbcTransactionalMutationStore jdbcStore,
+            Draft titanDraft,
+            ArtifactRef titanArtifactRef,
+            TitanGraphqlArtifactSetRef artifactSet,
+            TitanGraphqlModelDraft draft,
+            TitanGraphqlArtifactEvidenceRef evidence,
+            CompletionGate completionGate
+    ) {
+        try (Connection connection = productStateJournal.dataSource.getConnection()) {
+            if (!connection.getAutoCommit()) {
+                throw new IllegalStateException("artifact publication requires an auto-commit connection");
+            }
+            connection.setAutoCommit(false);
+            try {
+                if (completionGate != null && !completionGate.complete(connection)) {
+                    connection.rollback();
+                    return false;
+                }
+                if (titanArtifactRef == null) {
+                    jdbcStore.seedDraft(connection, titanDraft);
+                } else {
+                    jdbcStore.seedArtifactGeneration(connection, titanDraft, titanArtifactRef);
+                }
+                jdbcStore.transitionDraftStatus(connection, titanDraft);
+                productStateJournal.appendArtifactGeneration(connection, artifactSet, draft, evidence);
+                connection.commit();
+                return true;
+            } catch (SQLException | RuntimeException failure) {
+                try {
+                    connection.rollback();
+                } catch (SQLException rollbackFailure) {
+                    failure.addSuppressed(rollbackFailure);
+                }
+                throw failure;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException failure) {
+            throw new IllegalStateException("failed to publish generated artifacts in the management database", failure);
+        }
+    }
+
+    @FunctionalInterface
+    private interface CompletionGate {
+        boolean complete(Connection connection) throws SQLException;
     }
 
     /** The recorded core package evidence for an artifact set, or {@code null} when none was recorded. */
@@ -276,6 +568,29 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
                 ? artifactRef.manifestContentHash()
                 : normalizeHash(previewBuild.artifactManifestHash(), "preview build artifact manifest hash");
         requireSameHash(manifestHash, artifactRef.manifestContentHash(), "preview build artifact manifest hash");
+        if (previewBuild.status() != TitanGraphqlPreviewBuild.PreviewBuildStatus.READY) {
+            throw new IllegalArgumentException("verified preview build must be READY");
+        }
+        TitanGraphqlOperationRegistry registry = graphQlStore.operationRegistry(previewBuild.operationRegistryId());
+        if (registry == null) {
+            throw new IllegalArgumentException("verified preview build requires an operation registry");
+        }
+        if (!previewBuild.modelId().equals(registry.modelId())
+                || !previewBuild.environment().equals(registry.environment())) {
+            throw new IllegalArgumentException("preview build operation registry model or environment does not match");
+        }
+        if (registry.mode() != TitanGraphqlOperationRegistry.RegistryMode.ENFORCE) {
+            throw new IllegalArgumentException("verified preview build requires ENFORCE operation registry mode");
+        }
+        java.time.Instant expiresAt;
+        try {
+            expiresAt = java.time.Instant.parse(previewBuild.expiresAt());
+        } catch (java.time.format.DateTimeParseException invalid) {
+            throw new IllegalArgumentException("verified preview build requires an ISO-8601 expiration", invalid);
+        }
+        if (!expiresAt.isAfter(java.time.Instant.now())) {
+            throw new IllegalArgumentException("verified preview build expiration must be in the future");
+        }
         TitanGraphqlPreviewBuild verified = new TitanGraphqlPreviewBuild(
                 previewBuild.id(),
                 previewBuild.modelId(),
@@ -309,39 +624,110 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
     }
 
     @Override
-    public TitanGraphqlDurableManagementStore saveObservedOperation(TitanGraphqlObservedOperation operation) {
-        graphQlStore.saveObservedOperation(operation);
-        appendProductState("observedOperation", operation);
+    public synchronized TitanGraphqlDurableManagementStore saveObservedOperation(TitanGraphqlObservedOperation operation) {
+        TitanGraphqlObservedOperation persisted = productStateJournal != null && productStateJournal.dataSource != null
+                ? productStateJournal.persistObservedOperation(operation, false)
+                : operation;
+        if (productStateJournal == null || productStateJournal.dataSource == null) {
+            appendProductState("observedOperation", persisted);
+        }
+        graphQlStore.saveObservedOperation(persisted);
         return this;
     }
 
     @Override
-    public TitanGraphqlDurableManagementStore observeOperation(TitanGraphqlObservedOperation operation) {
-        graphQlStore.observeOperation(operation);
-        appendProductState("observedOperation", graphQlStore.observedOperation(operation.id()));
+    public synchronized TitanGraphqlDurableManagementStore observeOperation(TitanGraphqlObservedOperation operation) {
+        TitanGraphqlObservedOperation merged;
+        if (productStateJournal != null && productStateJournal.dataSource != null) {
+            merged = productStateJournal.persistObservedOperation(operation, true);
+        } else {
+            TitanGraphqlObservedOperation existing = graphQlStore.observedOperation(operation.id());
+            merged = existing == null ? operation : existing.mergeObservation(operation);
+            appendProductState("observedOperation", merged);
+        }
+        graphQlStore.saveObservedOperation(merged);
         return this;
     }
 
     @Override
-    public TitanGraphqlObservedOperation approveObservedOperation(String observedOperationId, String approvedBy, String approvedAt) {
-        TitanGraphqlObservedOperation operation = graphQlStore.approveObservedOperation(observedOperationId, approvedBy, approvedAt);
-        appendProductState("observedOperation", operation);
-        appendOperationRegistry(operation.modelId(), operation.environment());
-        return operation;
+    public synchronized TitanGraphqlObservedOperation approveObservedOperation(
+            String observedOperationId, String approvedBy, String approvedAt
+    ) {
+        return reviewObservedOperation(observedOperationId, approvedBy, approvedAt, true);
     }
 
     @Override
-    public TitanGraphqlObservedOperation rejectObservedOperation(String observedOperationId, String rejectedBy, String rejectedAt) {
-        TitanGraphqlObservedOperation operation = graphQlStore.rejectObservedOperation(observedOperationId, rejectedBy, rejectedAt);
-        appendProductState("observedOperation", operation);
-        appendOperationRegistry(operation.modelId(), operation.environment());
-        return operation;
+    public synchronized TitanGraphqlObservedOperation rejectObservedOperation(
+            String observedOperationId, String rejectedBy, String rejectedAt
+    ) {
+        return reviewObservedOperation(observedOperationId, rejectedBy, rejectedAt, false);
+    }
+
+    public synchronized boolean reviewObservedOperationAndCompleteJob(
+            String observedOperationId,
+            String reviewedBy,
+            String reviewedAt,
+            boolean approve,
+            TitanGraphqlControlJobQueue queue,
+            TitanGraphqlControlJobQueue.ClaimedJob job
+    ) {
+        if (!supportsAtomicJobCompletion()) {
+            throw new IllegalStateException("atomic operation review requires JDBC management state");
+        }
+        java.util.Objects.requireNonNull(queue, "queue");
+        java.util.Objects.requireNonNull(job, "job");
+        OperationReviewEntry persisted = productStateJournal.persistOperationReview(
+                observedOperationId, reviewedBy, reviewedAt, approve, queue, job);
+        if (persisted == null) {
+            return false;
+        }
+        graphQlStore.saveObservedOperation(persisted.operation());
+        graphQlStore.saveOperationRegistry(persisted.registry());
+        return true;
+    }
+
+    private TitanGraphqlObservedOperation reviewObservedOperation(
+            String observedOperationId, String reviewedBy, String reviewedAt, boolean approve
+    ) {
+        if (productStateJournal != null && productStateJournal.dataSource != null) {
+            OperationReviewEntry persisted = productStateJournal.persistOperationReview(
+                    observedOperationId, reviewedBy, reviewedAt, approve);
+            graphQlStore.saveObservedOperation(persisted.operation());
+            graphQlStore.saveOperationRegistry(persisted.registry());
+            return persisted.operation();
+        }
+        TitanGraphqlObservedOperation existing = graphQlStore.observedOperation(observedOperationId);
+        if (existing == null) {
+            throw new IllegalArgumentException("unknown observed operation '" + observedOperationId + "'");
+        }
+        String registryId = TitanGraphqlInMemoryManagementStore.operationRegistryId(
+                existing.modelId(), existing.environment());
+        TitanGraphqlInMemoryManagementStore staged = new TitanGraphqlInMemoryManagementStore();
+        staged.saveObservedOperation(existing);
+        TitanGraphqlOperationRegistry currentRegistry = graphQlStore.operationRegistry(registryId);
+        if (currentRegistry != null) {
+            staged.saveOperationRegistry(currentRegistry);
+        }
+        TitanGraphqlObservedOperation reviewed = approve
+                ? staged.approveObservedOperation(observedOperationId, reviewedBy, reviewedAt)
+                : staged.rejectObservedOperation(observedOperationId, reviewedBy, reviewedAt);
+        TitanGraphqlOperationRegistry reviewedRegistry = staged.operationRegistry(registryId);
+        OperationReviewEntry entry = new OperationReviewEntry(reviewed, reviewedRegistry);
+        appendProductState("operationReview", entry);
+        graphQlStore.saveObservedOperation(reviewed);
+        graphQlStore.saveOperationRegistry(reviewedRegistry);
+        return reviewed;
     }
 
     @Override
-    public TitanGraphqlDurableManagementStore saveOperationRegistry(TitanGraphqlOperationRegistry registry) {
+    public synchronized TitanGraphqlDurableManagementStore saveOperationRegistry(TitanGraphqlOperationRegistry registry) {
+        if (productStateJournal != null && productStateJournal.dataSource != null) {
+            productStateJournal.persistOperationRegistry(
+                    graphQlStore.operationRegistry(registry.id()), registry);
+        } else {
+            appendProductState("operationRegistry", registry);
+        }
         graphQlStore.saveOperationRegistry(registry);
-        appendProductState("operationRegistry", registry);
         return this;
     }
 
@@ -465,12 +851,12 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
     }
 
     @Override
-    public TitanGraphqlObservedOperation observedOperation(String id) {
+    public synchronized TitanGraphqlObservedOperation observedOperation(String id) {
         return graphQlStore.observedOperation(id);
     }
 
     @Override
-    public TitanGraphqlOperationRegistry operationRegistry(String id) {
+    public synchronized TitanGraphqlOperationRegistry operationRegistry(String id) {
         return graphQlStore.operationRegistry(id);
     }
 
@@ -519,17 +905,19 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
     }
 
     @Override
-    public List<TitanGraphqlObservedOperation> observedOperations() {
+    public synchronized List<TitanGraphqlObservedOperation> observedOperations() {
         return graphQlStore.observedOperations();
     }
 
     @Override
-    public List<TitanGraphqlObservedOperation> observedOperations(String modelId, String environment) {
+    public synchronized List<TitanGraphqlObservedOperation> observedOperations(String modelId, String environment) {
         return graphQlStore.observedOperations(modelId, environment);
     }
 
     @Override
-    public List<TitanGraphqlObservedOperation> observedOperations(String modelId, String environment, String role) {
+    public synchronized List<TitanGraphqlObservedOperation> observedOperations(
+            String modelId, String environment, String role
+    ) {
         return graphQlStore.observedOperations(modelId, environment, role);
     }
 
@@ -780,20 +1168,15 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
     }
 
     private static String sha256(String input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return HexFormat.of().formatHex(digest.digest(input.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException ex) {
-            throw new IllegalStateException("SHA-256 is unavailable", ex);
-        }
+        return sha256(input.getBytes(StandardCharsets.UTF_8));
     }
 
-    private void appendOperationRegistry(String modelId, String environment) {
-        TitanGraphqlOperationRegistry registry = graphQlStore.operationRegistry(
-                TitanGraphqlInMemoryManagementStore.operationRegistryId(modelId, environment)
-        );
-        if (registry != null) {
-            appendProductState("operationRegistry", registry);
+    private static String sha256(byte[] input) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return HexFormat.of().formatHex(digest.digest(input));
+        } catch (NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 is unavailable", ex);
         }
     }
 
@@ -809,24 +1192,441 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
         return transactionLogPath.resolveSibling(suffix + ".graphql-state.jsonl");
     }
 
+    private record OperationReviewEntry(
+            TitanGraphqlObservedOperation operation,
+            TitanGraphqlOperationRegistry registry
+    ) {
+    }
+
     private static final class ProductStateJournal {
         private static final JsonMapper JSON = new JsonMapper();
+        private static final String TABLE = "management.graphql_product_state";
+        private static final String OBSERVED_TABLE = "management.graphql_observed_operations";
+        private static final String REGISTRY_TABLE = "management.graphql_operation_registries";
+        private static final String REGISTRY_OPERATIONS_TABLE = "management.graphql_registry_operations";
+        private static final String INSERT_OBSERVED = "INSERT INTO " + OBSERVED_TABLE
+                + " (id, model_id, environment, role, client, operation_hash, operation_name, "
+                + "document, status, depth, estimated_cost, field_usage_json, first_seen_at, "
+                + "last_seen_at, observed_count, operation_json) "
+                + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        private static final String UPDATE_OBSERVED = "UPDATE " + OBSERVED_TABLE
+                + " SET model_id = ?, environment = ?, role = ?, client = ?, operation_hash = ?, "
+                + "operation_name = ?, document = ?, status = ?, depth = ?, estimated_cost = ?, "
+                + "field_usage_json = ?, first_seen_at = ?, last_seen_at = ?, observed_count = ?, "
+                + "operation_json = ? WHERE id = ?";
 
         private final Path path;
+        private final DataSource dataSource;
 
         ProductStateJournal(Path path) {
             this.path = path;
+            this.dataSource = null;
+        }
+
+        ProductStateJournal(DataSource dataSource) {
+            this.path = null;
+            this.dataSource = java.util.Objects.requireNonNull(dataSource, "product state data source");
+        }
+
+        void backfillObservedOperations(List<TitanGraphqlObservedOperation> operations) {
+            if (dataSource == null) {
+                return;
+            }
+            for (TitanGraphqlObservedOperation operation : operations) {
+                try (Connection connection = dataSource.getConnection()) {
+                    try {
+                        insertObserved(connection, operation);
+                    } catch (SQLException duplicate) {
+                        if (!isDuplicateKey(duplicate)) {
+                            throw duplicate;
+                        }
+                    }
+                } catch (SQLException failure) {
+                    throw new IllegalStateException("failed to backfill observed operation " + operation.id(), failure);
+                }
+            }
+        }
+
+        void backfillOperationRegistries(List<TitanGraphqlOperationRegistry> registries) {
+            if (dataSource == null) {
+                return;
+            }
+            for (TitanGraphqlOperationRegistry registry : registries) {
+                try (Connection connection = dataSource.getConnection()) {
+                    if (!connection.getAutoCommit()) {
+                        throw new IllegalStateException("registry backfill requires auto-commit connection");
+                    }
+                    connection.setAutoCommit(false);
+                    try {
+                        lockReviewMutex(connection);
+                        TitanGraphqlOperationRegistry projected = projectedRegistry(connection, registry.id());
+                        if (projected == null) {
+                            insertRegistry(connection, registry);
+                            replaceRegistryOperations(connection, registry);
+                        } else if (!projected.operations().isEmpty()
+                                && !registryOperationRowsExist(connection, registry.id())) {
+                            replaceRegistryOperations(connection, projected);
+                        }
+                        connection.commit();
+                    } catch (SQLException | RuntimeException failure) {
+                        connection.rollback();
+                        throw failure;
+                    } finally {
+                        connection.setAutoCommit(true);
+                    }
+                } catch (SQLException failure) {
+                    throw new IllegalStateException("failed to backfill operation registry " + registry.id(), failure);
+                }
+            }
+        }
+
+        synchronized TitanGraphqlObservedOperation persistObservedOperation(
+                TitanGraphqlObservedOperation operation, boolean merge
+        ) {
+            if (dataSource == null) {
+                throw new IllegalStateException("JDBC observed-operation projection is required");
+            }
+            for (int attempt = 0; attempt < 3; attempt++) {
+                try (Connection connection = dataSource.getConnection()) {
+                    if (!connection.getAutoCommit()) {
+                        throw new IllegalStateException("observed-operation publication requires auto-commit connection");
+                    }
+                    connection.setAutoCommit(false);
+                    try {
+                        TitanGraphqlObservedOperation existing = observedForUpdate(connection, operation.id());
+                        TitanGraphqlObservedOperation persisted = merge && existing != null
+                                ? existing.mergeObservation(operation) : operation;
+                        if (existing == null) {
+                            insertObserved(connection, persisted);
+                        } else {
+                            updateObserved(connection, persisted);
+                        }
+                        append(connection, "observedOperation", persisted);
+                        connection.commit();
+                        return persisted;
+                    } catch (SQLException | RuntimeException failure) {
+                        connection.rollback();
+                        if (failure instanceof SQLException sqlFailure
+                                && isDuplicateKey(sqlFailure) && attempt < 2) {
+                            continue;
+                        }
+                        throw new IllegalStateException("failed to publish observed operation "
+                                + operation.id(), failure);
+                    } finally {
+                        connection.setAutoCommit(true);
+                    }
+                } catch (SQLException failure) {
+                    throw new IllegalStateException("failed to publish observed operation "
+                            + operation.id(), failure);
+                }
+            }
+            throw new IllegalStateException("observed-operation publication exhausted duplicate-key retries");
+        }
+
+        synchronized OperationReviewEntry persistOperationReview(
+                String observedOperationId, String reviewedBy, String reviewedAt, boolean approve
+        ) {
+            return persistOperationReview(observedOperationId, reviewedBy, reviewedAt, approve, null, null);
+        }
+
+        synchronized OperationReviewEntry persistOperationReview(
+                String observedOperationId,
+                String reviewedBy,
+                String reviewedAt,
+                boolean approve,
+                TitanGraphqlControlJobQueue queue,
+                TitanGraphqlControlJobQueue.ClaimedJob job
+        ) {
+            if (dataSource == null) {
+                throw new IllegalStateException("JDBC observed-operation projection is required");
+            }
+            try (Connection connection = dataSource.getConnection()) {
+                if (!connection.getAutoCommit()) {
+                    throw new IllegalStateException("operation review requires auto-commit connection");
+                }
+                connection.setAutoCommit(false);
+                try {
+                    lockReviewMutex(connection);
+                    TitanGraphqlInMemoryManagementStore staged = currentGraphQlState();
+                    TitanGraphqlObservedOperation existing = staged.observedOperation(observedOperationId);
+                    if (existing == null) {
+                        throw new IllegalArgumentException(
+                                "unknown observed operation '" + observedOperationId + "'");
+                    }
+                    TitanGraphqlObservedOperation current = observedForUpdate(connection, observedOperationId);
+                    if (!existing.equals(current)) {
+                        throw new IllegalStateException(
+                                "observed operation changed before review: " + observedOperationId);
+                    }
+                    TitanGraphqlObservedOperation reviewed = approve
+                            ? staged.approveObservedOperation(observedOperationId, reviewedBy, reviewedAt)
+                            : staged.rejectObservedOperation(observedOperationId, reviewedBy, reviewedAt);
+                    String registryId = TitanGraphqlInMemoryManagementStore.operationRegistryId(
+                            reviewed.modelId(), reviewed.environment());
+                    OperationReviewEntry review = new OperationReviewEntry(
+                            reviewed, staged.operationRegistry(registryId));
+                    if (queue != null && !queue.complete(connection, job, reviewResultJson(review))) {
+                        connection.rollback();
+                        return null;
+                    }
+                    updateObserved(connection, reviewed);
+                    upsertRegistry(connection, review.registry());
+                    append(connection, "operationReview", review);
+                    connection.commit();
+                    return review;
+                } catch (SQLException | RuntimeException failure) {
+                    connection.rollback();
+                    throw failure;
+                } finally {
+                    connection.setAutoCommit(true);
+                }
+            } catch (SQLException failure) {
+                throw new IllegalStateException(
+                        "failed to publish operation review " + observedOperationId, failure);
+            }
+        }
+
+        private String reviewResultJson(OperationReviewEntry review) throws SQLException {
+            TitanGraphqlObservedOperation operation = review.operation();
+            try {
+                return JSON.writeValueAsString(Map.of(
+                        "accepted", true,
+                        "observedOperationId", operation.id(),
+                        "operationRegistryId", review.registry().id(),
+                        "modelId", operation.modelId(),
+                        "environment", operation.environment(),
+                        "role", operation.role(),
+                        "client", operation.client(),
+                        "operationHash", operation.operationHash(),
+                        "status", operation.status().name()));
+            } catch (JsonProcessingException failure) {
+                throw new SQLException("operation review result could not be serialized", failure);
+            }
+        }
+
+        synchronized void persistOperationRegistry(
+                TitanGraphqlOperationRegistry expected,
+                TitanGraphqlOperationRegistry registry
+        ) {
+            if (dataSource == null) {
+                throw new IllegalStateException("JDBC operation registry is required");
+            }
+            try (Connection connection = dataSource.getConnection()) {
+                if (!connection.getAutoCommit()) {
+                    throw new IllegalStateException("operation registry publication requires auto-commit connection");
+                }
+                connection.setAutoCommit(false);
+                try {
+                    lockReviewMutex(connection);
+                    TitanGraphqlOperationRegistry current = currentGraphQlState().operationRegistry(registry.id());
+                    if (!java.util.Objects.equals(expected, current)) {
+                        throw new IllegalStateException("operation registry changed before publication: "
+                                + registry.id());
+                    }
+                    upsertRegistry(connection, registry);
+                    append(connection, "operationRegistry", registry);
+                    connection.commit();
+                } catch (SQLException | RuntimeException failure) {
+                    connection.rollback();
+                    throw failure;
+                } finally {
+                    connection.setAutoCommit(true);
+                }
+            } catch (SQLException failure) {
+                throw new IllegalStateException("failed to publish operation registry " + registry.id(), failure);
+            }
+        }
+
+        private void lockReviewMutex(Connection connection) throws SQLException {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT id FROM management.graphql_review_mutex WHERE id = 1 FOR UPDATE");
+                    ResultSet rows = statement.executeQuery()) {
+                if (!rows.next()) {
+                    throw new SQLException("management review mutex lock row is missing");
+                }
+            }
+        }
+
+        private TitanGraphqlInMemoryManagementStore currentGraphQlState() {
+            TitanGraphqlInMemoryManagementStore current = new TitanGraphqlInMemoryManagementStore();
+            loadInto(current, new LinkedHashMap<>());
+            return current;
+        }
+
+        private void upsertRegistry(Connection connection, TitanGraphqlOperationRegistry registry)
+                throws SQLException {
+            try (PreparedStatement update = connection.prepareStatement(
+                    "UPDATE " + REGISTRY_TABLE + " SET model_id = ?, environment = ?, mode = ?, "
+                            + "operations_json = ?, updated_at = ?, registry_json = ? WHERE id = ?")) {
+                bindRegistryDetails(update, registry, 1);
+                update.setString(7, registry.id());
+                if (update.executeUpdate() == 0) {
+                    insertRegistry(connection, registry);
+                }
+            }
+            replaceRegistryOperations(connection, registry);
+        }
+
+        private TitanGraphqlOperationRegistry projectedRegistry(Connection connection, String id)
+                throws SQLException {
+            try (PreparedStatement lookup = connection.prepareStatement(
+                    "SELECT registry_json FROM " + REGISTRY_TABLE + " WHERE id = ? FOR UPDATE")) {
+                lookup.setString(1, id);
+                try (ResultSet rows = lookup.executeQuery()) {
+                    if (!rows.next()) {
+                        return null;
+                    }
+                    try {
+                        return JSON.readValue(rows.getString(1), TitanGraphqlOperationRegistry.class);
+                    } catch (IOException malformed) {
+                        throw new SQLException("stored operation registry is malformed: " + id, malformed);
+                    }
+                }
+            }
+        }
+
+        private boolean registryOperationRowsExist(Connection connection, String id) throws SQLException {
+            try (PreparedStatement lookup = connection.prepareStatement(
+                    "SELECT operation_id FROM " + REGISTRY_OPERATIONS_TABLE + " WHERE registry_id = ? LIMIT 1")) {
+                lookup.setString(1, id);
+                try (ResultSet rows = lookup.executeQuery()) {
+                    return rows.next();
+                }
+            }
+        }
+
+        private void replaceRegistryOperations(Connection connection, TitanGraphqlOperationRegistry registry)
+                throws SQLException {
+            try (PreparedStatement remove = connection.prepareStatement(
+                    "DELETE FROM " + REGISTRY_OPERATIONS_TABLE + " WHERE registry_id = ?")) {
+                remove.setString(1, registry.id());
+                remove.executeUpdate();
+            }
+            try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT INTO " + REGISTRY_OPERATIONS_TABLE + " (registry_id, operation_id, operation_position, "
+                            + "operation_hash, document_hash, operation_name, document, status, roles_json, clients_json) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                int position = 0;
+                for (TitanGraphqlOperationRegistry.RegisteredOperation operation : registry.operations()) {
+                    insert.setString(1, registry.id());
+                    insert.setString(2, operation.id());
+                    insert.setInt(3, position++);
+                    insert.setString(4, operation.operationHash());
+                    insert.setString(5, sha256(operation.document()));
+                    insert.setString(6, operation.operationName());
+                    insert.setString(7, operation.document());
+                    insert.setString(8, operation.status().name());
+                    try {
+                        insert.setString(9, JSON.writeValueAsString(operation.roles()));
+                        insert.setString(10, JSON.writeValueAsString(operation.clients()));
+                    } catch (JsonProcessingException failure) {
+                        throw new SQLException("registry operation scope could not be serialized", failure);
+                    }
+                    insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+        }
+
+        private void insertRegistry(Connection connection, TitanGraphqlOperationRegistry registry)
+                throws SQLException {
+            try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT INTO " + REGISTRY_TABLE + " (id, model_id, environment, mode, "
+                            + "operations_json, updated_at, registry_json) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                insert.setString(1, registry.id());
+                bindRegistryDetails(insert, registry, 2);
+                insert.executeUpdate();
+            }
+        }
+
+        private void bindRegistryDetails(
+                PreparedStatement statement, TitanGraphqlOperationRegistry registry, int first
+        ) throws SQLException {
+            statement.setString(first, registry.modelId());
+            statement.setString(first + 1, registry.environment());
+            statement.setString(first + 2, registry.mode().name());
+            try {
+                statement.setString(first + 3, JSON.writeValueAsString(registry.operations()));
+                statement.setString(first + 5, JSON.writeValueAsString(registry));
+            } catch (JsonProcessingException failure) {
+                throw new SQLException("operation registry could not be serialized", failure);
+            }
+            statement.setString(first + 4, registry.updatedAt());
+        }
+
+        private TitanGraphqlObservedOperation observedForUpdate(Connection connection, String id) throws SQLException {
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "SELECT operation_json FROM " + OBSERVED_TABLE + " WHERE id = ? FOR UPDATE")) {
+                statement.setString(1, id);
+                try (ResultSet rows = statement.executeQuery()) {
+                    if (!rows.next()) {
+                        return null;
+                    }
+                    try {
+                        return JSON.readValue(rows.getString(1), TitanGraphqlObservedOperation.class);
+                    } catch (IOException malformed) {
+                        throw new IllegalStateException("stored observed operation is malformed: " + id, malformed);
+                    }
+                }
+            }
+        }
+
+        private void insertObserved(Connection connection, TitanGraphqlObservedOperation operation) throws SQLException {
+            try (PreparedStatement statement = connection.prepareStatement(INSERT_OBSERVED)) {
+                statement.setString(1, operation.id());
+                bindObserved(statement, operation, 2);
+                statement.executeUpdate();
+            }
+        }
+
+        private void updateObserved(Connection connection, TitanGraphqlObservedOperation operation) throws SQLException {
+            try (PreparedStatement statement = connection.prepareStatement(UPDATE_OBSERVED)) {
+                bindObserved(statement, operation, 1);
+                statement.setString(16, operation.id());
+                if (statement.executeUpdate() != 1) {
+                    throw new SQLException("observed operation disappeared before update: " + operation.id());
+                }
+            }
+        }
+
+        private void bindObserved(
+                PreparedStatement statement, TitanGraphqlObservedOperation operation, int start
+        ) throws SQLException {
+            statement.setString(start, operation.modelId());
+            statement.setString(start + 1, operation.environment());
+            statement.setString(start + 2, operation.role());
+            statement.setString(start + 3, operation.client());
+            statement.setString(start + 4, operation.operationHash());
+            statement.setString(start + 5, operation.operationName());
+            statement.setString(start + 6, operation.document());
+            statement.setString(start + 7, operation.status().name());
+            statement.setInt(start + 8, operation.depth());
+            statement.setInt(start + 9, operation.estimatedCost());
+            try {
+                statement.setString(start + 10, JSON.writeValueAsString(operation.fieldUsage()));
+                statement.setString(start + 14, JSON.writeValueAsString(operation));
+            } catch (JsonProcessingException failure) {
+                throw new SQLException("observed operation could not be serialized", failure);
+            }
+            statement.setString(start + 11, operation.firstSeenAt());
+            statement.setString(start + 12, operation.lastSeenAt());
+            statement.setInt(start + 13, operation.observedCount());
+        }
+
+        private static boolean isDuplicateKey(SQLException failure) {
+            return "23505".equals(failure.getSQLState())
+                    || "23000".equals(failure.getSQLState());
         }
 
         void loadInto(
                 TitanGraphqlInMemoryManagementStore store,
                 Map<String, TitanGraphqlArtifactEvidenceRef> artifactEvidenceByArtifactSetId
         ) {
-            if (Files.exists(path) == false) {
+            if (dataSource == null && Files.exists(path) == false) {
                 return;
             }
             try {
-                for (String line : Files.readAllLines(path, StandardCharsets.UTF_8)) {
+                for (String line : readEntries()) {
                     if (line.isBlank()) {
                         continue;
                     }
@@ -844,44 +1644,182 @@ public final class TitanGraphqlDurableManagementStore implements TitanGraphqlMan
                         case "draft" -> store.saveDraft(JSON.treeToValue(value, TitanGraphqlModelDraft.class));
                         case "validationReport" -> store.saveValidationReport(JSON.treeToValue(value, TitanGraphqlValidationReportRef.class));
                         case "artifactSet" -> store.saveArtifactSet(JSON.treeToValue(value, TitanGraphqlArtifactSetRef.class));
+                        case "artifactGeneration" -> {
+                            ArtifactGenerationEntry generation =
+                                    JSON.treeToValue(value, ArtifactGenerationEntry.class);
+                            store.saveArtifactSet(generation.artifactSet());
+                            store.saveDraft(generation.draft());
+                            if (generation.evidence() != null) {
+                                artifactEvidenceByArtifactSetId.put(
+                                        generation.evidence().artifactSetId(), generation.evidence());
+                            }
+                        }
                         case "driftReport" -> store.saveDriftReport(JSON.treeToValue(value, TitanGraphqlDriftReportRef.class));
                         case "previewBuild" -> store.savePreviewBuild(JSON.treeToValue(value, TitanGraphqlPreviewBuild.class));
                         case "previewContractTestReport" -> store.savePreviewContractTestReport(
                                 JSON.treeToValue(value, TitanGraphqlPreviewContractTestReport.class));
                         case "observedOperation" -> store.saveObservedOperation(JSON.treeToValue(value, TitanGraphqlObservedOperation.class));
+                        case "operationReview" -> {
+                            OperationReviewEntry review = JSON.treeToValue(value, OperationReviewEntry.class);
+                            store.saveObservedOperation(review.operation());
+                            store.saveOperationRegistry(review.registry());
+                        }
                         case "operationRegistry" -> store.saveOperationRegistry(JSON.treeToValue(value, TitanGraphqlOperationRegistry.class));
                         case "usageReport" -> store.saveUsageReport(JSON.treeToValue(value, TitanGraphqlUsageReport.class));
                         case "deployment" -> store.saveDeployment(JSON.treeToValue(value, TitanGraphqlDeployment.class));
                         default -> throw new IllegalStateException("unknown GraphQL management product state type '" + type + "'");
                     }
                 }
-            } catch (IOException ex) {
-                throw new IllegalStateException("failed to load GraphQL management product state journal " + path, ex);
+            } catch (IOException | SQLException ex) {
+                throw new IllegalStateException("failed to load GraphQL management product state journal "
+                        + location(), ex);
             }
         }
 
-        void append(String type, Object value) {
+        synchronized void append(String type, Object value) {
             try {
-                Path parent = path.getParent();
-                if (parent != null) {
-                    Files.createDirectories(parent);
+                String line = render(type, value);
+                if (dataSource == null) {
+                    Path parent = path.getParent();
+                    if (parent != null) {
+                        Files.createDirectories(parent);
+                    }
+                    recoverTornTail();
+                    ByteBuffer bytes = ByteBuffer.wrap((line + "\n").getBytes(StandardCharsets.UTF_8));
+                    try (FileChannel channel = FileChannel.open(path,
+                            StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
+                        while (bytes.hasRemaining()) {
+                            channel.write(bytes);
+                        }
+                        channel.force(true);
+                    }
+                } else {
+                    try (Connection connection = dataSource.getConnection();
+                         PreparedStatement statement = connection.prepareStatement(
+                                 "INSERT INTO " + TABLE + " (entry_json) VALUES (?)")) {
+                        statement.setString(1, line);
+                        statement.executeUpdate();
+                    }
                 }
-                String line = JSON.writeValueAsString(new ProductStateEntry(type, JSON.valueToTree(value)));
-                Files.writeString(
-                        path,
-                        line + System.lineSeparator(),
-                        StandardCharsets.UTF_8,
-                        java.nio.file.StandardOpenOption.CREATE,
-                        java.nio.file.StandardOpenOption.APPEND
-                );
-            } catch (JsonProcessingException ex) {
-                throw new IllegalStateException("failed to render GraphQL management product state", ex);
-            } catch (IOException ex) {
-                throw new IllegalStateException("failed to append GraphQL management product state journal " + path, ex);
+            } catch (IOException | SQLException ex) {
+                throw new IllegalStateException("failed to append GraphQL management product state journal "
+                        + location(), ex);
             }
+        }
+
+        private void append(Connection connection, String type, Object value) {
+            if (dataSource == null) {
+                throw new IllegalStateException("JDBC product state journal is required");
+            }
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "INSERT INTO " + TABLE + " (entry_json) VALUES (?)")) {
+                statement.setString(1, render(type, value));
+                statement.executeUpdate();
+            } catch (SQLException failure) {
+                throw new IllegalStateException("failed to append GraphQL management product state journal "
+                        + location(), failure);
+            }
+        }
+
+        private String render(String type, Object value) {
+            try {
+                return JSON.writeValueAsString(new ProductStateEntry(type, JSON.valueToTree(value)));
+            } catch (JsonProcessingException failure) {
+                throw new IllegalStateException("failed to render GraphQL management product state", failure);
+            }
+        }
+
+        private synchronized List<String> readEntries() throws IOException, SQLException {
+            if (dataSource == null) {
+                recoverTornTail();
+                return Files.readAllLines(path, StandardCharsets.UTF_8);
+            }
+            List<String> entries = new ArrayList<>();
+            try (Connection connection = dataSource.getConnection();
+                 PreparedStatement statement = connection.prepareStatement(
+                         "SELECT entry_json FROM " + TABLE + " ORDER BY entry_id");
+                 ResultSet rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    entries.add(rows.getString(1));
+                }
+            }
+            return entries;
+        }
+
+        private void recoverTornTail() throws IOException {
+            if (!Files.exists(path) || Files.size(path) == 0) {
+                return;
+            }
+            byte[] contents = Files.readAllBytes(path);
+            if (contents[contents.length - 1] == '\n') {
+                return;
+            }
+            int completeLength = 0;
+            for (int index = contents.length - 1; index >= 0; index--) {
+                if (contents[index] == '\n') {
+                    completeLength = index + 1;
+                    break;
+                }
+            }
+            // The newline terminates a committed entry; an unterminated tail cannot be replayed.
+            byte[] tail = Arrays.copyOfRange(contents, completeLength, contents.length);
+            Path backup = path.resolveSibling(path.getFileName() + ".torn-" + sha256(tail));
+            if (Files.exists(backup)) {
+                if (!Arrays.equals(Files.readAllBytes(backup), tail)) {
+                    throw new IOException("torn product state backup differs from journal tail: " + backup);
+                }
+            } else {
+                Path temporary = Files.createTempFile(
+                        path.toAbsolutePath().getParent(), path.getFileName() + ".torn-", ".tmp");
+                try {
+                    Files.write(temporary, tail);
+                    try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
+                        channel.force(true);
+                    }
+                    try {
+                        Files.move(temporary, backup, StandardCopyOption.ATOMIC_MOVE);
+                    } catch (AtomicMoveNotSupportedException unsupported) {
+                        Files.move(temporary, backup);
+                    }
+                } finally {
+                    Files.deleteIfExists(temporary);
+                }
+            }
+            try (FileChannel channel = FileChannel.open(path, StandardOpenOption.WRITE)) {
+                channel.truncate(completeLength);
+                channel.force(true);
+            }
+        }
+
+        private String location() {
+            return dataSource == null ? path.toString() : TABLE;
+        }
+
+        void appendArtifactGeneration(
+                TitanGraphqlArtifactSetRef artifactSet,
+                TitanGraphqlModelDraft draft,
+                TitanGraphqlArtifactEvidenceRef evidence
+        ) {
+            append("artifactGeneration", new ArtifactGenerationEntry(artifactSet, draft, evidence));
+        }
+
+        void appendArtifactGeneration(
+                Connection connection,
+                TitanGraphqlArtifactSetRef artifactSet,
+                TitanGraphqlModelDraft draft,
+                TitanGraphqlArtifactEvidenceRef evidence
+        ) {
+            append(connection, "artifactGeneration", new ArtifactGenerationEntry(artifactSet, draft, evidence));
         }
 
         private record ProductStateEntry(String type, JsonNode value) {
+        }
+
+        private record ArtifactGenerationEntry(
+                TitanGraphqlArtifactSetRef artifactSet,
+                TitanGraphqlModelDraft draft,
+                TitanGraphqlArtifactEvidenceRef evidence
+        ) {
         }
     }
 }

@@ -51,8 +51,8 @@ final class TitanGraphqlGap006CommandContextTest {
     }
 
     @Test
-    void adminImportEndpointRequiresGap006ActorAndIdempotencyContextBeforeHandlerRuns() {
-        GraphqlAdminHttpResource.GraphqlAdminHttpResult response = new GraphqlAdminHttpResource().negotiatePost(
+    void legacyManagementRuntimeRequiresActorAndIdempotencyContextBeforeHandlerRuns() {
+        GraphqlAdminHttpResource.GraphqlAdminHttpResult response = new LegacyManagementGraphqlTestClient().negotiatePost(
                 Map.of("query", """
                         mutation Import {
                           importModelDocument(input: { workspaceId: "workspace-001", yaml: "not: yaml: model" }) {

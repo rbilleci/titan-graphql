@@ -34,7 +34,7 @@ class GraphqlPreviewRuntimeRouterTest {
         );
 
         GraphqlPreviewHttpResource.GraphqlPreviewHttpResult response =
-                new GraphqlPreviewHttpResource().negotiatePost(
+                new LegacyPreviewGraphqlTestClient().negotiatePost(
                         "preview-001",
                         Map.of("query", "{ previewArticle(id: 1) { id title previewOnly } }"),
                         MediaType.APPLICATION_JSON,
@@ -58,7 +58,7 @@ class GraphqlPreviewRuntimeRouterTest {
         );
 
         GraphqlPreviewHttpResource.GraphqlPreviewHttpResult preview =
-                new GraphqlPreviewHttpResource().negotiatePost(
+                new LegacyPreviewGraphqlTestClient().negotiatePost(
                         "preview-001",
                         Map.of("query", "{ previewArticle(id: 1) { id previewOnly } }"),
                         "application/graphql-response+json",
@@ -86,7 +86,7 @@ class GraphqlPreviewRuntimeRouterTest {
                 new GraphqlHttpResource.GraphqlHttpContext(0L, "reader", false, false, false, true, "");
 
         GraphqlPreviewHttpResource.GraphqlPreviewHttpResult preview =
-                new GraphqlPreviewHttpResource().negotiateGet(
+                new LegacyPreviewGraphqlTestClient().negotiateGet(
                         "preview-001",
                         "{ __type(name: \"PreviewArticle\") { name fields { name } } }",
                         "",
@@ -110,7 +110,7 @@ class GraphqlPreviewRuntimeRouterTest {
     @Test
     void reportsUnknownPreviewBuildWithoutFallingBackToStableSchema() {
         GraphqlPreviewHttpResource.GraphqlPreviewHttpResult response =
-                new GraphqlPreviewHttpResource().negotiatePost(
+                new LegacyPreviewGraphqlTestClient().negotiatePost(
                         "missing-preview",
                         Map.of("query", "{ article(id: 1) { id } }"),
                         MediaType.APPLICATION_JSON,
@@ -122,7 +122,7 @@ class GraphqlPreviewRuntimeRouterTest {
     }
 
     @Test
-    void bootsPreviewGraphqlRouteOverHttp() {
+    void previewHttpRouteRejectsProcessLocalCandidateWithoutDatabaseRegistry() {
         GraphqlPreviewRuntimeRouter.registerCandidate(
                 "preview-001",
                 "artifact-001",
@@ -140,11 +140,18 @@ class GraphqlPreviewRuntimeRouterTest {
                 .when()
                 .post("/preview/preview-001/graphql")
                 .then()
-                .statusCode(200)
+                .statusCode(503)
                 .header("Content-Type", startsWith("application/graphql-response+json"))
-                .body("data.previewArticle.id", equalTo(1))
-                .body("data.previewArticle.title", equalTo("Candidate title"))
-                .body("data.previewArticle.previewOnly", equalTo("candidate-artifact"));
+                .body("errors[0].extensions.code", equalTo("EXECUTION_MODE_UNAVAILABLE"));
+
+        given()
+                .accept("application/graphql-response+json")
+                .queryParam("query", "{ previewArticle(id: 1) { id } }")
+                .when()
+                .get("/preview/preview-001/graphql")
+                .then()
+                .statusCode(503)
+                .body("errors[0].extensions.code", equalTo("EXECUTION_MODE_UNAVAILABLE"));
     }
 
     @Test
@@ -250,7 +257,7 @@ class GraphqlPreviewRuntimeRouterTest {
         );
 
         GraphqlPreviewHttpResource.GraphqlPreviewHttpResult response =
-                new GraphqlPreviewHttpResource().negotiatePost(
+                new LegacyPreviewGraphqlTestClient().negotiatePost(
                         "preview-001",
                         Map.of(
                                 "query", "query NewPreview { previewArticle(id: 1) { id previewOnly } }",
@@ -277,7 +284,7 @@ class GraphqlPreviewRuntimeRouterTest {
         );
 
         GraphqlPreviewHttpResource.GraphqlPreviewHttpResult response =
-                new GraphqlPreviewHttpResource().negotiatePost(
+                new LegacyPreviewGraphqlTestClient().negotiatePost(
                         "preview-001",
                         Map.of(
                                 "query", "query NewPreview { previewArticle(id: 1) { id } }",
@@ -304,7 +311,7 @@ class GraphqlPreviewRuntimeRouterTest {
         );
 
         GraphqlPreviewHttpResource.GraphqlPreviewHttpResult response =
-                new GraphqlPreviewHttpResource().negotiatePost(
+                new LegacyPreviewGraphqlTestClient().negotiatePost(
                         "preview-001",
                         Map.of("query", "query NewPreview { previewArticle(id: 1) { id } }"),
                         MediaType.APPLICATION_JSON,
@@ -333,7 +340,7 @@ class GraphqlPreviewRuntimeRouterTest {
         );
 
         GraphqlPreviewHttpResource.GraphqlPreviewHttpResult response =
-                new GraphqlPreviewHttpResource().negotiatePost(
+                new LegacyPreviewGraphqlTestClient().negotiatePost(
                         "preview-001",
                         Map.of(
                                 "query", document,
@@ -367,7 +374,7 @@ class GraphqlPreviewRuntimeRouterTest {
         );
 
         GraphqlPreviewHttpResource.GraphqlPreviewHttpResult response =
-                new GraphqlPreviewHttpResource().negotiatePost(
+                new LegacyPreviewGraphqlTestClient().negotiatePost(
                         "preview-001",
                         Map.of(
                                 "query", document,
@@ -409,7 +416,7 @@ class GraphqlPreviewRuntimeRouterTest {
         );
 
         GraphqlPreviewHttpResource.GraphqlPreviewHttpResult response =
-                new GraphqlPreviewHttpResource().negotiatePost(
+                new LegacyPreviewGraphqlTestClient().negotiatePost(
                         "preview-001",
                         Map.of(
                                 "query", document,

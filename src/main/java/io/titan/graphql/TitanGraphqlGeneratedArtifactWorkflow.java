@@ -18,9 +18,8 @@ import io.titan.graphql.model.TitanGraphqlArtifactOptions;
 import io.titan.graphql.model.TitanGraphqlModelDocument;
 import io.titan.graphql.model.TitanGraphqlModelDocumentJson;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -237,8 +236,12 @@ public final class TitanGraphqlGeneratedArtifactWorkflow {
     }
 
     private static String readConformanceMatrixMarkdown() {
-        try {
-            return Files.readString(Path.of("docs/query-contract-conformance.md"), StandardCharsets.UTF_8);
+        try (InputStream source = TitanGraphqlGeneratedArtifactWorkflow.class.getClassLoader()
+                .getResourceAsStream("docs/query-contract-conformance.md")) {
+            if (source == null) {
+                throw new IllegalArgumentException("conformance matrix is missing from the runtime package");
+            }
+            return new String(source.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException ex) {
             throw new IllegalArgumentException("conformance matrix could not be read", ex);
         }

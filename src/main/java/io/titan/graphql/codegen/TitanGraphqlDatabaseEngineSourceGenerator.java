@@ -64,9 +64,14 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
     }
 
     public static String generate(TitanGraphqlModelDocument document, String runtimeIdentity) {
+        return generate(document, runtimeIdentity, "public");
+    }
+
+    public static String generate(TitanGraphqlModelDocument document, String runtimeIdentity, String engineSchema) {
         if (document == null) {
             throw new IllegalArgumentException("model document is required");
         }
+        String entryPoint = entryPoint(engineSchema);
         TitanGraphqlValidationReport report = TitanGraphqlModelDocumentValidator.validate(document);
         if (report.blocksDeployment()) {
             throw new IllegalArgumentException("GraphQL model has " + report.errorCount()
@@ -82,7 +87,9 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append("/** Generated from the reviewed model. DO NOT EDIT. */\n")
                 .append("public final class ").append(CLASS).append(" {\n")
                 .append("    private ").append(CLASS).append("() { }\n\n");
-        emitExecute(source, document, TitanGraphqlModelDocumentJson.semanticHash(document), runtimeIdentity);
+        emitMutationRegistryIdentity(source, document);
+        emitExecute(source, document, TitanGraphqlModelDocumentJson.semanticHash(document), runtimeIdentity,
+                entryPoint);
         emitQueryRootHelpers(source, document, false);
         emitPostgresInternalHelpers(source, document);
         source.append("}\n");
@@ -295,9 +302,16 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
      * same logical whole-request response contract as PostgreSQL's text-returning function.
      */
     public static String generateMySqlProcedure(TitanGraphqlModelDocument document, String runtimeIdentity) {
+        return generateMySqlProcedure(document, runtimeIdentity, "public");
+    }
+
+    public static String generateMySqlProcedure(
+            TitanGraphqlModelDocument document, String runtimeIdentity, String engineSchema
+    ) {
         if (document == null) {
             throw new IllegalArgumentException("model document is required");
         }
+        String entryPoint = entryPoint(engineSchema);
         TitanGraphqlValidationReport report = TitanGraphqlModelDocumentValidator.validate(document);
         if (report.blocksDeployment()) {
             throw new IllegalArgumentException("GraphQL model has " + report.errorCount()
@@ -311,22 +325,38 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append("import java.sql.*;\n\n")
                 .append("import titan.dsl.SQL;\n")
                 .append("import titan.dsl.SqlDialect;\n")
+                .append("import titan.dsl.StoredFunction;\n")
                 .append("import titan.dsl.StoredProcedure;\n\n")
                 .append("/** Generated from the reviewed model. DO NOT EDIT. */\n")
                 .append("public final class GeneratedDatabaseGraphqlMySqlProcedure {\n")
                 .append("    private GeneratedDatabaseGraphqlMySqlProcedure() { }\n\n");
-        emitMySqlProcedureExecute(source, document, TitanGraphqlModelDocumentJson.semanticHash(document), runtimeIdentity);
+        emitMutationRegistryIdentity(source, document);
+        emitMySqlProcedureExecute(source, document, TitanGraphqlModelDocumentJson.semanticHash(document),
+                runtimeIdentity, entryPoint);
         emitQueryRootHelpers(source, document, true);
         emitMySqlInternalHelpers(source, document);
         source.append("}\n");
         return source.toString();
     }
 
+    private static void emitMutationRegistryIdentity(
+            StringBuilder source,
+            TitanGraphqlModelDocument document
+    ) {
+        source.append("    @StoredFunction\n")
+                .append("    public static String mutationRegistryIdentity() {\n")
+                .append("        return \"")
+                .append(TitanGraphqlModelDocumentJson.mutationRegistryHash(document))
+                .append("\";\n")
+                .append("    }\n\n");
+    }
+
     private static void emitExecute(
             StringBuilder source,
             TitanGraphqlModelDocument document,
             String modelHash,
-            String runtimeIdentity
+            String runtimeIdentity,
+            String entryPoint
     ) {
         requireRuntimeIdentity(runtimeIdentity);
         String inputTypeDescriptor = inputTypeDescriptor(document);
@@ -343,11 +373,13 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append("        if (!DatabaseGraphqlEngine.matchesExpectedRuntimeIdentity(expectedRuntimeIdentity, \"")
                 .append(javaString(runtimeIdentity)).append("\")) return DatabaseGraphqlEngine.internalErrorJson(\"installed runtime identity does not match request\");\n")
                 .append("        PreparedStatement packageIdentityStatement = connection.prepareStatement(\"SELECT package_identity FROM public.titan_graphql_package_identity WHERE entry_point = ?\");\n")
-                .append("        packageIdentityStatement.setString(1, \"public.execute_graphql_request\");\n")
+                .append("        packageIdentityStatement.setString(1, \"")
+                .append(entryPoint).append("\");\n")
                 .append("        ResultSet packageIdentityResultSet = packageIdentityStatement.executeQuery();\n")
                 .append("        String installedPackageIdentity = \"\";\n")
                 .append("        if (packageIdentityResultSet.next()) installedPackageIdentity = packageIdentityResultSet.getString(\"package_identity\");\n")
                 .append("        if (!DatabaseGraphqlEngine.matchesExpectedPackageIdentity(expectedPackageIdentity, installedPackageIdentity)) return DatabaseGraphqlEngine.internalErrorJson(\"installed package identity does not match request\");\n")
+                .append("        String registryRequestDocument = query;\n")
                 .append("        String documentTokens = DatabaseGraphqlLanguage.lexicalTokenStream(query);\n")
                 .append("        String preflight = DatabaseGraphqlEngine.preflightDocument(query, documentTokens, variablesJson, extensionsJson, trustedContextJson);\n")
                 .append("        if (preflight.length() != 0) return preflight;\n")
@@ -364,8 +396,9 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append("        if (preflight.length() != 0) return preflight;\n")
                 .append("        preflight = DatabaseGraphqlEngine.validateSelectedOperationSchemaFromAst(query, requestAst, \"")
                 .append(javaString(schemaValidationDescriptor)).append("\");\n")
-                .append("        if (preflight.length() != 0) return preflight;\n")
-                .append("        String materializedVariables = DatabaseGraphqlEngine.materializedVariableValuesFromAst(query, requestAst, variablesJson);\n")
+                .append("        if (preflight.length() != 0) return preflight;\n");
+        emitOperationRegistryDecision(source, false, entryPoint, "        ");
+        source.append("        String materializedVariables = DatabaseGraphqlEngine.materializedVariableValuesFromAst(query, requestAst, variablesJson);\n")
                 .append("        if (materializedVariables.length() == 0) return DatabaseGraphqlEngine.internalErrorJson(\"selected operation variable materialization failed\");\n")
                 .append("        String materializedArguments = DatabaseGraphqlEngine.materializedSelectedOperationArgumentValuesFromAst(query, requestAst, materializedVariables, \"")
                 .append(javaString(schemaValidationDescriptor)).append("\", \"")
@@ -377,7 +410,7 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append("        String actorRole = DatabaseGraphqlEngine.trustedContextString(trustedContextJson, \"actorRole\");\n")
                 .append("        int applicationSqlStatements = 0;\n")
                 .append("        long decodedApplicationRows = 0L;\n");
-        emitMutationExecute(source, document, false);
+        emitMutationExecute(source, document, false, entryPoint);
         source.append("        String members = \"\";\n")
                 .append("        String executionErrors = \"\";\n")
                 .append("        int introspectionItems = 0;\n")
@@ -443,6 +476,7 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append("        if (executionErrors == null || executionErrors.length() == 0) completedResponse = completedResponse + \"}\";\n")
                 .append("        else completedResponse = completedResponse + \",\\\"errors\\\":[\" + executionErrors + \"]}\";\n")
                 .append("        if (DatabaseGraphqlEngine.trustedContextFlag(trustedContextJson, \"includeExecutionMetrics\")) completedResponse = DatabaseGraphqlEngine.appendExecutionMetrics(completedResponse, applicationSqlStatements, decodedApplicationRows);\n")
+                .append("        completedResponse = DatabaseGraphqlEngine.appendOperationRegistryWarning(completedResponse, registryMode, registryStatus, registryHash);\n")
                 .append("        if (DatabaseGraphqlEngine.responseAssemblyExceeded(completedResponse)) return DatabaseGraphqlEngine.resourceLimitErrorJson(\"response exceeds the database engine character budget\");\n")
                 .append("        return DatabaseGraphqlEngine.transactionOutcomeJson(completedResponse, \"ROLLBACK\");\n")
                 .append("    }\n\n");
@@ -452,7 +486,8 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
             StringBuilder source,
             TitanGraphqlModelDocument document,
             String modelHash,
-            String runtimeIdentity
+            String runtimeIdentity,
+            String entryPoint
     ) {
         requireRuntimeIdentity(runtimeIdentity);
         String inputTypeDescriptor = inputTypeDescriptor(document);
@@ -466,6 +501,7 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append("    ) throws SQLException {\n")
                 .append("        String response = \"\";\n")
                 .append("        String query = requestQuery;\n")
+                .append("        String registryRequestDocument = requestQuery;\n")
                 .append("        if (!DatabaseGraphqlEngine.matchesExpectedModelHash(expectedModelHash, \"")
                 .append(javaString(modelHash)).append("\")) {\n")
                 .append("            response = DatabaseGraphqlEngine.internalErrorJson(\"installed model identity does not match request\");\n")
@@ -473,8 +509,11 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append(javaString(runtimeIdentity)).append("\")) {\n")
                 .append("            response = DatabaseGraphqlEngine.internalErrorJson(\"installed runtime identity does not match request\");\n")
                 .append("        } else {\n")
-                .append("            PreparedStatement packageIdentityStatement = connection.prepareStatement(\"SELECT package_identity FROM titan_graphql_package_identity WHERE entry_point = ?\");\n")
-                .append("            packageIdentityStatement.setString(1, \"public.execute_graphql_request\");\n")
+                .append("            PreparedStatement packageIdentityStatement = connection.prepareStatement(\"SELECT package_identity FROM ")
+                .append(entryPoint.substring(0, entryPoint.indexOf('.')))
+                .append(".titan_graphql_package_identity WHERE entry_point = ?\");\n")
+                .append("            packageIdentityStatement.setString(1, \"")
+                .append(entryPoint).append("\");\n")
                 .append("            ResultSet packageIdentityResultSet = packageIdentityStatement.executeQuery();\n")
                 .append("            String installedPackageIdentity = \"\";\n")
                 .append("            if (packageIdentityResultSet.next()) installedPackageIdentity = packageIdentityResultSet.getString(\"package_identity\");\n")
@@ -509,8 +548,9 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append("            preflight = DatabaseGraphqlEngine.preflightSelectedOperationFromAst(query, requestAst, variablesJson, extensionsJson, trustedContextJson, allowMutations, \"")
                 .append(javaString(inputTypeDescriptor)).append("\");\n")
                 .append("            if (requestAst.length() != 0 && preflight.length() == 0) preflight = DatabaseGraphqlEngine.validateSelectedOperationSchemaFromAst(query, requestAst, \"")
-                .append(javaString(schemaValidationDescriptor)).append("\");\n")
-                .append("            if (requestAst.length() == 0) {\n")
+                .append(javaString(schemaValidationDescriptor)).append("\");\n");
+        emitOperationRegistryDecision(source, true, entryPoint, "            ");
+        source.append("            if (requestAst.length() == 0) {\n")
                 .append("                response = DatabaseGraphqlEngine.internalErrorJson(\"selected operation has an invalid typed AST\");\n")
                 .append("            } else if (preflight.length() != 0) {\n")
                 .append("                response = preflight;\n")
@@ -531,7 +571,7 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append("            String actorRole = DatabaseGraphqlEngine.trustedContextString(trustedContextJson, \"actorRole\");\n")
                 .append("            int applicationSqlStatements = 0;\n")
                 .append("            long decodedApplicationRows = 0L;\n");
-        emitMutationExecute(source, document, true);
+        emitMutationExecute(source, document, true, entryPoint);
         source.append("            if (response.length() == 0 && !selectedOperationKind.equals(\"query\") && !selectedOperationKind.equals(\"mutation\")) {\n")
                 .append("                response = DatabaseGraphqlEngine.internalErrorJson(\"selected operation has an invalid typed AST operation kind\");\n")
                 .append("            }\n")
@@ -616,6 +656,11 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append("                    if (DatabaseGraphqlEngine.responseAssemblyExceeded(measuredResponse)) response = DatabaseGraphqlEngine.resourceLimitErrorJson(\"response exceeds the database engine character budget\");\n")
                 .append("                    else response = response.substring(0, response.indexOf(\"\\n\") + 1) + measuredResponse;\n")
                 .append("                }\n")
+                .append("                if (response.indexOf(\"\\n\") >= 0 && registryMode.equals(\"WARN\") && !registryStatus.equals(\"APPROVED\")) {\n")
+                .append("                    String warnedResponse = DatabaseGraphqlEngine.appendOperationRegistryWarning(response.substring(response.indexOf(\"\\n\") + 1), registryMode, registryStatus, registryHash);\n")
+                .append("                    if (DatabaseGraphqlEngine.responseAssemblyExceeded(warnedResponse)) response = DatabaseGraphqlEngine.resourceLimitErrorJson(\"response exceeds the database engine character budget\");\n")
+                .append("                    else response = response.substring(0, response.indexOf(\"\\n\") + 1) + warnedResponse;\n")
+                .append("                }\n")
                 .append("            }\n")
                 .append("                }\n")
                 .append("            }\n")
@@ -652,6 +697,102 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 .append("        @SQL(dialect = SqlDialect.MYSQL, value = \"SELECT :responseJson AS response_json, :transactionOutcome AS transaction_outcome\")\n")
                 .append("        String emittedResponse = responseJson;\n")
                 .append("    }\n\n");
+    }
+
+    private static void emitOperationRegistryDecision(
+            StringBuilder source,
+            boolean mysql,
+            String entryPoint,
+            String indent
+    ) {
+        String hashSql = mysql
+                ? "SELECT SHA2(?, 256) AS registry_hash FROM "
+                        + entryPoint.substring(0, entryPoint.indexOf('.'))
+                        + ".titan_graphql_package_identity WHERE entry_point = '" + entryPoint + "'"
+                : "SELECT encode(sha256(convert_to(?, 'UTF8')), 'hex') AS registry_hash";
+        source.append(indent).append("String registryId = DatabaseGraphqlEngine.trustedContextString(trustedContextJson, \"operationRegistryId\");\n")
+                .append(indent).append("String registryMode = \"\";\n")
+                .append(indent).append("String registryStatus = \"UNKNOWN\";\n")
+                .append(indent).append("String registryHash = \"\";\n")
+                .append(indent).append("if (")
+                .append(mysql ? "requestAst.length() != 0 && preflight.length() == 0 && " : "")
+                .append("registryId.length() != 0) {\n");
+        String nested = indent + "    ";
+        source.append(nested).append("if (registryId.length() > 512) ")
+                .append(mysql ? "preflight = " : "return ")
+                .append("DatabaseGraphqlEngine.internalErrorJson(\"operation registry ID exceeds its storage bound\");\n")
+                .append(nested).append("if (")
+                .append(mysql ? "preflight.length() == 0" : "registryId.length() <= 512")
+                .append(") {\n");
+        String lookup = nested + "    ";
+        source.append(lookup).append("PreparedStatement registryHashStatement = connection.prepareStatement(\"")
+                .append(hashSql).append("\");\n")
+                .append(lookup).append("registryHashStatement.setString(1, registryRequestDocument);\n")
+                .append(lookup).append("ResultSet registryHashResultSet = registryHashStatement.executeQuery();\n")
+                .append(lookup).append("if (registryHashResultSet.next()) registryHash = registryHashResultSet.getString(\"registry_hash\");\n")
+                .append(lookup).append("if (registryHash.length() != 64) ")
+                .append(mysql ? "preflight = " : "return ")
+                .append("DatabaseGraphqlEngine.internalErrorJson(\"operation registry hash calculation failed\");\n")
+                .append(lookup).append("if (")
+                .append(mysql ? "preflight.length() == 0" : "registryHash.length() == 64")
+                .append(") {\n");
+        String rows = lookup + "    ";
+        // Titan lowers a single-row getter to SELECT INTO; check the projected value for absence.
+        source.append(rows).append("PreparedStatement registryHeaderStatement = connection.prepareStatement(\"SELECT mode FROM management.graphql_operation_registries WHERE id = ?\");\n")
+                .append(rows).append("registryHeaderStatement.setString(1, registryId);\n")
+                .append(rows).append("ResultSet registryHeaderResultSet = registryHeaderStatement.executeQuery();\n")
+                .append(rows).append("if (registryHeaderResultSet.next()) {\n")
+                .append(rows).append("    registryMode = registryHeaderResultSet.getString(\"mode\");\n")
+                .append(rows).append("}\n")
+                .append(rows).append("if (registryMode == null || registryMode.length() == 0) ")
+                .append(mysql ? "preflight = " : "return ")
+                .append("DatabaseGraphqlEngine.internalErrorJson(\"configured operation registry is missing\");\n")
+                .append(rows).append("if (")
+                .append(mysql ? "preflight.length() == 0" : "registryMode != null && registryMode.length() != 0")
+                .append(") {\n");
+        String candidate = rows + "    ";
+        source.append(candidate).append("if (!registryMode.equals(\"OBSERVE\") && !registryMode.equals(\"LEARN\") && !registryMode.equals(\"WARN\") && !registryMode.equals(\"ENFORCE\")) ")
+                .append(mysql ? "preflight = " : "return ")
+                .append("DatabaseGraphqlEngine.internalErrorJson(\"configured operation registry mode is invalid\");\n")
+                .append(candidate).append("if (")
+                .append(mysql ? "preflight.length() == 0" : "registryMode.length() != 0")
+                .append(") {\n");
+        String matchRows = candidate + "    ";
+        source.append(matchRows).append("PreparedStatement registryCandidateStatement = connection.prepareStatement(\"SELECT operation_hash, document, operation_name, status, roles_json, clients_json FROM management.graphql_registry_operations WHERE registry_id = ? AND (operation_hash = ? OR document_hash = ?) ORDER BY operation_position\");\n")
+                .append(matchRows).append("registryCandidateStatement.setString(1, registryId);\n")
+                .append(matchRows).append("registryCandidateStatement.setString(2, registryHash);\n")
+                .append(matchRows).append("registryCandidateStatement.setString(3, registryHash);\n")
+                .append(matchRows).append("ResultSet registryCandidateResultSet = registryCandidateStatement.executeQuery();\n")
+                .append(matchRows).append("String registryClient = DatabaseGraphqlEngine.operationRegistryClient(extensionsJson);\n")
+                .append(matchRows).append("String registryActorRole = DatabaseGraphqlEngine.trustedContextString(trustedContextJson, \"actorRole\").trim();\n")
+                .append(matchRows).append("String registryOperationName = operationName == null ? \"\" : operationName.trim();\n")
+                .append(matchRows).append("while (registryCandidateResultSet.next()) {\n");
+        String match = matchRows + "    ";
+        // Titan binds cursor fields in getter order, which must match the SELECT projection.
+        source.append(match).append("String candidateHash = registryCandidateResultSet.getString(\"operation_hash\");\n")
+                .append(match).append("String candidateDocument = registryCandidateResultSet.getString(\"document\");\n")
+                .append(match).append("String candidateName = registryCandidateResultSet.getString(\"operation_name\");\n")
+                .append(match).append("String candidateStatus = registryCandidateResultSet.getString(\"status\");\n")
+                .append(match).append("String candidateRoles = registryCandidateResultSet.getString(\"roles_json\");\n")
+                .append(match).append("String candidateClients = registryCandidateResultSet.getString(\"clients_json\");\n")
+                .append(match).append("if ((candidateHash.equals(registryHash) || candidateDocument.equals(registryRequestDocument))\n")
+                .append(match).append("        && (registryOperationName.length() == 0 || candidateName.length() == 0 || candidateName.equals(registryOperationName))\n")
+                .append(match).append("        && DatabaseGraphqlEngine.operationRegistryScopeMatches(candidateRoles, registryActorRole)\n")
+                .append(match).append("        && DatabaseGraphqlEngine.operationRegistryScopeMatches(candidateClients, registryClient)) {\n")
+                .append(match).append("    registryStatus = candidateStatus;\n")
+                .append(match).append("    break;\n")
+                .append(match).append("}\n")
+                .append(matchRows).append("}\n")
+                .append(matchRows).append("String registryRejection = DatabaseGraphqlEngine.operationRegistryRejectionJson(registryMode, registryStatus, registryHash);\n")
+                .append(matchRows).append("if (registryRejection.length() != 0) ")
+                .append(mysql
+                        ? "preflight = \"\u001eTITAN-GRAPHQL-TRANSPORT/1 ROLLBACK\\n\" + registryRejection;\n"
+                        : "return DatabaseGraphqlEngine.transactionOutcomeJson(registryRejection, \"ROLLBACK\");\n")
+                .append(candidate).append("}\n")
+                .append(rows).append("}\n")
+                .append(lookup).append("}\n")
+                .append(nested).append("}\n")
+                .append(indent).append("}\n");
     }
 
     /**
@@ -1687,7 +1828,8 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
     private static void emitMutationExecute(
             StringBuilder source,
             TitanGraphqlModelDocument document,
-            boolean mysql
+            boolean mysql,
+            String entryPoint
     ) {
         String indent = mysql ? "            " : "        ";
         String nested = indent + "    ";
@@ -1735,25 +1877,38 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
             source.append(nested).append("if (requestedMutationCount == 0) ");
             emitMutationFailure(source, false, "", "selected mutation has no root fields");
         }
-        // Every generated generic mutation has a fixed lock/existence/update footprint. Reject a
-        // statically impossible operation before repeating payload/argument validation for every
-        // root and before the first serial effect. Dynamic query/relation statements retain their
-        // just-in-time reservations because their count depends on selected fields and live rows.
-        int maximumGenericMutationRoots = MAX_APPLICATION_SQL_STATEMENTS_PER_REQUEST / 3;
+        source.append(nested).append("String mutationTenantId = DatabaseGraphqlEngine.trustedContextString(trustedContextJson, \"tenantId\");\n")
+                .append(nested).append("String mutationActorKey = DatabaseGraphqlEngine.trustedContextString(trustedContextJson, \"actorKey\");\n")
+                .append(nested).append("String mutationRequestId = DatabaseGraphqlEngine.trustedContextString(trustedContextJson, \"requestId\");\n")
+                .append(nested).append("String mutationIdempotencyKey = DatabaseGraphqlEngine.trustedContextString(trustedContextJson, \"idempotencyKey\");\n");
+        String invalidMetadata = "mutation audit metadata exceeds its storage bound";
+        if (mysql) {
+            source.append(nested).append("if (response.length() == 0 && (mutationTenantId.length() > 128 || mutationActorKey.length() > 128 || mutationRequestId.length() > 128)) response = DatabaseGraphqlEngine.rollbackErrorJson(\"")
+                    .append(invalidMetadata).append("\");\n")
+                    .append(nested).append("if (response.length() == 0 && mutationIdempotencyKey.length() != 0 && (mutationActorKey.length() == 0 || !DatabaseGraphqlEngine.validMutationIdempotencyKey(mutationIdempotencyKey))) response = DatabaseGraphqlEngine.rollbackErrorJson(\"mutation idempotency key requires an actor key and a stable lowercase value\");\n");
+        } else {
+            source.append(nested).append("if (mutationTenantId.length() > 128 || mutationActorKey.length() > 128 || mutationRequestId.length() > 128) return DatabaseGraphqlEngine.rollbackErrorJson(\"")
+                    .append(invalidMetadata).append("\");\n")
+                    .append(nested).append("if (mutationIdempotencyKey.length() != 0 && (mutationActorKey.length() == 0 || !DatabaseGraphqlEngine.validMutationIdempotencyKey(mutationIdempotencyKey))) return DatabaseGraphqlEngine.rollbackErrorJson(\"mutation idempotency key requires an actor key and a stable lowercase value\");\n");
+        }
+        source.append(nested).append("int maximumGenericMutationRoots = (")
+                .append(MAX_APPLICATION_SQL_STATEMENTS_PER_REQUEST)
+                .append(" - (mutationIdempotencyKey.length() == 0 ? 2 : 5)) / 3;\n");
         String statementBudgetMessage = "request exceeds application SQL statement budget of "
                 + MAX_APPLICATION_SQL_STATEMENTS_PER_REQUEST;
         if (mysql) {
             source.append(nested).append("if (response.length() == 0 && mutationCount > ")
-                    .append(maximumGenericMutationRoots).append(") {\n")
+                    .append("maximumGenericMutationRoots").append(") {\n")
                     .append(nested).append("    response = DatabaseGraphqlEngine.rollbackResourceLimitErrorJson(\"")
                     .append(statementBudgetMessage).append("\");\n")
                     .append(nested).append("}\n");
         } else {
-            source.append(nested).append("if (mutationCount > ").append(maximumGenericMutationRoots)
+            source.append(nested).append("if (mutationCount > maximumGenericMutationRoots")
                     .append(") return DatabaseGraphqlEngine.rollbackResourceLimitErrorJson(\"")
                     .append(statementBudgetMessage).append("\");\n");
         }
         emitMutationPrevalidation(source, document, mysql, "mutationPlan", "mutationCount", nested);
+        emitMutationDurabilityPreamble(source, document, mysql, nested, entryPoint);
         if (mysql) {
             source.append(nested).append("int mutationIndex = 0;\n")
                     .append(nested).append("while (mutationIndex < mutationCount && response.length() == 0) {\n");
@@ -1794,6 +1949,9 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         source.append(loop).append("mutationIndex++;\n")
                 .append(nested).append("}\n");
         if (mysql) {
+            source.append(nested).append("if (response.length() == 0) {\n");
+            emitMutationDurabilityReservations(source, true, nested + "    ");
+            source.append(nested).append("}\n");
             source.append(nested).append("if (response.length() == 0) {\n")
                     .append(nested).append("    response = \"TITAN-GRAPHQL-TRANSPORT/1 COMMIT\\n{\\\"data\\\":{\" + mutationMembers + \"}}\";\n")
                     .append(nested).append("    if (DatabaseGraphqlEngine.trustedContextFlag(trustedContextJson, \"includeExecutionMetrics\")) {\n")
@@ -1801,12 +1959,24 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                     .append(nested).append("        if (DatabaseGraphqlEngine.responseAssemblyExceeded(measuredMutationResponse)) response = DatabaseGraphqlEngine.rollbackResourceLimitErrorJson(\"response exceeds the database engine character budget\");\n")
                     .append(nested).append("        else response = response.substring(0, response.indexOf(\"\\n\") + 1) + measuredMutationResponse;\n")
                     .append(nested).append("    }\n")
+                    .append(nested).append("    if (response.indexOf(\"\\n\") >= 0 && registryMode.equals(\"WARN\") && !registryStatus.equals(\"APPROVED\")) {\n")
+                    .append(nested).append("        String warnedMutationResponse = DatabaseGraphqlEngine.appendOperationRegistryWarning(response.substring(response.indexOf(\"\\n\") + 1), registryMode, registryStatus, registryHash);\n")
+                    .append(nested).append("        if (DatabaseGraphqlEngine.responseAssemblyExceeded(warnedMutationResponse)) response = DatabaseGraphqlEngine.rollbackResourceLimitErrorJson(\"response exceeds the database engine character budget\");\n")
+                    .append(nested).append("        else response = response.substring(0, response.indexOf(\"\\n\") + 1) + warnedMutationResponse;\n")
+                    .append(nested).append("    }\n")
                     .append(nested).append("}\n");
+            source.append(nested).append("if (DatabaseGraphqlEngine.transportOutcome(response).equals(\"COMMIT\")) {\n")
+                    .append(nested).append("    String completedMutationResponse = DatabaseGraphqlEngine.transportResponseJson(response);\n");
+            emitMutationDurabilityWrite(source, document, true, nested + "    ");
+            source.append(nested).append("}\n");
         } else {
+            emitMutationDurabilityReservations(source, false, nested);
             source.append(nested).append("String completedMutationResponse = \"{\\\"data\\\":{\" + mutationMembers + \"}}\";\n")
                     .append(nested).append("if (DatabaseGraphqlEngine.trustedContextFlag(trustedContextJson, \"includeExecutionMetrics\")) completedMutationResponse = DatabaseGraphqlEngine.appendExecutionMetrics(completedMutationResponse, applicationSqlStatements, decodedApplicationRows);\n")
-                    .append(nested).append("if (DatabaseGraphqlEngine.responseAssemblyExceeded(completedMutationResponse)) return DatabaseGraphqlEngine.rollbackResourceLimitErrorJson(\"response exceeds the database engine character budget\");\n")
-                    .append(nested).append("return DatabaseGraphqlEngine.transactionOutcomeJson(completedMutationResponse, \"COMMIT\");\n");
+                    .append(nested).append("completedMutationResponse = DatabaseGraphqlEngine.appendOperationRegistryWarning(completedMutationResponse, registryMode, registryStatus, registryHash);\n")
+                    .append(nested).append("if (DatabaseGraphqlEngine.responseAssemblyExceeded(completedMutationResponse)) return DatabaseGraphqlEngine.rollbackResourceLimitErrorJson(\"response exceeds the database engine character budget\");\n");
+            emitMutationDurabilityWrite(source, document, false, nested);
+            source.append(nested).append("return DatabaseGraphqlEngine.transactionOutcomeJson(completedMutationResponse, \"COMMIT\");\n");
         }
         if (mysql) {
             source.append(nested).append("}\n");
@@ -1814,13 +1984,142 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         source.append(indent).append("}\n");
     }
 
-    /**
-     * Validates every selected mutation root before the serial execution pass can issue a write.
-     * The execution pass still performs its own coercion because this scalar Phase 1 generator
-     * does not materialize a schema-aware input-value tree. Keeping the validation pass
-     * database-resident is nevertheless essential: a malformed later root must not stage an
-     * earlier update simply because GraphQL mutation roots execute serially.
-     */
+    private static void emitMutationDurabilityPreamble(
+            StringBuilder source,
+            TitanGraphqlModelDocument document,
+            boolean mysql,
+            String indent,
+            String entryPoint
+    ) {
+        String modelHash = TitanGraphqlModelDocumentJson.semanticHash(document);
+        source.append(indent).append("String mutationFingerprint = \"\";\n")
+                .append(indent).append("String mutationExtensionsJson = extensionsJson == null ? \"\" : extensionsJson;\n")
+                .append(indent).append("String mutationFingerprintSource = query.length() + \":\" + query + variablesJson.length() + \":\" + variablesJson + mutationExtensionsJson.length() + \":\" + mutationExtensionsJson + actorRole.length() + \":\" + actorRole;\n");
+        emitExecutionDeadlineCheck(source, mysql, indent, true);
+        emitApplicationStatementReservation(source, mysql, indent, true, "0");
+        emitDecodedApplicationRowReservation(source, mysql, indent, true, "0");
+        if (mysql) source.append(indent).append("if (response.length() == 0) {\n");
+        String hashIndent = mysql ? indent + "    " : indent;
+        source.append(hashIndent).append("PreparedStatement mutationFingerprintStatement = connection.prepareStatement(\"")
+                .append(mysql ? "SELECT SHA2(?, 256) AS tgql_fingerprint FROM "
+                        + entryPoint.substring(0, entryPoint.indexOf('.'))
+                        + ".titan_graphql_package_identity WHERE entry_point = '" + entryPoint + "'"
+                        : "SELECT encode(sha256(convert_to(?, 'UTF8')), 'hex') AS tgql_fingerprint")
+                .append("\");\n")
+                .append(hashIndent).append("mutationFingerprintStatement.setString(1, mutationFingerprintSource);\n")
+                .append(hashIndent).append("ResultSet mutationFingerprintResultSet = mutationFingerprintStatement.executeQuery();\n")
+                .append(hashIndent).append("if (mutationFingerprintResultSet.next()) mutationFingerprint = mutationFingerprintResultSet.getString(\"tgql_fingerprint\");\n");
+        if (mysql) source.append(indent).append("}\n");
+        if (mysql) {
+            source.append(indent).append("if (response.length() == 0 && mutationFingerprint.length() != 64) response = DatabaseGraphqlEngine.rollbackExecutionErrorJson(\"mutation fingerprint calculation failed\");\n");
+        } else {
+            source.append(indent).append("if (mutationFingerprint.length() != 64) return DatabaseGraphqlEngine.rollbackExecutionErrorJson(\"mutation fingerprint calculation failed\");\n");
+        }
+        source.append(indent).append("if (mutationIdempotencyKey.length() != 0")
+                .append(mysql ? " && response.length() == 0" : "").append(") {\n");
+        String receiptIndent = indent + "    ";
+        emitExecutionDeadlineCheck(source, mysql, receiptIndent, true);
+        emitApplicationStatementReservation(source, mysql, receiptIndent, true, "0");
+        emitDecodedApplicationRowReservation(source, mysql, receiptIndent, true, "0");
+        source.append(receiptIndent).append("boolean mutationReceiptFound = false;\n");
+        if (mysql) source.append(receiptIndent).append("if (response.length() == 0) {\n");
+        String lookupIndent = mysql ? receiptIndent + "    " : receiptIndent;
+        source.append(lookupIndent).append("PreparedStatement mutationReceiptLookup = connection.prepareStatement(\"SELECT request_fingerprint, response_json, package_identity FROM public.titan_graphql_mutation_receipts WHERE model_hash = ? AND tenant_id = ? AND actor_key = ? AND idempotency_key = ? FOR UPDATE\");\n")
+                .append(lookupIndent).append("mutationReceiptLookup.setString(1, \"").append(modelHash).append("\");\n")
+                .append(lookupIndent).append("mutationReceiptLookup.setString(2, mutationTenantId);\n")
+                .append(lookupIndent).append("mutationReceiptLookup.setString(3, mutationActorKey);\n")
+                .append(lookupIndent).append("mutationReceiptLookup.setString(4, mutationIdempotencyKey);\n")
+                .append(lookupIndent).append("ResultSet mutationReceiptResultSet = mutationReceiptLookup.executeQuery();\n")
+                .append(lookupIndent).append("while (mutationReceiptResultSet.next()) {\n")
+                .append(lookupIndent).append("    mutationReceiptFound = true;\n")
+                .append(lookupIndent).append("    String mutationCachedFingerprint = mutationReceiptResultSet.getString(\"request_fingerprint\");\n")
+                .append(lookupIndent).append("    String mutationCachedResponse = mutationReceiptResultSet.getString(\"response_json\");\n")
+                .append(lookupIndent).append("    String mutationCachedPackageIdentity = mutationReceiptResultSet.getString(\"package_identity\");\n")
+                .append(lookupIndent).append("    if (!installedPackageIdentity.equals(mutationCachedPackageIdentity)) {\n");
+        emitMutationCodedFailure(source, mysql, lookupIndent + "        ",
+                "mutation idempotency key belongs to a different installed package",
+                "rollbackIdempotencyConflictErrorJson");
+        source.append(lookupIndent).append("    } else if (!mutationFingerprint.equals(mutationCachedFingerprint)) {\n");
+        emitMutationCodedFailure(source, mysql, lookupIndent + "        ",
+                "mutation idempotency key conflicts with a different request",
+                "rollbackIdempotencyConflictErrorJson");
+        source.append(lookupIndent).append("    } else if (mutationCachedResponse.length() == 0) {\n");
+        emitMutationCodedFailure(source, mysql, lookupIndent + "        ",
+                "mutation idempotency receipt has no committed response", "rollbackExecutionErrorJson");
+        source.append(lookupIndent).append("    } else {\n")
+                .append(lookupIndent).append(mysql ? "        response = " : "        return ")
+                .append("DatabaseGraphqlEngine.transactionOutcomeJson(mutationCachedResponse, \"ROLLBACK\");\n")
+                .append(lookupIndent).append("    }\n")
+                .append(lookupIndent).append("}\n");
+        if (mysql) source.append(receiptIndent).append("}\n");
+        source.append(receiptIndent).append("if (")
+                .append(mysql ? "response.length() == 0 && " : "")
+                .append("!mutationReceiptFound) {\n");
+        String insertIndent = receiptIndent + "    ";
+        emitExecutionDeadlineCheck(source, mysql, insertIndent, true);
+        emitApplicationStatementReservation(source, mysql, insertIndent, true, "0");
+        if (mysql) source.append(insertIndent).append("if (response.length() == 0) {\n");
+        String writeIndent = mysql ? insertIndent + "    " : insertIndent;
+        source.append(writeIndent).append("PreparedStatement mutationReceiptInsert = connection.prepareStatement(\"INSERT INTO public.titan_graphql_mutation_receipts (model_hash, tenant_id, actor_key, idempotency_key, request_fingerprint, response_json, package_identity) VALUES (?, ?, ?, ?, ?, ?, ?)\");\n")
+                .append(writeIndent).append("mutationReceiptInsert.setString(1, \"").append(modelHash).append("\");\n")
+                .append(writeIndent).append("mutationReceiptInsert.setString(2, mutationTenantId);\n")
+                .append(writeIndent).append("mutationReceiptInsert.setString(3, mutationActorKey);\n")
+                .append(writeIndent).append("mutationReceiptInsert.setString(4, mutationIdempotencyKey);\n")
+                .append(writeIndent).append("mutationReceiptInsert.setString(5, mutationFingerprint);\n")
+                .append(writeIndent).append("mutationReceiptInsert.setString(6, \"\");\n")
+                .append(writeIndent).append("mutationReceiptInsert.setString(7, installedPackageIdentity);\n")
+                .append(writeIndent).append("mutationReceiptInsert.executeUpdate();\n");
+        if (mysql) source.append(insertIndent).append("}\n");
+        source.append(receiptIndent).append("}\n")
+                .append(indent).append("}\n");
+    }
+
+    private static void emitMutationDurabilityReservations(StringBuilder source, boolean mysql, String indent) {
+        emitExecutionDeadlineCheck(source, mysql, indent, true);
+        emitApplicationStatementReservation(source, mysql, indent, true, "0");
+        source.append(indent).append("if (mutationIdempotencyKey.length() != 0")
+                .append(mysql ? " && response.length() == 0" : "").append(") {\n");
+        emitApplicationStatementReservation(source, mysql, indent + "    ", true, "0");
+        source.append(indent).append("}\n");
+    }
+
+    private static void emitMutationDurabilityWrite(
+            StringBuilder source,
+            TitanGraphqlModelDocument document,
+            boolean mysql,
+            String indent
+    ) {
+        String modelHash = TitanGraphqlModelDocumentJson.semanticHash(document);
+        if (mysql) {
+            source.append(indent).append("if (DatabaseGraphqlEngine.deadlineExpired(deadlineEpochMillis)) {\n")
+                    .append(indent).append("    response = DatabaseGraphqlEngine.rollbackDeadlineExceededErrorJson(\"request deadline exceeded during database execution\");\n")
+                    .append(indent).append("} else {\n");
+        } else {
+            emitExecutionDeadlineCheck(source, false, indent, true);
+        }
+        String writeIndent = mysql ? indent + "    " : indent;
+        source.append(writeIndent).append("if (mutationIdempotencyKey.length() != 0) {\n")
+                .append(writeIndent).append("    PreparedStatement mutationReceiptUpdate = connection.prepareStatement(\"UPDATE public.titan_graphql_mutation_receipts SET response_json = ? WHERE model_hash = ? AND tenant_id = ? AND actor_key = ? AND idempotency_key = ? AND request_fingerprint = ?\");\n")
+                .append(writeIndent).append("    mutationReceiptUpdate.setString(1, completedMutationResponse);\n")
+                .append(writeIndent).append("    mutationReceiptUpdate.setString(2, \"").append(modelHash).append("\");\n")
+                .append(writeIndent).append("    mutationReceiptUpdate.setString(3, mutationTenantId);\n")
+                .append(writeIndent).append("    mutationReceiptUpdate.setString(4, mutationActorKey);\n")
+                .append(writeIndent).append("    mutationReceiptUpdate.setString(5, mutationIdempotencyKey);\n")
+                .append(writeIndent).append("    mutationReceiptUpdate.setString(6, mutationFingerprint);\n")
+                .append(writeIndent).append("    mutationReceiptUpdate.executeUpdate();\n")
+                .append(writeIndent).append("}\n")
+                .append(writeIndent).append("PreparedStatement mutationAuditInsert = connection.prepareStatement(\"INSERT INTO public.titan_graphql_mutation_audit (model_hash, package_identity, tenant_id, actor_key, request_id, idempotency_key, request_fingerprint) VALUES (?, ?, ?, ?, ?, ?, ?)\");\n")
+                .append(writeIndent).append("mutationAuditInsert.setString(1, \"").append(modelHash).append("\");\n")
+                .append(writeIndent).append("mutationAuditInsert.setString(2, installedPackageIdentity);\n")
+                .append(writeIndent).append("mutationAuditInsert.setString(3, mutationTenantId);\n")
+                .append(writeIndent).append("mutationAuditInsert.setString(4, mutationActorKey);\n")
+                .append(writeIndent).append("mutationAuditInsert.setString(5, mutationRequestId);\n")
+                .append(writeIndent).append("mutationAuditInsert.setString(6, mutationIdempotencyKey);\n")
+                .append(writeIndent).append("mutationAuditInsert.setString(7, mutationFingerprint);\n")
+                .append(writeIndent).append("mutationAuditInsert.executeUpdate();\n");
+        if (mysql) source.append(indent).append("}\n");
+    }
+
     private static void emitMutationPrevalidation(
             StringBuilder source,
             TitanGraphqlModelDocument document,
@@ -1956,11 +2255,14 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
             String booleanRaw = scopedLocal("mutationBoolRaw", scope, argument.name());
             String publicType = mutationPublicArgumentType(mutation, argument);
             source.append(indent)
-                    .append("if (!DatabaseGraphqlEngine.argumentVariableTypeIsCompatibleFromAst(query, requestAst, ")
+                    .append(mutation.input() == null && argument.nullable()
+                            ? "if (!DatabaseGraphqlEngine.argumentVariableTypeIsCompatibleWithNullableArgumentFromAst(query, requestAst, "
+                            : "if (!DatabaseGraphqlEngine.argumentVariableTypeIsCompatibleFromAst(query, requestAst, ")
                     .append(rootStart).append(", \"").append(javaString(argument.sourceArgument()))
                     .append("\", \"").append(javaString(publicType)).append("\")) {\n");
             emitMutationFailure(source, mysql, indent + "    ", "variable for mutation argument '"
-                    + argument.sourceArgument() + "' must be declared as " + publicType + "!");
+                    + argument.sourceArgument() + "' must be compatible with " + publicType
+                    + (mutation.input() == null && argument.nullable() ? "" : "!"));
             source.append(indent).append("}\n")
                     .append(indent).append("String ").append(raw)
                     .append(" = DatabaseGraphqlEngine.materializedArgumentValue(materializedArguments, ")
@@ -1970,12 +2272,22 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 source.append(indent).append(raw).append(" = DatabaseGraphqlEngine.inputObjectPathValue(")
                         .append(raw).append(", \"").append(javaString(argument.sourcePath())).append("\");\n");
             }
-            source.append(indent).append("if (").append(raw).append(".length() == 0) {\n");
-            emitMutationFailure(source, mysql, indent + "    ", argument.sourcePath().isEmpty()
-                    ? "required mutation argument '" + argument.name() + "' is missing"
-                    : "required mutation input field '" + argument.sourcePath() + "' is missing");
-            source.append(indent).append("}\n");
-            emitMutationArgumentCoercion(source, document, type, argument, raw, value, booleanRaw, mysql, indent);
+            String coercionRaw = raw;
+            if (argument.nullable()) {
+                coercionRaw = scopedLocal("mutationCoercionRaw", scope, argument.name());
+                source.append(indent).append("String ").append(coercionRaw).append(" = ")
+                        .append(raw).append(".length() == 0 || ").append(raw)
+                        .append(".equals(\"null\") ? \"")
+                        .append(javaString(mutationNullCoercionFallback(document, argument)))
+                        .append("\" : ").append(raw).append(";\n");
+            } else {
+                source.append(indent).append("if (").append(raw).append(".length() == 0) {\n");
+                emitMutationFailure(source, mysql, indent + "    ", argument.sourcePath().isEmpty()
+                        ? "required mutation argument '" + argument.name() + "' is missing"
+                        : "required mutation input field '" + argument.sourcePath() + "' is missing");
+                source.append(indent).append("}\n");
+            }
+            emitMutationArgumentCoercion(source, document, type, argument, coercionRaw, value, booleanRaw, mysql, indent);
         }
     }
 
@@ -2022,9 +2334,23 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         // stable zero result. The first read prevents a concurrent delete after validation; the
         // second preserves the normal GraphQL absent-target error rather than surfacing a JDBC
         // routine exception.
+        if (mutation.operation() != TitanGraphqlMutationDocument.MutationDocumentOperation.CREATE_PROCEDURE) {
         String lockStatement = scopedLocal("mutationLockStatement", scope, "target");
         String lockResultSet = scopedLocal("mutationLockResultSet", scope, "target");
         String lockValue = scopedLocal("mutationLockValue", scope, "target");
+        List<MutationBinding> nullablePayloadBindings = nullableMutationPayloadBindings(mutation);
+        for (MutationBinding argument : nullablePayloadBindings) {
+            TitanGraphqlFieldDocument field = fieldByColumn(type, argument.column());
+            String priorValue = scopedLocal("mutationPriorValue", scope, argument.name());
+            String priorNull = scopedLocal("mutationPriorNull", scope, argument.name());
+            String javaType = isLong(field) ? "long" : isBoolean(field.type()) ? "boolean"
+                    : isDecimal(field.type()) ? "double" : "String";
+            String initialValue = isLong(field) ? "0L" : isBoolean(field.type()) ? "false"
+                    : isDecimal(field.type()) ? "0.0" : "\"\"";
+            source.append(indent).append(javaType).append(' ').append(priorValue)
+                    .append(" = ").append(initialValue).append(";\n")
+                    .append(indent).append("boolean ").append(priorNull).append(" = true;\n");
+        }
         emitExecutionDeadlineCheck(source, mysql, indent, true);
         emitApplicationStatementReservation(source, mysql, indent, true, rootStart);
         // This read can materialize at most one row. Reserve that known capacity before opening
@@ -2047,6 +2373,19 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         source.append(lockIndent).append("    long ").append(lockValue).append(" = ").append(lockResultSet)
                 .append(".getLong(\"tgql_lock\");\n")
                 ;
+        for (int payloadIndex = 0; payloadIndex < nullablePayloadBindings.size(); payloadIndex++) {
+            MutationBinding argument = nullablePayloadBindings.get(payloadIndex);
+            TitanGraphqlFieldDocument field = fieldByColumn(type, argument.column());
+            String priorValue = scopedLocal("mutationPriorValue", scope, argument.name());
+            String priorNull = scopedLocal("mutationPriorNull", scope, argument.name());
+            String getter = isLong(field) ? "getLong" : isBoolean(field.type()) ? "getBoolean"
+                    : isDecimal(field.type()) ? "getDouble" : "getString";
+            source.append(lockIndent).append("    ").append(priorNull).append(" = ").append(lockResultSet)
+                    .append(".getBoolean(\"").append(mutationPayloadNullAlias(payloadIndex)).append("\");\n")
+                    .append(lockIndent).append("    ").append(priorValue).append(" = ").append(lockResultSet)
+                    .append('.').append(getter).append("(\"")
+                    .append(mutationPayloadValueAlias(payloadIndex)).append("\");\n");
+        }
         source.append(lockIndent).append("}\n");
         if (mysql) source.append(indent).append("}\n");
 
@@ -2091,6 +2430,14 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
             source.append(indent).append("}\n");
         }
 
+        }
+
+        if (mutation.operation() != TitanGraphqlMutationDocument.MutationDocumentOperation.UPDATE) {
+            emitProcedureMutationEffectAndCompletion(source, mutation, type, rootStart, members,
+                    scope, typeNameStart, mysql, indent);
+            return;
+        }
+
         // The update is a separate effect after the two target reads, so give it its own
         // deadline fence and retain a rollback outcome for either dialect.
         emitExecutionDeadlineCheck(source, mysql, indent, true);
@@ -2106,6 +2453,13 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         int index = 1;
         for (MutationBinding argument : sortedMutationArguments(mutation)) {
             if (!argument.key()) {
+                if (argument.nullable()) {
+                    String raw = scopedLocal("mutationArgument", scope, argument.name());
+                    source.append(jdbcIndent).append(statement).append(".setBoolean(").append(index++)
+                            .append(", ").append(raw).append(".length() != 0);\n")
+                            .append(jdbcIndent).append(statement).append(".setBoolean(").append(index++)
+                            .append(", ").append(raw).append(".equals(\"null\"));\n");
+                }
                 emitMutationSetter(source, jdbcIndent, statement, index++, scope, type, argument);
             }
         }
@@ -2136,7 +2490,37 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
             String fieldStart = scopedLocal("mutationFieldStart", scope, payload.name());
             String value = scopedLocal("mutationArgumentValue", scope, argument.name());
             source.append(jdbcIndent).append("if (").append(fieldStart).append(" >= 0) {\n");
-            if (isId(argument.type())) {
+            if (argument.nullable()) {
+                String raw = scopedLocal("mutationArgument", scope, argument.name());
+                String outputValue = scopedLocal("mutationPayloadValue", scope, payload.name());
+                String outputNull = scopedLocal("mutationPayloadNull", scope, payload.name());
+                String priorValue = scopedLocal("mutationPriorValue", scope, argument.name());
+                String priorNull = scopedLocal("mutationPriorNull", scope, argument.name());
+                String javaType = isLong(field) ? "long" : isBoolean(field.type()) ? "boolean"
+                        : isDecimal(field.type()) ? "double" : "String";
+                source.append(jdbcIndent).append("    ").append(javaType).append(' ').append(outputValue)
+                        .append(" = ").append(raw).append(".length() == 0 ? ")
+                        .append(priorValue).append(" : ").append(value).append(";\n")
+                        .append(jdbcIndent).append("    boolean ").append(outputNull).append(" = ")
+                        .append(raw).append(".equals(\"null\") || (").append(raw)
+                        .append(".length() == 0 && ").append(priorNull).append(");\n");
+                source.append(jdbcIndent).append("    String ").append(outputValue).append("Json = ")
+                        .append(outputNull).append(" ? \"null\" : ");
+                if (isId(field.type())) {
+                    source.append("DatabaseGraphqlEngine.jsonString(\"\" + ").append(outputValue).append(");\n");
+                } else if (isLong(field) || isDecimal(field.type())) {
+                    source.append("\"\" + ").append(outputValue).append(";\n");
+                } else if (isBoolean(field.type())) {
+                    source.append(outputValue).append(" ? \"true\" : \"false\";\n");
+                } else {
+                    source.append("DatabaseGraphqlEngine.jsonString(").append(outputValue).append(");\n");
+                }
+                source.append(jdbcIndent).append("    ").append(objectMembers)
+                        .append(" = DatabaseGraphqlEngine.appendJsonMember(").append(objectMembers)
+                        .append(", DatabaseGraphqlEngine.responseKeyFromAst(query, requestAst, ").append(fieldStart)
+                        .append(", \"").append(javaString(payload.name())).append("\"), ")
+                        .append(outputValue).append("Json);\n");
+            } else if (isId(argument.type())) {
                 source.append(jdbcIndent).append("    String ").append(value).append("Json = DatabaseGraphqlEngine.jsonString(\"\" + ")
                         .append(value).append(");\n");
             } else if (isLong(field) || isDecimal(argument.type())) {
@@ -2149,12 +2533,14 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 source.append(jdbcIndent).append("    String ").append(value).append("Json = DatabaseGraphqlEngine.jsonString(")
                         .append(value).append(");\n");
             }
-            source.append(jdbcIndent).append("    ").append(objectMembers)
-                    .append(" = DatabaseGraphqlEngine.appendJsonMember(").append(objectMembers)
-                    .append(", DatabaseGraphqlEngine.responseKeyFromAst(query, requestAst, ").append(fieldStart)
-                    .append(", \"").append(javaString(payload.name())).append("\"), ")
-                    .append(value).append("Json);\n")
-                    .append(jdbcIndent).append("}\n");
+            if (!argument.nullable()) {
+                source.append(jdbcIndent).append("    ").append(objectMembers)
+                        .append(" = DatabaseGraphqlEngine.appendJsonMember(").append(objectMembers)
+                        .append(", DatabaseGraphqlEngine.responseKeyFromAst(query, requestAst, ").append(fieldStart)
+                        .append(", \"").append(javaString(payload.name())).append("\"), ")
+                        .append(value).append("Json);\n");
+            }
+            source.append(jdbcIndent).append("}\n");
         }
         source.append(jdbcIndent).append(members).append(" = DatabaseGraphqlEngine.appendJsonMember(")
                 .append(members).append(", DatabaseGraphqlEngine.responseKeyFromAst(query, requestAst, ").append(rootStart)
@@ -2163,6 +2549,168 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         if (mysql) {
             source.append(indent).append("}\n");
         }
+    }
+
+    private static void emitProcedureMutationEffectAndCompletion(
+            StringBuilder source,
+            TitanGraphqlMutationDocument mutation,
+            TitanGraphqlTypeDocument type,
+            String rootStart,
+            String members,
+            String scope,
+            String typeNameStart,
+            boolean mysql,
+            String indent
+    ) {
+        TitanGraphqlMutationDocument.MutationDocumentHandler handler = mutation.handler();
+        if (handler == null) {
+            throw new IllegalArgumentException("procedure mutation '" + mutation.name() + "' has no handler");
+        }
+        emitExecutionDeadlineCheck(source, mysql, indent, true);
+        emitProcedureCostReservation(source, handler, mysql, indent);
+        if (mysql) source.append(indent).append("if (response.length() == 0) {\n");
+        String effectIndent = mysql ? indent + "    " : indent;
+        source.append(effectIndent).append("try {\n")
+                .append(effectIndent).append("    ").append(handler.className()).append('.')
+                .append(handler.methodName()).append("(connection");
+        for (MutationBinding argument : sortedMutationArguments(mutation)) {
+            source.append(", ").append(scopedLocal("mutationArgumentValue", scope, argument.name()));
+            if (argument.nullable()) {
+                String raw = scopedLocal("mutationArgument", scope, argument.name());
+                source.append(", ").append(raw).append(".length() != 0")
+                        .append(", ").append(raw).append(".equals(\"null\")");
+            }
+        }
+        if (handler.includeTrustedContext()) {
+            source.append(", trustedContextJson");
+        }
+        source.append(");\n")
+                .append(effectIndent).append("} catch (SQLException procedureFailure) {\n");
+        emitMutationCodedFailure(source, mysql, effectIndent + "    ",
+                "mutation '" + mutation.name() + "' procedure handler failed",
+                "rollbackExecutionErrorJson");
+        source.append(effectIndent).append("}\n");
+        if (mysql) source.append(indent).append("}\n");
+
+        emitExecutionDeadlineCheck(source, mysql, indent, true);
+        emitApplicationStatementReservation(source, mysql, indent, true, rootStart);
+        emitDecodedApplicationRowReservation(source, mysql, indent, true, rootStart);
+        if (mysql) source.append(indent).append("if (response.length() == 0) {\n");
+        String readIndent = mysql ? indent + "    " : indent;
+        String readStatement = scopedLocal("mutationResultStatement", scope, "payload");
+        String readRows = scopedLocal("mutationResultRows", scope, "payload");
+        String found = scopedLocal("mutationResultFound", scope, "payload");
+        source.append(readIndent).append("PreparedStatement ").append(readStatement)
+                .append(" = connection.prepareStatement(\"")
+                .append(javaString(mutationProcedurePayloadSql(type, mutation, !mysql)))
+                .append("\");\n");
+        int parameter = 1;
+        for (MutationBinding argument : sortedMutationArguments(mutation)) {
+            if (argument.key()) {
+                emitMutationSetter(source, readIndent, readStatement, parameter++, scope, type, argument);
+            }
+        }
+        source.append(readIndent).append("ResultSet ").append(readRows).append(" = ")
+                .append(readStatement).append(".executeQuery();\n")
+                .append(readIndent).append("long ").append(found).append(" = 0L;\n");
+        for (TitanGraphqlMutationDocument.MutationDocumentPayloadField payload : sortedPayload(mutation)) {
+            TitanGraphqlFieldDocument field = procedurePayloadField(type, mutation, payload);
+            String value = scopedLocal("mutationResultValue", scope, payload.name());
+            String nullValue = scopedLocal("mutationResultNull", scope, payload.name());
+            String javaType = isLong(field) ? "long" : isBoolean(field.type()) ? "boolean"
+                    : isDecimal(field.type()) ? "double" : "String";
+            String initial = isLong(field) ? "0L" : isBoolean(field.type()) ? "false"
+                    : isDecimal(field.type()) ? "0.0" : "\"\"";
+            source.append(readIndent).append(javaType).append(' ').append(value)
+                    .append(" = ").append(initial).append(";\n")
+                    .append(readIndent).append("boolean ").append(nullValue).append(" = true;\n");
+        }
+        source.append(readIndent).append("if (").append(readRows).append(".next()) {\n")
+                .append(readIndent).append("    ").append(found).append(" = ")
+                .append(readRows).append(".getLong(\"tgql_found\");\n");
+        int payloadIndex = 0;
+        for (TitanGraphqlMutationDocument.MutationDocumentPayloadField payload : sortedPayload(mutation)) {
+            TitanGraphqlFieldDocument field = procedurePayloadField(type, mutation, payload);
+            String value = scopedLocal("mutationResultValue", scope, payload.name());
+            String nullValue = scopedLocal("mutationResultNull", scope, payload.name());
+            String getter = isLong(field) ? "getLong" : isBoolean(field.type()) ? "getBoolean"
+                    : isDecimal(field.type()) ? "getDouble" : "getString";
+            source.append(readIndent).append("    ").append(nullValue).append(" = ").append(readRows)
+                    .append(".getBoolean(\"").append(mutationPayloadNullAlias(payloadIndex)).append("\");\n")
+                    .append(readIndent).append("    ").append(value).append(" = ").append(readRows)
+                    .append('.').append(getter).append("(\"")
+                    .append(mutationPayloadValueAlias(payloadIndex)).append("\");\n");
+            payloadIndex++;
+        }
+        source.append(readIndent).append("}\n")
+                .append(readIndent).append("if (").append(found).append(" == 0L) {\n");
+        emitMutationCodedFailure(source, mysql, readIndent + "    ",
+                "mutation '" + mutation.name() + "' procedure handler removed its target row",
+                "rollbackExecutionErrorJson");
+        source.append(readIndent).append("}\n");
+        for (TitanGraphqlMutationDocument.MutationDocumentPayloadField payload : sortedPayload(mutation)) {
+            TitanGraphqlFieldDocument field = procedurePayloadField(type, mutation, payload);
+            if (!field.nullable()) {
+                String nullValue = scopedLocal("mutationResultNull", scope, payload.name());
+                source.append(readIndent).append("if (")
+                        .append(mysql ? "response.length() == 0 && " : "")
+                        .append(nullValue).append(") {\n");
+                emitMutationCodedFailure(source, mysql, readIndent + "    ",
+                        "mutation '" + mutation.name() + "' procedure handler returned a null non-null payload",
+                        "rollbackExecutionErrorJson");
+                source.append(readIndent).append("}\n");
+            }
+        }
+        if (mysql) source.append(readIndent).append("if (response.length() == 0) {\n");
+        String outputIndent = mysql ? readIndent + "    " : indent;
+        String objectMembers = scopedLocal("mutationObjectMembers", scope, "payload");
+        source.append(outputIndent).append("String ").append(objectMembers).append(" = \"\";\n")
+                .append(outputIndent).append("if (").append(typeNameStart).append(" >= 0) {\n")
+                .append(outputIndent).append("    ").append(objectMembers)
+                .append(" = DatabaseGraphqlEngine.appendJsonMember(").append(objectMembers)
+                .append(", DatabaseGraphqlEngine.responseKeyFromAst(query, requestAst, ")
+                .append(typeNameStart)
+                .append(", \"__typename\"), DatabaseGraphqlEngine.jsonString(\"")
+                .append(javaString(type.name())).append("\"));\n")
+                .append(outputIndent).append("}\n");
+        for (TitanGraphqlMutationDocument.MutationDocumentPayloadField payload : sortedPayload(mutation)) {
+            TitanGraphqlFieldDocument field = procedurePayloadField(type, mutation, payload);
+            String fieldStart = scopedLocal("mutationFieldStart", scope, payload.name());
+            String value = scopedLocal("mutationResultValue", scope, payload.name());
+            String nullValue = scopedLocal("mutationResultNull", scope, payload.name());
+            String jsonValue = scopedLocal("mutationResultJson", scope, payload.name());
+            source.append(outputIndent).append("if (").append(fieldStart).append(" >= 0) {\n")
+                    .append(outputIndent).append("    String ").append(jsonValue).append(" = ")
+                    .append(nullValue).append(" ? \"null\" : ");
+            if (isId(field.type())) {
+                source.append("DatabaseGraphqlEngine.jsonString(\"\" + ").append(value).append(");\n");
+            } else if (isLong(field) || isDecimal(field.type())) {
+                source.append("\"\" + ").append(value).append(";\n");
+            } else if (isBoolean(field.type())) {
+                source.append(value).append(" ? \"true\" : \"false\";\n");
+            } else {
+                source.append("DatabaseGraphqlEngine.jsonString(").append(value).append(");\n");
+            }
+            source.append(outputIndent).append("    ").append(objectMembers)
+                    .append(" = DatabaseGraphqlEngine.appendJsonMember(").append(objectMembers)
+                    .append(", DatabaseGraphqlEngine.responseKeyFromAst(query, requestAst, ")
+                    .append(fieldStart).append(", \"").append(javaString(payload.name())).append("\"), ")
+                    .append(jsonValue).append(");\n")
+                    .append(outputIndent).append("}\n");
+        }
+        source.append(outputIndent).append(members).append(" = DatabaseGraphqlEngine.appendJsonMember(")
+                .append(members).append(", DatabaseGraphqlEngine.responseKeyFromAst(query, requestAst, ")
+                .append(rootStart).append(", \"").append(javaString(mutation.name())).append("\"), \"{\" + ")
+                .append(objectMembers).append(" + \"}\");\n");
+        if (mysql) source.append(readIndent).append("}\n").append(indent).append("}\n");
+    }
+
+    private static TitanGraphqlFieldDocument procedurePayloadField(
+            TitanGraphqlTypeDocument type,
+            TitanGraphqlMutationDocument mutation,
+            TitanGraphqlMutationDocument.MutationDocumentPayloadField payload
+    ) {
+        return fieldByColumn(type, mutationArgument(mutation, payload.argument()).column());
     }
 
     private static void emitMutationSetter(
@@ -2174,9 +2722,22 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
             TitanGraphqlTypeDocument type,
             MutationBinding argument
     ) {
-        source.append(indent).append(statement).append('.').append(jdbcSetter(fieldByColumn(type, argument.column())))
+        source.append(indent).append(statement).append('.')
+                .append(jdbcSetter(fieldByColumn(type, argument.column())))
                 .append('(').append(index).append(", ")
                 .append(scopedLocal("mutationArgumentValue", scope, argument.name())).append(");\n");
+    }
+
+    private static String mutationNullCoercionFallback(
+            TitanGraphqlModelDocument document,
+            MutationBinding argument
+    ) {
+        TitanGraphqlEnumDocument enumType = enumType(document, inputNamedType(argument.type()));
+        if (enumType != null) return sortedEnumValues(enumType).getFirst();
+        if (isLong(argument.type()) || isId(argument.type()) || isDecimal(argument.type())) return "0";
+        if (isBoolean(argument.type())) return "false";
+        if (isUuid(argument.type())) return "\"00000000-0000-0000-0000-000000000000\"";
+        return "\"\"";
     }
 
     /** Emits one reviewed mutation argument coercion into the transpiled validation/execution body. */
@@ -2333,6 +2894,51 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         }
     }
 
+    private static void emitProcedureCostReservation(
+            StringBuilder source,
+            TitanGraphqlMutationDocument.MutationDocumentHandler handler,
+            boolean mysql,
+            String indent
+    ) {
+        if (handler.maximumStatements() > MAX_APPLICATION_SQL_STATEMENTS_PER_REQUEST
+                || handler.maximumRows() > MAX_DECODED_APPLICATION_ROWS_PER_REQUEST) {
+            throw new IllegalArgumentException("procedure handler budget exceeds the database engine request budget");
+        }
+        String statementMessage = "request exceeds application SQL statement budget of "
+                + MAX_APPLICATION_SQL_STATEMENTS_PER_REQUEST;
+        String rowMessage = "request exceeds decoded application row budget of "
+                + MAX_DECODED_APPLICATION_ROWS_PER_REQUEST;
+        if (mysql) {
+            source.append(indent).append("if (response.length() == 0 && applicationSqlStatements > ")
+                    .append(MAX_APPLICATION_SQL_STATEMENTS_PER_REQUEST - handler.maximumStatements())
+                    .append(") response = DatabaseGraphqlEngine.rollbackResourceLimitErrorJson(\"")
+                    .append(statementMessage).append("\");\n")
+                    .append(indent).append("if (response.length() == 0 && decodedApplicationRows > ")
+                    .append(MAX_DECODED_APPLICATION_ROWS_PER_REQUEST - handler.maximumRows())
+                    .append("L) response = DatabaseGraphqlEngine.rollbackResourceLimitErrorJson(\"")
+                    .append(rowMessage).append("\");\n")
+                    .append(indent).append("if (response.length() == 0) {\n")
+                    .append(indent).append("    applicationSqlStatements += ")
+                    .append(handler.maximumStatements()).append(";\n")
+                    .append(indent).append("    decodedApplicationRows += ")
+                    .append(handler.maximumRows()).append("L;\n")
+                    .append(indent).append("}\n");
+        } else {
+            source.append(indent).append("if (applicationSqlStatements > ")
+                    .append(MAX_APPLICATION_SQL_STATEMENTS_PER_REQUEST - handler.maximumStatements())
+                    .append(") return DatabaseGraphqlEngine.rollbackResourceLimitErrorJson(\"")
+                    .append(statementMessage).append("\");\n")
+                    .append(indent).append("if (decodedApplicationRows > ")
+                    .append(MAX_DECODED_APPLICATION_ROWS_PER_REQUEST - handler.maximumRows())
+                    .append("L) return DatabaseGraphqlEngine.rollbackResourceLimitErrorJson(\"")
+                    .append(rowMessage).append("\");\n")
+                    .append(indent).append("applicationSqlStatements += ")
+                    .append(handler.maximumStatements()).append(";\n")
+                    .append(indent).append("decodedApplicationRows += ")
+                    .append(handler.maximumRows()).append("L;\n");
+        }
+    }
+
     /** Reserves one non-identity application statement before it is prepared or executed. */
     private static void emitApplicationStatementReservation(
             StringBuilder source,
@@ -2372,7 +2978,7 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         String message = "request exceeds decoded application row budget of "
                 + MAX_DECODED_APPLICATION_ROWS_PER_REQUEST;
         if (mysql) {
-            source.append(indent).append("if (decodedApplicationRows >= ")
+            source.append(indent).append("if (response.length() == 0 && decodedApplicationRows >= ")
                     .append(MAX_DECODED_APPLICATION_ROWS_PER_REQUEST).append("L) {\n")
                     .append(indent).append("    response = DatabaseGraphqlEngine.")
                     .append(rollback ? "rollbackResourceLimitErrorJson" : "resourceLimitErrorJsonAt")
@@ -8840,7 +9446,11 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
             if (argument.key()) {
                 predicates.add(identifier(argument.column(), "mutation key column") + " = " + parameter);
             } else {
-                assignments.add(identifier(argument.column(), "mutation assignment column") + " = " + parameter);
+                String column = identifier(argument.column(), "mutation assignment column");
+                assignments.add(column + " = " + (argument.nullable()
+                        ? "CASE WHEN ? THEN CASE WHEN ? THEN NULL ELSE " + parameter
+                                + " END ELSE " + column + " END"
+                        : parameter));
             }
         }
         if (assignments.isEmpty() || predicates.isEmpty()) {
@@ -8871,6 +9481,32 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
                 + String.join(" AND ", predicates);
     }
 
+    private static String mutationProcedurePayloadSql(
+            TitanGraphqlTypeDocument type,
+            TitanGraphqlMutationDocument mutation,
+            boolean postgreSql
+    ) {
+        List<String> projections = new ArrayList<>();
+        projections.add("1 AS tgql_found");
+        int payloadIndex = 0;
+        for (TitanGraphqlMutationDocument.MutationDocumentPayloadField payload : sortedPayload(mutation)) {
+            String column = identifier(mutationArgument(mutation, payload.argument()).column(),
+                    "mutation payload column");
+            projections.add(column + " IS NULL AS " + mutationPayloadNullAlias(payloadIndex));
+            projections.add(column + " AS " + mutationPayloadValueAlias(payloadIndex));
+            payloadIndex++;
+        }
+        List<String> predicates = new ArrayList<>();
+        for (MutationBinding argument : sortedMutationArguments(mutation)) {
+            if (argument.key()) {
+                predicates.add(identifier(argument.column(), "mutation key column") + " = "
+                        + (postgreSql ? postgreSqlParameter(argument) : "?"));
+            }
+        }
+        return "SELECT " + String.join(", ", projections) + " FROM " + qualifiedTable(type)
+                + " WHERE " + String.join(" AND ", predicates);
+    }
+
     /**
      * Locks a modeled mutation target without making a NULL-on-no-row value the existence
      * authority.
@@ -8895,8 +9531,32 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         if (predicates.isEmpty()) {
             throw new IllegalArgumentException("mutation '" + mutation.name() + "' needs at least one key binding");
         }
-        return "SELECT 1 AS tgql_lock FROM " + qualifiedTable(type) + " WHERE "
+        List<String> projections = new ArrayList<>();
+        projections.add("1 AS tgql_lock");
+        List<MutationBinding> nullablePayloadBindings = nullableMutationPayloadBindings(mutation);
+        for (int payloadIndex = 0; payloadIndex < nullablePayloadBindings.size(); payloadIndex++) {
+            String column = identifier(nullablePayloadBindings.get(payloadIndex).column(), "mutation payload column");
+            projections.add(column + " IS NULL AS " + mutationPayloadNullAlias(payloadIndex));
+            projections.add(column + " AS " + mutationPayloadValueAlias(payloadIndex));
+        }
+        return "SELECT " + String.join(", ", projections) + " FROM " + qualifiedTable(type) + " WHERE "
                 + String.join(" AND ", predicates) + " FOR UPDATE";
+    }
+
+    private static List<MutationBinding> nullableMutationPayloadBindings(TitanGraphqlMutationDocument mutation) {
+        return sortedMutationArguments(mutation).stream()
+                .filter(MutationBinding::nullable)
+                .filter(argument -> mutation.payload().stream()
+                        .anyMatch(payload -> payload.argument().equals(argument.name())))
+                .toList();
+    }
+
+    private static String mutationPayloadNullAlias(int index) {
+        return "tgql_payload_null_" + index;
+    }
+
+    private static String mutationPayloadValueAlias(int index) {
+        return "tgql_payload_value_" + index;
     }
 
     private static TitanGraphqlFieldDocument fieldByColumn(TitanGraphqlTypeDocument type, String column) {
@@ -10166,7 +10826,6 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         return introspectionArguments(arguments);
     }
 
-    /** Mutation bindings currently require every explicit reviewed scalar input. */
     private static String introspectionMutationArgumentDescriptor(
             TitanGraphqlModelDocument document,
             TitanGraphqlMutationDocument mutation
@@ -10180,7 +10839,8 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         for (MutationBinding argument : sortedMutationArguments(mutation)) {
             TitanGraphqlMutationDocument.MutationDocumentArgument modelArgument = mutation.arguments().stream()
                     .filter(candidate -> candidate.name().equals(argument.name())).findFirst().orElseThrow();
-            putIntrospectionArgument(arguments, argument.name(), requiredInputType(argument.type()),
+            putIntrospectionArgument(arguments, argument.name(),
+                    argument.nullable() ? argument.type() : requiredInputType(argument.type()),
                     introspectionInputKind(document, argument.type()), modelArgument.defaultValue());
         }
         return introspectionArguments(arguments);
@@ -10428,13 +11088,13 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
         if (mutation.input() == null) {
             return mutation.arguments().stream()
                     .map(argument -> new MutationBinding(argument.name(), argument.type(), argument.column(),
-                            argument.key(), argument.name(), ""))
+                            argument.key(), argument.name(), "", argument.nullable()))
                     .sorted(Comparator.comparing(MutationBinding::name))
                     .toList();
         }
         return mutation.inputBindings().stream()
                 .map(binding -> new MutationBinding(binding.name(), binding.type(), binding.column(),
-                        binding.key(), mutation.input().name(), binding.path()))
+                        binding.key(), mutation.input().name(), binding.path(), binding.nullable()))
                 .sorted(Comparator.comparing(MutationBinding::name))
                 .toList();
     }
@@ -10473,7 +11133,8 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
             String column,
             boolean key,
             String sourceArgument,
-            String sourcePath
+            String sourcePath,
+            boolean nullable
     ) {
     }
 
@@ -10856,6 +11517,13 @@ public final class TitanGraphqlDatabaseEngineSourceGenerator {
 
     private static String javaString(String value) {
         return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private static String entryPoint(String engineSchema) {
+        if (engineSchema == null || !engineSchema.matches("[a-z][a-z0-9_]{0,62}")) {
+            throw new IllegalArgumentException("database engine schema must be a lowercase SQL identifier");
+        }
+        return engineSchema + ".execute_graphql_request";
     }
 
     private static void requireRuntimeIdentity(String identity) {

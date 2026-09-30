@@ -38,14 +38,22 @@ public final class TitanGraphqlDatabaseFrontendDescriptorCli {
                     "usage: TitanGraphqlDatabaseFrontendDescriptorCli <package-directory>"
                             + " <postgresql|mysql> <descriptor-file>");
         }
-        Path packageDirectory = Path.of(args[0]);
-        String dialect = args[1].trim().toLowerCase(java.util.Locale.ROOT);
+        Path descriptor = Path.of(args[2]);
+        String contents = descriptorContents(Path.of(args[0]), args[1]);
+        if (descriptor.getParent() != null) {
+            Files.createDirectories(descriptor.getParent());
+        }
+        Files.writeString(descriptor, contents, StandardCharsets.UTF_8);
+        System.out.println("Wrote database frontend descriptor " + descriptor.toAbsolutePath());
+    }
+
+    public static String descriptorContents(Path packageDirectory, String requestedDialect) {
+        String dialect = requestedDialect.trim().toLowerCase(java.util.Locale.ROOT);
         if (dialect.equals("postgres") || dialect.equals("postgresql")) {
             dialect = "postgresql";
         } else if (dialect.equals("mysql") == false) {
             throw new IllegalArgumentException("descriptor dialect must be postgresql or mysql");
         }
-        Path descriptor = Path.of(args[2]);
         TitanGraphqlGap005ArtifactMetadata metadata = TitanGraphqlGap005ArtifactMetadata.read(
                 packageDirectory, TitanGraphqlArtifactsDirectory.displayRoot(packageDirectory));
         TitanGraphqlPackageBinding binding = TitanGraphqlPackageBinding.read(packageDirectory);
@@ -55,10 +63,7 @@ public final class TitanGraphqlDatabaseFrontendDescriptorCli {
                     + metadata.verificationStatus());
         }
         TitanGraphqlSqlRoutineRef routine = wholeRequestRoutine(metadata, dialect);
-        if (descriptor.getParent() != null) {
-            Files.createDirectories(descriptor.getParent());
-        }
-        Files.writeString(descriptor, String.join("\n",
+        return String.join("\n",
                 "schema-version=" + SCHEMA_VERSION,
                 "database-dialect=" + dialect,
                 "entry-point-schema=" + routine.schemaName(),
@@ -68,9 +73,7 @@ public final class TitanGraphqlDatabaseFrontendDescriptorCli {
                 "package-identity-sha256=" + TitanGraphqlDatabasePackageIdentity.read(packageDirectory),
                 "deployment-fingerprint=" + binding.deploymentFingerprint(),
                 "package-artifact-id=" + binding.artifactId(),
-                "") , StandardCharsets.UTF_8);
-        System.out.println("Wrote database frontend descriptor " + descriptor.toAbsolutePath()
-                + " for " + routine.qualifiedName() + " (" + dialect + ")");
+                "");
     }
 
     private static void verifyBindingAgainstMetadata(

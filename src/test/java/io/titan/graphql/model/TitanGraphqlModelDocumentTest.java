@@ -221,6 +221,78 @@ final class TitanGraphqlModelDocumentTest {
     }
 
     @Test
+    void semanticHashAttestsMutationBindings() {
+        TitanGraphqlMutationDocument first = new TitanGraphqlMutationDocument(
+                "renameCustomer",
+                TitanGraphqlMutationDocument.MutationDocumentOperation.UPDATE,
+                "Customer",
+                List.of(new TitanGraphqlMutationDocument.MutationDocumentArgument(
+                        "name", "String", "name", false)),
+                List.of(),
+                List.of(new TitanGraphqlMutationDocument.MutationDocumentPayloadField("name", "name"))
+        );
+        TitanGraphqlMutationDocument changed = new TitanGraphqlMutationDocument(
+                "renameCustomer",
+                TitanGraphqlMutationDocument.MutationDocumentOperation.UPDATE,
+                "Customer",
+                List.of(new TitanGraphqlMutationDocument.MutationDocumentArgument(
+                        "name", "String", "display_name", false)),
+                List.of(),
+                List.of(new TitanGraphqlMutationDocument.MutationDocumentPayloadField("name", "name"))
+        );
+
+        assertNotEquals(TitanGraphqlModelDocumentJson.semanticHash(mutationDocument(first)),
+                TitanGraphqlModelDocumentJson.semanticHash(mutationDocument(changed)));
+        assertNotEquals(TitanGraphqlModelDocumentJson.mutationRegistryHash(mutationDocument(first)),
+                TitanGraphqlModelDocumentJson.mutationRegistryHash(mutationDocument(changed)));
+    }
+
+    @Test
+    void semanticHashAttestsProcedureHandlerRegistration() {
+        TitanGraphqlMutationDocument first = procedureMutation("example.CustomerProcedures", "rename");
+        TitanGraphqlMutationDocument changedClass = procedureMutation("example.OtherProcedures", "rename");
+        TitanGraphqlMutationDocument changedBudget = new TitanGraphqlMutationDocument(
+                first.name(), first.operation(), first.type(), first.arguments(), first.input(),
+                first.inputBindings(), first.policies(), first.payload(),
+                new TitanGraphqlMutationDocument.MutationDocumentHandler(
+                        "example.CustomerProcedures", "rename", 3, 0));
+        TitanGraphqlMutationDocument changedContext = new TitanGraphqlMutationDocument(
+                first.name(), first.operation(), first.type(), first.arguments(), first.input(),
+                first.inputBindings(), first.policies(), first.payload(),
+                new TitanGraphqlMutationDocument.MutationDocumentHandler(
+                        "example.CustomerProcedures", "rename", 2, 0, true));
+
+        assertNotEquals(TitanGraphqlModelDocumentJson.semanticHash(mutationDocument(first)),
+                TitanGraphqlModelDocumentJson.semanticHash(mutationDocument(changedClass)));
+        assertNotEquals(TitanGraphqlModelDocumentJson.semanticHash(mutationDocument(first)),
+                TitanGraphqlModelDocumentJson.semanticHash(mutationDocument(changedBudget)));
+        assertNotEquals(TitanGraphqlModelDocumentJson.semanticHash(mutationDocument(first)),
+                TitanGraphqlModelDocumentJson.semanticHash(mutationDocument(changedContext)));
+        assertNotEquals(TitanGraphqlModelDocumentJson.mutationRegistryHash(mutationDocument(first)),
+                TitanGraphqlModelDocumentJson.mutationRegistryHash(mutationDocument(changedClass)));
+        assertNotEquals(TitanGraphqlModelDocumentJson.mutationRegistryHash(mutationDocument(first)),
+                TitanGraphqlModelDocumentJson.mutationRegistryHash(mutationDocument(changedBudget)));
+        assertNotEquals(TitanGraphqlModelDocumentJson.mutationRegistryHash(mutationDocument(first)),
+                TitanGraphqlModelDocumentJson.mutationRegistryHash(mutationDocument(changedContext)));
+        assertTrue(TitanGraphqlModelDocumentJson.canonicalJson(mutationDocument(first))
+                .contains("\"className\":\"example.CustomerProcedures\""));
+    }
+
+    private static TitanGraphqlMutationDocument procedureMutation(String className, String methodName) {
+        return new TitanGraphqlMutationDocument(
+                "renameCustomer",
+                TitanGraphqlMutationDocument.MutationDocumentOperation.PROCEDURE,
+                "Customer",
+                List.of(new TitanGraphqlMutationDocument.MutationDocumentArgument(
+                        "name", "String", "name", false)),
+                null,
+                List.of(),
+                List.of(),
+                List.of(new TitanGraphqlMutationDocument.MutationDocumentPayloadField("name", "name")),
+                new TitanGraphqlMutationDocument.MutationDocumentHandler(className, methodName, 2, 0));
+    }
+
+    @Test
     void canonicalEnumOrderIsStableAndEnumValuesAffectSemanticIdentity() {
         TitanGraphqlModelDocument first = enumDocument(List.of(
                 new TitanGraphqlEnumDocument("CustomerStatus", List.of("INACTIVE", "ACTIVE"), List.of(
@@ -268,6 +340,24 @@ final class TitanGraphqlModelDocumentTest {
                 enums,
                 List.of(),
                 List.of(),
+                List.of(),
+                null,
+                null
+        );
+    }
+
+    private static TitanGraphqlModelDocument mutationDocument(TitanGraphqlMutationDocument mutation) {
+        return new TitanGraphqlModelDocument(
+                TitanGraphqlModelDocument.CURRENT_API_VERSION,
+                TitanGraphqlModelDocument.PROJECTION_MODEL_KIND,
+                new TitanGraphqlModelMetadata("mutation-model"),
+                null,
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(mutation),
                 List.of(),
                 null,
                 null

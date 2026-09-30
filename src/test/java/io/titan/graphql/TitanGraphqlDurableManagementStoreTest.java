@@ -2,6 +2,7 @@ package io.titan.graphql;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -12,6 +13,8 @@ import io.titan.graphql.management.TitanGraphqlDurableManagementStore;
 import io.titan.graphql.management.TitanGraphqlManagedModel;
 import io.titan.graphql.management.TitanGraphqlManagedWorkspace;
 import io.titan.graphql.management.TitanGraphqlModelDraft;
+import io.titan.graphql.management.TitanGraphqlObservedOperation;
+import io.titan.graphql.management.TitanGraphqlOperationRegistry;
 import io.titan.graphql.management.TitanGraphqlPreviewBuild;
 import io.titan.graphql.management.TitanGraphqlPreviewBuildManifest;
 import io.titan.management.ManagementTransactions.DeploymentActivationExecution;
@@ -20,6 +23,7 @@ import io.titan.management.ManagementRecords.DeploymentStatus;
 import io.titan.management.ManagementRecords.DraftStatus;
 import io.titan.management.ManagementRecords.VerificationStatus;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -33,6 +37,175 @@ final class TitanGraphqlDurableManagementStoreTest {
 
     @TempDir
     Path tempDir;
+
+    @Test
+    void operationReviewPublishesStatusAndRegistryAsOneRecoverableEntry() throws Exception {
+        Path logPath = tempDir.resolve("operation-review.log");
+        TitanGraphqlDurableManagementStore store = newStore(logPath);
+        TitanGraphqlObservedOperation viewer = TitanGraphqlObservedOperation.observed(
+                "model-001", "prod", "viewer", "portal", "operation-sha", "ArticleById",
+                "query ArticleById { article(id: 1) { id } }", 2, 3, List.of("Article.id"),
+                "2026-06-09T00:00:00Z");
+        TitanGraphqlObservedOperation admin = TitanGraphqlObservedOperation.observed(
+                "model-001", "prod", "admin", "admin-tool", "operation-sha", "ArticleById",
+                "query ArticleById { article(id: 1) { id } }", 2, 3, List.of("Article.id"),
+                "2026-06-09T00:00:00Z");
+        store.saveObservedOperation(viewer).saveObservedOperation(admin);
+        Path productJournal = logPath.resolveSibling("operation-review.log.graphql-state.jsonl");
+        Path retainedJournal = logPath.resolveSibling("retained-operation-review.jsonl");
+        Files.move(productJournal, retainedJournal);
+        Files.createDirectory(productJournal);
+        try {
+            assertThrows(IllegalStateException.class, () -> store.approveObservedOperation(
+                    viewer.id(), "operator", "2026-06-09T00:01:00Z"));
+            assertEquals(TitanGraphqlObservedOperation.ObservedOperationStatus.OBSERVED,
+                    store.observedOperation(viewer.id()).status());
+            assertNull(store.operationRegistry("registry-model-001-prod"));
+        } finally {
+            Files.delete(productJournal);
+            Files.move(retainedJournal, productJournal);
+        }
+
+        TitanGraphqlDurableManagementStore recovered = new TitanGraphqlDurableManagementStore(logPath);
+        assertEquals(TitanGraphqlObservedOperation.ObservedOperationStatus.OBSERVED,
+                recovered.observedOperation(viewer.id()).status());
+        assertNull(recovered.operationRegistry("registry-model-001-prod"));
+        recovered.approveObservedOperation(viewer.id(), "operator", "2026-06-09T00:01:00Z");
+        recovered.rejectObservedOperation(admin.id(), "operator", "2026-06-09T00:02:00Z");
+
+        TitanGraphqlDurableManagementStore reloaded = new TitanGraphqlDurableManagementStore(logPath);
+        assertEquals(TitanGraphqlObservedOperation.ObservedOperationStatus.APPROVED,
+                reloaded.observedOperation(viewer.id()).status());
+        assertEquals(TitanGraphqlObservedOperation.ObservedOperationStatus.REJECTED,
+                reloaded.observedOperation(admin.id()).status());
+        TitanGraphqlOperationRegistry registry = reloaded.operationRegistry("registry-model-001-prod");
+        assertEquals(TitanGraphqlOperationRegistry.RegisteredOperationStatus.APPROVED,
+                registry.operations().get(0).status());
+        assertEquals(TitanGraphqlOperationRegistry.RegisteredOperationStatus.REJECTED,
+                registry.operations().get(1).status());
+        assertEquals(2L, Files.readAllLines(productJournal).stream()
+                .filter(line -> line.contains("\"type\":\"operationReview\"")).count());
+    }
+
+    @Test
+    void generatedArtifactAndDraftPublishAsOneProductJournalEntry() throws Exception {
+        Path logPath = tempDir.resolve("generated-artifact.log");
+        TitanGraphqlDurableManagementStore store = newStore(logPath);
+        TitanGraphqlArtifactSetRef artifactSet = artifactSetRef();
+        TitanGraphqlModelDraft draft = new TitanGraphqlModelDraft(
+                "draft-001",
+                "model-001",
+                TitanGraphqlModelDraft.ModelDraftStatus.READY_FOR_REVIEW,
+                TitanGraphqlModelDraft.SourceFormat.YAML,
+                "source",
+                "{}",
+                artifactSet.semanticHash(),
+                "validation-001",
+                artifactSet.id(),
+                "",
+                "operator",
+                "2026-06-09T00:00:00Z",
+                "2026-06-09T00:02:00Z");
+
+        store.saveGeneratedArtifacts(artifactSet, draft, gap005Metadata("passed"));
+
+        Path productJournal = logPath.resolveSibling("generated-artifact.log.graphql-state.jsonl");
+        assertEquals(1L, Files.readAllLines(productJournal).stream()
+                .filter(line -> line.contains("\"type\":\"artifactGeneration\""))
+                .count());
+        TitanGraphqlDurableManagementStore reloaded = new TitanGraphqlDurableManagementStore(logPath);
+        assertEquals(artifactSet.id(), reloaded.draft(draft.id()).artifactSetId());
+        assertEquals(artifactSet.id(), reloaded.artifactSet(artifactSet.id()).id());
+        assertEquals(DraftStatus.VALIDATED, reloaded.titanDrafts().getFirst().status());
+        assertEquals(artifactSet.id(), reloaded.titanArtifactRefs().getFirst().id());
+        assertEquals(artifactSet.id(), reloaded.artifactEvidence(artifactSet.id()).artifactSetId());
+    }
+
+    @Test
+    void generatedArtifactRetryRepairsInterruptedProductPublication() throws Exception {
+        Path logPath = tempDir.resolve("interrupted-generation.log");
+        TitanGraphqlDurableManagementStore store = newStore(logPath);
+        TitanGraphqlArtifactSetRef artifactSet = artifactSetRef();
+        TitanGraphqlModelDraft draft = new TitanGraphqlModelDraft(
+                "draft-001",
+                "model-001",
+                TitanGraphqlModelDraft.ModelDraftStatus.READY_FOR_REVIEW,
+                TitanGraphqlModelDraft.SourceFormat.YAML,
+                "source",
+                "{}",
+                artifactSet.semanticHash(),
+                "validation-001",
+                artifactSet.id(),
+                "",
+                "operator",
+                "2026-06-09T00:00:00Z",
+                "2026-06-09T00:02:00Z");
+        Path productJournal = logPath.resolveSibling("interrupted-generation.log.graphql-state.jsonl");
+        Path retainedJournal = logPath.resolveSibling("retained-product-state.jsonl");
+        Files.move(productJournal, retainedJournal);
+        Files.createDirectory(productJournal);
+        try {
+            assertThrows(IllegalStateException.class,
+                    () -> store.saveGeneratedArtifacts(artifactSet, draft, gap005Metadata("passed")));
+        } finally {
+            Files.delete(productJournal);
+            Files.move(retainedJournal, productJournal);
+        }
+
+        TitanGraphqlDurableManagementStore reloaded = new TitanGraphqlDurableManagementStore(logPath);
+        assertNull(reloaded.artifactSet(artifactSet.id()));
+        assertEquals(artifactSet.id(), reloaded.titanArtifactRefs().getFirst().id());
+        reloaded.saveGeneratedArtifacts(artifactSet, draft, gap005Metadata("passed"));
+
+        TitanGraphqlDurableManagementStore recovered = new TitanGraphqlDurableManagementStore(logPath);
+        assertEquals(artifactSet.id(), recovered.draft(draft.id()).artifactSetId());
+        assertEquals(artifactSet.id(), recovered.artifactSet(artifactSet.id()).id());
+    }
+
+    @Test
+    void tornProductJournalTailIsRetainedAndRetryCanPublish() throws Exception {
+        Path logPath = tempDir.resolve("torn-generation.log");
+        newStore(logPath);
+        Path productJournal = logPath.resolveSibling("torn-generation.log.graphql-state.jsonl");
+        String torn = "{\"type\":\"artifactGeneration\",\"value\":";
+        Files.writeString(productJournal, torn, StandardCharsets.UTF_8,
+                java.nio.file.StandardOpenOption.APPEND);
+
+        TitanGraphqlArtifactSetRef artifactSet = artifactSetRef();
+        TitanGraphqlDurableManagementStore reloaded = new TitanGraphqlDurableManagementStore(logPath);
+        assertEquals("model-001", reloaded.model("model-001").id());
+        assertNull(reloaded.artifactSet(artifactSet.id()));
+        assertFalse(Files.readString(productJournal).contains(torn));
+        try (var files = Files.list(tempDir)) {
+            List<Path> backups = files.filter(path -> path.getFileName().toString()
+                    .startsWith("torn-generation.log.graphql-state.jsonl.torn-")).toList();
+            assertEquals(1, backups.size());
+            assertEquals(torn, Files.readString(backups.getFirst()));
+        }
+
+        TitanGraphqlModelDraft draft = new TitanGraphqlModelDraft(
+                "draft-001", "model-001", TitanGraphqlModelDraft.ModelDraftStatus.READY_FOR_REVIEW,
+                TitanGraphqlModelDraft.SourceFormat.YAML, "source", "{}", artifactSet.semanticHash(),
+                "validation-001", artifactSet.id(), "", "operator",
+                "2026-06-09T00:00:00Z", "2026-06-09T00:02:00Z");
+        Files.writeString(productJournal, torn, StandardCharsets.UTF_8,
+                java.nio.file.StandardOpenOption.APPEND);
+        reloaded.saveGeneratedArtifacts(artifactSet, draft, gap005Metadata("passed"));
+        TitanGraphqlDurableManagementStore recovered = new TitanGraphqlDurableManagementStore(logPath);
+        assertEquals(artifactSet.id(), recovered.artifactSet(artifactSet.id()).id());
+        assertEquals(artifactSet.id(), recovered.draft(draft.id()).artifactSetId());
+    }
+
+    @Test
+    void completeMalformedProductJournalEntryFailsClosed() throws Exception {
+        Path logPath = tempDir.resolve("corrupt-generation.log");
+        newStore(logPath);
+        Path productJournal = logPath.resolveSibling("corrupt-generation.log.graphql-state.jsonl");
+        Files.writeString(productJournal, "{\"type\":\"artifactGeneration\",\"value\":\n",
+                StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.APPEND);
+
+        assertThrows(IllegalStateException.class, () -> new TitanGraphqlDurableManagementStore(logPath));
+    }
 
     @Test
     void persistsCoreDraftReadsThroughTitanGap006Store() {
@@ -281,6 +454,9 @@ final class TitanGraphqlDurableManagementStoreTest {
     void savesVerifiedPreviewBuildManifestFromTitanArtifactEvidence() {
         TitanGraphqlDurableManagementStore store = newStore(tempDir.resolve("preview.log"))
                 .saveArtifactSet(artifactSetRef(), gap005Metadata("passed"));
+        store.saveOperationRegistry(new TitanGraphqlOperationRegistry(
+                "registry-001", "model-001", "prod", TitanGraphqlOperationRegistry.RegistryMode.ENFORCE,
+                List.of(), "2026-06-09T00:03:00Z"));
 
         TitanGraphqlPreviewBuildManifest manifest = store.saveVerifiedPreviewBuild(new TitanGraphqlPreviewBuild(
                 "preview-001",
@@ -295,13 +471,51 @@ final class TitanGraphqlDurableManagementStoreTest {
                 "build/titan/titan-artifact.json",
                 sha256("manifest-content"),
                 "registry-001",
-                "2026-06-10T00:03:00Z",
+                java.time.Instant.now().plusSeconds(3600).toString(),
                 "operator",
                 "2026-06-09T00:03:00Z"));
 
         assertEquals("build/titan/titan-artifact.json", manifest.artifactManifestPath());
         assertEquals(sha256("manifest-content"), manifest.artifactManifestHash());
         assertEquals("preview-001", store.previewBuild("preview-001").id());
+    }
+
+    @Test
+    void verifiedPreviewRequiresMatchingEnforcedRegistryAndFutureExpiration() {
+        TitanGraphqlDurableManagementStore store = newStore(tempDir.resolve("preview-registry.log"))
+                .saveArtifactSet(artifactSetRef(), gap005Metadata("passed"));
+        String future = java.time.Instant.now().plusSeconds(3600).toString();
+        TitanGraphqlPreviewBuild candidate = new TitanGraphqlPreviewBuild(
+                "preview-001", "model-001", "draft-001", "artifact-001", "prod",
+                TitanGraphqlPreviewBuild.PreviewBuildStatus.READY, "/preview/preview-001/graphql", "",
+                sha256("sdl"), "build/titan/titan-artifact.json", sha256("manifest-content"),
+                "registry-001", future, "operator", "2026-06-09T00:03:00Z");
+
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> store.saveVerifiedPreviewBuild(candidate)).getMessage().contains("operation registry"));
+        store.saveOperationRegistry(new TitanGraphqlOperationRegistry(
+                "registry-001", "other-model", "prod", TitanGraphqlOperationRegistry.RegistryMode.ENFORCE,
+                List.of(), "2026-06-09T00:03:00Z"));
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> store.saveVerifiedPreviewBuild(candidate)).getMessage().contains("does not match"));
+        store.saveOperationRegistry(new TitanGraphqlOperationRegistry(
+                "registry-001", "model-001", "prod", TitanGraphqlOperationRegistry.RegistryMode.OBSERVE,
+                List.of(), "2026-06-09T00:03:00Z"));
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> store.saveVerifiedPreviewBuild(candidate)).getMessage().contains("ENFORCE"));
+        store.saveOperationRegistry(new TitanGraphqlOperationRegistry(
+                "registry-001", "model-001", "prod", TitanGraphqlOperationRegistry.RegistryMode.ENFORCE,
+                List.of(), "2026-06-09T00:03:00Z"));
+        TitanGraphqlPreviewBuild expired = new TitanGraphqlPreviewBuild(
+                candidate.id(), candidate.modelId(), candidate.draftId(), candidate.artifactSetId(),
+                candidate.environment(), candidate.status(), candidate.previewEndpoint(),
+                candidate.previewConsoleUrl(), candidate.schemaHash(), candidate.artifactManifestPath(),
+                candidate.artifactManifestHash(), candidate.operationRegistryId(),
+                java.time.Instant.now().minusSeconds(3600).toString(), candidate.createdBy(),
+                candidate.createdAt());
+        assertTrue(assertThrows(IllegalArgumentException.class,
+                () -> store.saveVerifiedPreviewBuild(expired)).getMessage().contains("future"));
+        assertNull(store.previewBuild(candidate.id()));
     }
 
     @Test

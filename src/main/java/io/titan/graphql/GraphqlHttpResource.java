@@ -69,6 +69,7 @@ public final class GraphqlHttpResource {
             boolean enableIntrospection,
             String tenantId,
             String requestId,
+            String idempotencyKey,
             String policyFlags,
             String enabledContextFilters,
             long deadlineBudgetMillis,
@@ -94,6 +95,7 @@ public final class GraphqlHttpResource {
                     "",
                     "",
                     "",
+                    "",
                     0L,
                     validationError
             );
@@ -102,6 +104,25 @@ public final class GraphqlHttpResource {
         public static GraphqlHttpContext defaults() {
             return new GraphqlHttpContext(0L, DEFAULT_ACTOR_ROLE, false, false, false, false, "");
         }
+    }
+
+    public Response postResponse(
+            Map<String, Object> request,
+            String acceptHeader,
+            String actorIdHeader,
+            String actorRoleHeader,
+            String publishedVisibilityHeader,
+            String articleVisibilityHeader,
+            String introspectionHeader,
+            String tenantIdHeader,
+            String requestIdHeader,
+            String policyFlagsHeader,
+            String enabledContextFiltersHeader,
+            String deadlineBudgetMillisHeader
+    ) {
+        return postResponse(request, acceptHeader, actorIdHeader, actorRoleHeader, publishedVisibilityHeader,
+                articleVisibilityHeader, introspectionHeader, tenantIdHeader, requestIdHeader, null,
+                policyFlagsHeader, enabledContextFiltersHeader, deadlineBudgetMillisHeader);
     }
 
     @POST
@@ -117,6 +138,7 @@ public final class GraphqlHttpResource {
             @HeaderParam("X-Titan-Introspection") String introspectionHeader,
             @HeaderParam("X-Titan-Tenant-Id") String tenantIdHeader,
             @HeaderParam("X-Titan-Request-Id") String requestIdHeader,
+            @HeaderParam("Idempotency-Key") String idempotencyKeyHeader,
             @HeaderParam("X-Titan-Policy-Flags") String policyFlagsHeader,
             @HeaderParam("X-Titan-Context-Filters") String enabledContextFiltersHeader,
             @HeaderParam("X-Titan-Deadline-Budget-Millis") String deadlineBudgetMillisHeader
@@ -132,12 +154,36 @@ public final class GraphqlHttpResource {
                         introspectionHeader,
                         tenantIdHeader,
                         requestIdHeader,
+                        idempotencyKeyHeader,
                         policyFlagsHeader,
                         enabledContextFiltersHeader,
                         deadlineBudgetMillisHeader
                 )
         );
         return withModeSurface(result);
+    }
+
+    public Response getResponse(
+            String query,
+            String operationName,
+            String variablesJson,
+            String extensionsJson,
+            String acceptHeader,
+            String actorIdHeader,
+            String actorRoleHeader,
+            String publishedVisibilityHeader,
+            String articleVisibilityHeader,
+            String introspectionHeader,
+            String tenantIdHeader,
+            String requestIdHeader,
+            String policyFlagsHeader,
+            String enabledContextFiltersHeader,
+            String deadlineBudgetMillisHeader
+    ) {
+        return getResponse(query, operationName, variablesJson, extensionsJson, acceptHeader, actorIdHeader,
+                actorRoleHeader, publishedVisibilityHeader, articleVisibilityHeader, introspectionHeader,
+                tenantIdHeader, requestIdHeader, null, policyFlagsHeader, enabledContextFiltersHeader,
+                deadlineBudgetMillisHeader);
     }
 
     @GET
@@ -155,6 +201,7 @@ public final class GraphqlHttpResource {
             @HeaderParam("X-Titan-Introspection") String introspectionHeader,
             @HeaderParam("X-Titan-Tenant-Id") String tenantIdHeader,
             @HeaderParam("X-Titan-Request-Id") String requestIdHeader,
+            @HeaderParam("Idempotency-Key") String idempotencyKeyHeader,
             @HeaderParam("X-Titan-Policy-Flags") String policyFlagsHeader,
             @HeaderParam("X-Titan-Context-Filters") String enabledContextFiltersHeader,
             @HeaderParam("X-Titan-Deadline-Budget-Millis") String deadlineBudgetMillisHeader
@@ -173,6 +220,7 @@ public final class GraphqlHttpResource {
                         introspectionHeader,
                         tenantIdHeader,
                         requestIdHeader,
+                        idempotencyKeyHeader,
                         policyFlagsHeader,
                         enabledContextFiltersHeader,
                         deadlineBudgetMillisHeader
@@ -366,7 +414,7 @@ public final class GraphqlHttpResource {
                 context.actorId() > 0L ? "actor-" + context.actorId() : "",
                 context.tenantId(),
                 context.requestId(),
-                "",
+                context.idempotencyKey(),
                 listFromHeader(context.policyFlags()),
                 enabledContextFilters(context),
                 context.enableIntrospection(),
@@ -385,6 +433,7 @@ public final class GraphqlHttpResource {
             String introspectionHeader,
             String tenantIdHeader,
             String requestIdHeader,
+            String idempotencyKeyHeader,
             String policyFlagsHeader,
             String enabledContextFiltersHeader,
             String deadlineBudgetMillisHeader
@@ -400,6 +449,7 @@ public final class GraphqlHttpResource {
                 introspectionHeader,
                 tenantIdHeader,
                 requestIdHeader,
+                idempotencyKeyHeader,
                 policyFlagsHeader,
                 enabledContextFiltersHeader,
                 deadlineBudgetMillisHeader
@@ -448,6 +498,7 @@ public final class GraphqlHttpResource {
                 null,
                 null,
                 null,
+                null,
                 null
         );
     }
@@ -460,6 +511,24 @@ public final class GraphqlHttpResource {
             String introspectionHeader,
             String tenantIdHeader,
             String requestIdHeader,
+            String policyFlagsHeader,
+            String enabledContextFiltersHeader,
+            String deadlineBudgetMillisHeader
+    ) {
+        return httpContext(actorIdHeader, actorRoleHeader, publishedVisibilityHeader, articleVisibilityHeader,
+                introspectionHeader, tenantIdHeader, requestIdHeader, null, policyFlagsHeader,
+                enabledContextFiltersHeader, deadlineBudgetMillisHeader);
+    }
+
+    static GraphqlHttpContext httpContext(
+            String actorIdHeader,
+            String actorRoleHeader,
+            String publishedVisibilityHeader,
+            String articleVisibilityHeader,
+            String introspectionHeader,
+            String tenantIdHeader,
+            String requestIdHeader,
+            String idempotencyKeyHeader,
             String policyFlagsHeader,
             String enabledContextFiltersHeader,
             String deadlineBudgetMillisHeader
@@ -514,6 +583,7 @@ public final class GraphqlHttpResource {
                 Boolean.TRUE.equals(enableIntrospection),
                 trimHeader(tenantIdHeader),
                 trimHeader(requestIdHeader),
+                trimHeader(idempotencyKeyHeader),
                 trimHeader(policyFlagsHeader),
                 trimHeader(enabledContextFiltersHeader),
                 deadlineBudgetMillis,

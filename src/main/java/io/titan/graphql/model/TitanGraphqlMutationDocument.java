@@ -17,10 +17,13 @@ public record TitanGraphqlMutationDocument(
         MutationDocumentInput input,
         List<MutationDocumentInputBinding> inputBindings,
         List<String> policies,
-        List<MutationDocumentPayloadField> payload
+        List<MutationDocumentPayloadField> payload,
+        MutationDocumentHandler handler
 ) {
     public enum MutationDocumentOperation {
-        UPDATE
+        UPDATE,
+        PROCEDURE,
+        CREATE_PROCEDURE
     }
 
     public record MutationDocumentArgument(
@@ -28,14 +31,19 @@ public record TitanGraphqlMutationDocument(
             String type,
             String column,
             boolean key,
-            String defaultValue
+            String defaultValue,
+            boolean nullable
     ) {
         public MutationDocumentArgument {
             defaultValue = ModelDocumentSupport.textOrEmpty(defaultValue);
         }
 
         public MutationDocumentArgument(String name, String type, String column, boolean key) {
-            this(name, type, column, key, "");
+            this(name, type, column, key, "", false);
+        }
+
+        public MutationDocumentArgument(String name, String type, String column, boolean key, String defaultValue) {
+            this(name, type, column, key, defaultValue, false);
         }
     }
 
@@ -62,13 +70,18 @@ public record TitanGraphqlMutationDocument(
             String path,
             String type,
             String column,
-            boolean key
+            boolean key,
+            boolean nullable
     ) {
         public MutationDocumentInputBinding {
             name = ModelDocumentSupport.requireText(name, "mutation.inputBinding.name");
             path = ModelDocumentSupport.requireText(path, "mutation.inputBinding.path");
             type = ModelDocumentSupport.requireText(type, "mutation.inputBinding.type");
             column = ModelDocumentSupport.requireText(column, "mutation.inputBinding.column");
+        }
+
+        public MutationDocumentInputBinding(String name, String path, String type, String column, boolean key) {
+            this(name, path, type, column, key, false);
         }
     }
 
@@ -78,11 +91,46 @@ public record TitanGraphqlMutationDocument(
     ) {
     }
 
+    public record MutationDocumentHandler(
+            String className,
+            String methodName,
+            int maximumStatements,
+            int maximumRows,
+            boolean includeTrustedContext
+    ) {
+        public MutationDocumentHandler {
+            className = ModelDocumentSupport.requireText(className, "mutation.handler.className");
+            methodName = ModelDocumentSupport.requireText(methodName, "mutation.handler.methodName");
+            if (maximumStatements < 1 || maximumRows < 0) {
+                throw new IllegalArgumentException("mutation.handler requires a positive statement budget and "
+                        + "a non-negative row budget");
+            }
+        }
+
+        public MutationDocumentHandler(String className, String methodName,
+                int maximumStatements, int maximumRows) {
+            this(className, methodName, maximumStatements, maximumRows, false);
+        }
+    }
+
     public TitanGraphqlMutationDocument {
         arguments = ModelDocumentSupport.listOrEmpty(arguments);
         inputBindings = ModelDocumentSupport.listOrEmpty(inputBindings);
         policies = ModelDocumentSupport.listOrEmpty(policies);
         payload = ModelDocumentSupport.listOrEmpty(payload);
+    }
+
+    public TitanGraphqlMutationDocument(
+            String name,
+            MutationDocumentOperation operation,
+            String type,
+            List<MutationDocumentArgument> arguments,
+            MutationDocumentInput input,
+            List<MutationDocumentInputBinding> inputBindings,
+            List<String> policies,
+            List<MutationDocumentPayloadField> payload
+    ) {
+        this(name, operation, type, arguments, input, inputBindings, policies, payload, null);
     }
 
     /** Compatibility constructor for existing flat scalar-argument mutation bindings. */
@@ -94,6 +142,6 @@ public record TitanGraphqlMutationDocument(
             List<String> policies,
             List<MutationDocumentPayloadField> payload
     ) {
-        this(name, operation, type, arguments, null, List.of(), policies, payload);
+        this(name, operation, type, arguments, null, List.of(), policies, payload, null);
     }
 }

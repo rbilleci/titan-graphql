@@ -506,7 +506,8 @@ public final class TitanGraphqlModelDocumentYaml {
                             text(argument.getValue(), "type"),
                             text(argument.getValue(), "column"),
                             boolValue(argument.getValue(), "key"),
-                            text(argument.getValue(), "defaultValue")
+                            text(argument.getValue(), "defaultValue"),
+                            boolValue(argument.getValue(), "nullable")
                     )));
             List<TitanGraphqlMutationDocument.MutationDocumentPayloadField> payload = new ArrayList<>();
             fields(value.path("payload")).forEach(field -> payload.add(
@@ -525,8 +526,15 @@ public final class TitanGraphqlModelDocumentYaml {
                             text(binding.getValue(), "path"),
                             text(binding.getValue(), "type"),
                             text(binding.getValue(), "column"),
-                            boolValue(binding.getValue(), "key")
+                            boolValue(binding.getValue(), "key"),
+                            boolValue(binding.getValue(), "nullable")
                     )));
+            JsonNode handlerNode = value.path("handler");
+            TitanGraphqlMutationDocument.MutationDocumentHandler handler = missing(handlerNode) ? null
+                    : new TitanGraphqlMutationDocument.MutationDocumentHandler(
+                            text(handlerNode, "className"), text(handlerNode, "methodName"),
+                            intValue(handlerNode, "maximumStatements"), intValue(handlerNode, "maximumRows"),
+                            boolValue(handlerNode, "includeTrustedContext"));
             mutations.add(new TitanGraphqlMutationDocument(
                     entry.getKey(),
                     enumValue(TitanGraphqlMutationDocument.MutationDocumentOperation.class,
@@ -536,7 +544,8 @@ public final class TitanGraphqlModelDocumentYaml {
                     input,
                     inputBindings,
                     stringList(value.path("policies")),
-                    payload
+                    payload,
+                    handler
             ));
         });
         return mutations;

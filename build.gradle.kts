@@ -3,6 +3,10 @@ import io.titan.gradle.TitanPackageTask
 import io.titan.gradle.TitanTranspileTask
 import io.titan.gradle.TitanVerifyInstallTask
 import org.gradle.api.tasks.Sync
+import org.gradle.language.jvm.tasks.ProcessResources
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.util.HexFormat
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
 
@@ -20,6 +24,12 @@ val titanGraphqlProjectName = project.name
 val titanGraphqlProjectVersion = project.version.toString()
 repositories {
     mavenCentral()
+}
+
+tasks.named<ProcessResources>("processResources") {
+    from("docs/query-contract-conformance.md") {
+        into("docs")
+    }
 }
 
 dependencyLocking {
@@ -103,6 +113,7 @@ java {
 tasks.test {
     useJUnitPlatform {
         excludeTags("docker")
+        excludeTags("database-engine-commerce-http-restart")
     }
     // Docker-free runs cannot assume titanPackage/titanVerifyInstall output exists, so plain
     // tests read GAP-005 package metadata from a checked-in, schema-faithful fixture package.
@@ -262,6 +273,25 @@ val databaseHttpFrontendDistribution = tasks.register<Zip>("databaseHttpFrontend
     }
 }
 
+val controlJobWorkerDistribution = tasks.register<Zip>("controlJobWorkerDistribution") {
+    description = "Packages the runnable control-plane artifact job worker."
+    group = "distribution"
+    dependsOn(tasks.named("jar"))
+    archiveClassifier.set("control-job-worker")
+    from(tasks.named<Jar>("jar")) {
+        into("lib")
+    }
+    from(sourceSets["main"].runtimeClasspath.filter { it.isFile }) {
+        into("lib")
+    }
+    from("src/control-job/bin") {
+        into("bin")
+        filePermissions {
+            unix("rwxr-xr-x")
+        }
+    }
+}
+
 // This is deliberately a release *artifact* task rather than an alias for the root `assemble`
 // or `build` lifecycle. Those lifecycle tasks still build the transitional Quarkus application
 // while its source is being migrated. A deployer must receive this ZIP, never that application
@@ -348,6 +378,7 @@ val titanGraphqlDatabaseEngineReleaseCheck = tasks.register("titanGraphqlDatabas
         "databaseEngineMySqlIntegrationTest",
         "databaseEngineCommerceIntegrationTest",
         "databaseEngineCommerceMySqlIntegrationTest",
+        "databaseEngineCommerceHttpRestartIntegrationTest",
         "databaseHttpFrontendIntegrationTest"
     )
 }
@@ -736,12 +767,14 @@ tasks.register<TitanTranspileTask>("titanGraphqlTranspileMySqlDatabaseEngine") {
 tasks.register<Sync>("titanGraphqlStageDatabaseEnginePackage") {
     dependsOn("titanGraphqlTranspileDatabaseEngine")
     from(titanGraphqlDatabaseEngineSqlDirectory)
+    from("src/database-engine-migrations/postgresql") { into("postgresql") }
     into(titanGraphqlDatabaseEnginePackageSourceDirectory)
 }
 
 tasks.register<Sync>("titanGraphqlStageMySqlDatabaseEnginePackage") {
     dependsOn("titanGraphqlTranspileMySqlDatabaseEngine")
     from(titanGraphqlMySqlDatabaseEngineSqlDirectory)
+    from("src/database-engine-migrations/mysql") { into("mysql") }
     into(titanGraphqlMySqlDatabaseEnginePackageSourceDirectory)
 }
 
@@ -992,7 +1025,7 @@ tasks.register<Test>("databaseHttpFrontendIntegrationTest") {
     inputs.file(titanGraphqlDatabaseEngineFrontendDescriptor)
     inputs.file(titanGraphqlMySqlDatabaseEngineFrontendDescriptor)
     inputs.file(databaseHttpFrontendDistribution.flatMap { it.archiveFile })
-    useJUnitPlatform()
+    useJUnitPlatform { excludeTags("database-engine-management-http") }
     // The root project is Quarkus-based and exports this property to its normal test workers.
     // The standalone host intentionally has no JBoss LogManager dependency.
     jvmArgs("-Djava.util.logging.manager=java.util.logging.LogManager")
@@ -1157,6 +1190,9 @@ tasks.register<Test>("legacySqlIntegrationTest") {
 val commerceModelFile = layout.projectDirectory.file(
     "src/test/resources/graphql/commerce.titan.graphql.yaml"
 )
+val managementDatabaseModelFile = layout.projectDirectory.file(
+    "src/main/resources/graphql/management-database.titan.graphql.yaml"
+)
 val commerceGeneratedRoutineSource = layout.buildDirectory.file(
     "generated/proofs/commerce/sources/io/titan/graphql/generated/GeneratedTitanGraphqlReads.java"
 )
@@ -1198,25 +1234,50 @@ val commerceDatabaseEnginePackageIdentity = layout.buildDirectory.file(
 val commerceMySqlDatabaseEnginePackageIdentity = layout.buildDirectory.file(
     "generated/proofs/database-engine-commerce-mysql/titan-graphql-database-package-identity.mysql.sha256"
 )
+val databaseMutationHandlerSourceRoot = layout.projectDirectory.dir("src/database-engine/java")
+val databaseMutationHandlerSources = fileTree(databaseMutationHandlerSourceRoot.asFile) {
+    include("io/titan/graphql/database/handlers/**/*.java")
+}
+val databaseMutationHandlerIdentityArgs = databaseMutationHandlerSources.files
+    .sortedBy { it.relativeTo(databaseMutationHandlerSourceRoot.asFile).invariantSeparatorsPath }
+    .flatMap { source ->
+        val relativePath = source.relativeTo(databaseMutationHandlerSourceRoot.asFile)
+            .invariantSeparatorsPath.lowercase().replace(Regex("[^a-z0-9._-]"), "-")
+        listOf("handler-$relativePath", source.absolutePath)
+    }
+
+tasks.register<JavaExec>("titanGraphqlVerifyDatabaseMutationHandlers") {
+    description = "Checks reviewed procedure source and compiled signatures before packaging."
+    group = "verification"
+    dependsOn("classes", "databaseEngineClasses")
+    classpath = sourceSets["main"].runtimeClasspath + databaseEngine.output
+    mainClass.set("io.titan.graphql.codegen.TitanGraphqlMutationHandlerVerifierCli")
+    args(commerceModelFile.asFile.absolutePath, managementDatabaseModelFile.asFile.absolutePath,
+        databaseMutationHandlerSourceRoot.asFile.absolutePath)
+    inputs.files(commerceModelFile, managementDatabaseModelFile, databaseMutationHandlerSources,
+        databaseEngine.output)
+}
 
 tasks.register<JavaExec>("titanGraphqlGenerateCommerceDatabaseEngineRuntimeIdentity") {
     description = "Calculates the PostgreSQL commerce whole-request runtime identity before transpilation."
     group = "titan"
-    dependsOn("classes")
+    dependsOn("titanGraphqlVerifyDatabaseMutationHandlers")
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("io.titan.graphql.artifact.TitanGraphqlDatabaseRuntimeIdentityCli")
     args(
         commerceModelFile.asFile.absolutePath, "postgresql",
         commerceDatabaseEngineRuntimeIdentity.get().asFile.absolutePath,
         "common-engine", titanGraphqlDatabaseEngineCommonSource.asFile.absolutePath,
-        "common-language", titanGraphqlDatabaseLanguageSource.asFile.absolutePath,
-        "schema-generator", layout.projectDirectory.file(
+        "common-language", titanGraphqlDatabaseLanguageSource.asFile.absolutePath)
+    args(*databaseMutationHandlerIdentityArgs.toTypedArray())
+    args("schema-generator", layout.projectDirectory.file(
             "src/main/java/io/titan/graphql/codegen/TitanGraphqlDatabaseEngineSourceGenerator.java").asFile.absolutePath,
         "build-options", layout.projectDirectory.file("build.gradle.kts").asFile.absolutePath,
         "dependency-locks", layout.projectDirectory.file("gradle.lockfile").asFile.absolutePath,
         "titan-version", layout.projectDirectory.file("vendor/titan/gradle.properties").asFile.absolutePath)
     inputs.files(
         commerceModelFile, titanGraphqlDatabaseEngineCommonSource, titanGraphqlDatabaseLanguageSource,
+        databaseMutationHandlerSources,
         layout.projectDirectory.file("src/main/java/io/titan/graphql/codegen/TitanGraphqlDatabaseEngineSourceGenerator.java"),
         layout.projectDirectory.file("build.gradle.kts"), layout.projectDirectory.file("gradle.lockfile"),
         layout.projectDirectory.file("vendor/titan/gradle.properties"))
@@ -1226,21 +1287,23 @@ tasks.register<JavaExec>("titanGraphqlGenerateCommerceDatabaseEngineRuntimeIdent
 tasks.register<JavaExec>("titanGraphqlGenerateCommerceMySqlDatabaseEngineRuntimeIdentity") {
     description = "Calculates the MySQL commerce whole-request runtime identity before transpilation."
     group = "titan"
-    dependsOn("classes")
+    dependsOn("titanGraphqlVerifyDatabaseMutationHandlers")
     classpath = sourceSets["main"].runtimeClasspath
     mainClass.set("io.titan.graphql.artifact.TitanGraphqlDatabaseRuntimeIdentityCli")
     args(
         commerceModelFile.asFile.absolutePath, "mysql",
         commerceMySqlDatabaseEngineRuntimeIdentity.get().asFile.absolutePath,
         "common-engine", titanGraphqlDatabaseEngineCommonSource.asFile.absolutePath,
-        "common-language", titanGraphqlDatabaseLanguageSource.asFile.absolutePath,
-        "schema-generator", layout.projectDirectory.file(
+        "common-language", titanGraphqlDatabaseLanguageSource.asFile.absolutePath)
+    args(*databaseMutationHandlerIdentityArgs.toTypedArray())
+    args("schema-generator", layout.projectDirectory.file(
             "src/main/java/io/titan/graphql/codegen/TitanGraphqlDatabaseEngineSourceGenerator.java").asFile.absolutePath,
         "build-options", layout.projectDirectory.file("build.gradle.kts").asFile.absolutePath,
         "dependency-locks", layout.projectDirectory.file("gradle.lockfile").asFile.absolutePath,
         "titan-version", layout.projectDirectory.file("vendor/titan/gradle.properties").asFile.absolutePath)
     inputs.files(
         commerceModelFile, titanGraphqlDatabaseEngineCommonSource, titanGraphqlDatabaseLanguageSource,
+        databaseMutationHandlerSources,
         layout.projectDirectory.file("src/main/java/io/titan/graphql/codegen/TitanGraphqlDatabaseEngineSourceGenerator.java"),
         layout.projectDirectory.file("build.gradle.kts"), layout.projectDirectory.file("gradle.lockfile"),
         layout.projectDirectory.file("vendor/titan/gradle.properties"))
@@ -1279,7 +1342,7 @@ tasks.register<TitanTranspileTask>("titanGraphqlTranspileCommerceDatabaseEngine"
     group = "verification"
     dependsOn("titanGraphqlVerifyDatabaseEngineBoundary", "titanGraphqlGenerateCommerceDatabaseEngine")
     sourceFiles.setFrom(titanGraphqlDatabaseEngineCommonSource, titanGraphqlDatabaseLanguageSource, titanGraphqlDatabaseAstSource,
-        titanGraphqlDatabaseTypeReferenceSource,
+        titanGraphqlDatabaseTypeReferenceSource, databaseMutationHandlerSources,
         commerceDatabaseEngineGeneratedSource)
     classpathFiles.from(databaseEngine.compileClasspath)
     targets.set(listOf("postgresql"))
@@ -1297,7 +1360,7 @@ tasks.register<TitanTranspileTask>("titanGraphqlTranspileCommerceMySqlDatabaseEn
     group = "verification"
     dependsOn("titanGraphqlVerifyDatabaseEngineBoundary", "titanGraphqlGenerateCommerceMySqlDatabaseEngine")
     sourceFiles.setFrom(titanGraphqlDatabaseEngineCommonSource, titanGraphqlDatabaseLanguageSource, titanGraphqlDatabaseAstSource,
-        titanGraphqlDatabaseTypeReferenceSource,
+        titanGraphqlDatabaseTypeReferenceSource, databaseMutationHandlerSources,
         commerceMySqlDatabaseEngineGeneratedSource)
     classpathFiles.from(databaseEngine.compileClasspath)
     targets.set(listOf("mysql"))
@@ -1323,12 +1386,14 @@ tasks.register<TitanTranspileTask>("titanGraphqlTranspileCommerceMySqlDatabaseEn
 tasks.register<Sync>("titanGraphqlStageCommerceDatabaseEnginePackage") {
     dependsOn("titanGraphqlTranspileCommerceDatabaseEngine")
     from(commerceDatabaseEngineSqlDirectory)
+    from("src/database-engine-migrations/postgresql") { into("postgresql") }
     into(commerceDatabaseEnginePackageSourceDirectory)
 }
 
 tasks.register<Sync>("titanGraphqlStageCommerceMySqlDatabaseEnginePackage") {
     dependsOn("titanGraphqlTranspileCommerceMySqlDatabaseEngine")
     from(commerceMySqlDatabaseEngineSqlDirectory)
+    from("src/database-engine-migrations/mysql") { into("mysql") }
     into(commerceMySqlDatabaseEnginePackageSourceDirectory)
 }
 
@@ -1517,6 +1582,512 @@ tasks.register<JavaExec>("titanGraphqlBindCommerceMySqlDatabaseEnginePackage") {
         commerceMySqlDatabaseEnginePackageDirectory.map { it.file("titan-graphql-database-package-identity.sha256") })
 }
 
+val managementDatabaseEngineSchema = "management_graphql"
+listOf("postgresql" to "PostgreSql", "mysql" to "MySql").forEach { (dialectId, taskSuffix) ->
+    val root = "generated/proofs/database-engine-management-$dialectId"
+    val generatedClass = if (dialectId == "mysql")
+        "GeneratedDatabaseGraphqlMySqlProcedure.java" else "GeneratedDatabaseGraphqlSchema.java"
+    val generatedSource = layout.buildDirectory.file(
+        "$root/sources/io/titan/graphql/database/generated/$generatedClass"
+    )
+    val sqlDirectory = layout.buildDirectory.dir("$root/sql")
+    val packageSourceDirectory = layout.buildDirectory.dir("$root/package-source")
+    val packageDirectory = layout.buildDirectory.dir("$root/package")
+    val runtimeIdentity = layout.buildDirectory.file("$root/runtime-identity.$dialectId.sha256")
+    val packageIdentity = layout.buildDirectory.file("$root/package-identity.$dialectId.sha256")
+    val identityTask = "titanGraphqlGenerateManagement${taskSuffix}DatabaseEngineRuntimeIdentity"
+    val sourceTask = "titanGraphqlGenerateManagement${taskSuffix}DatabaseEngine"
+    val transpileTask = "titanGraphqlTranspileManagement${taskSuffix}DatabaseEngine"
+    val stageTask = "titanGraphqlStageManagement${taskSuffix}DatabaseEnginePackage"
+    val packageIdentityTask = "titanGraphqlGenerateManagement${taskSuffix}DatabaseEnginePackageIdentity"
+    val packageTask = "titanGraphqlPackageManagement${taskSuffix}DatabaseEngine"
+    val verifyTask = "titanGraphqlVerifyManagement${taskSuffix}DatabaseEngineInstall"
+    val bindTask = "titanGraphqlBindManagement${taskSuffix}DatabaseEnginePackage"
+
+    tasks.register<JavaExec>(identityTask) {
+        group = "titan"
+        dependsOn("titanGraphqlVerifyDatabaseMutationHandlers")
+        classpath = sourceSets["main"].runtimeClasspath
+        mainClass.set("io.titan.graphql.artifact.TitanGraphqlDatabaseRuntimeIdentityCli")
+        args(managementDatabaseModelFile.asFile.absolutePath, dialectId,
+            runtimeIdentity.get().asFile.absolutePath,
+            "common-engine", titanGraphqlDatabaseEngineCommonSource.asFile.absolutePath,
+            "common-language", titanGraphqlDatabaseLanguageSource.asFile.absolutePath,
+            "schema-generator", layout.projectDirectory.file(
+                "src/main/java/io/titan/graphql/codegen/TitanGraphqlDatabaseEngineSourceGenerator.java").asFile.absolutePath,
+            "build-options", layout.projectDirectory.file("build.gradle.kts").asFile.absolutePath,
+            "dependency-locks", layout.projectDirectory.file("gradle.lockfile").asFile.absolutePath,
+            "titan-version", layout.projectDirectory.file("vendor/titan/gradle.properties").asFile.absolutePath)
+        args(*databaseMutationHandlerIdentityArgs.toTypedArray())
+        inputs.files(managementDatabaseModelFile, titanGraphqlDatabaseEngineCommonSource,
+            titanGraphqlDatabaseLanguageSource, databaseMutationHandlerSources,
+            layout.projectDirectory.file("src/main/java/io/titan/graphql/codegen/TitanGraphqlDatabaseEngineSourceGenerator.java"),
+            layout.projectDirectory.file("build.gradle.kts"), layout.projectDirectory.file("gradle.lockfile"),
+            layout.projectDirectory.file("vendor/titan/gradle.properties"))
+        outputs.file(runtimeIdentity)
+    }
+
+    tasks.register<JavaExec>(sourceTask) {
+        group = "titan"
+        dependsOn(identityTask)
+        classpath = sourceSets["main"].runtimeClasspath
+        mainClass.set(if (dialectId == "mysql")
+            "io.titan.graphql.codegen.TitanGraphqlMySqlDatabaseEngineSourceGeneratorCli"
+            else "io.titan.graphql.codegen.TitanGraphqlDatabaseEngineSourceGeneratorCli")
+        args(managementDatabaseModelFile.asFile.absolutePath, generatedSource.get().asFile.absolutePath,
+            runtimeIdentity.get().asFile.absolutePath, managementDatabaseEngineSchema)
+        inputs.files(managementDatabaseModelFile, runtimeIdentity)
+        outputs.file(generatedSource)
+    }
+
+    tasks.register<TitanTranspileTask>(transpileTask) {
+        group = "verification"
+        dependsOn("titanGraphqlVerifyDatabaseEngineBoundary", sourceTask)
+        sourceFiles.setFrom(titanGraphqlDatabaseEngineCommonSource, titanGraphqlDatabaseLanguageSource,
+            titanGraphqlDatabaseAstSource, titanGraphqlDatabaseTypeReferenceSource,
+            databaseMutationHandlerSources, generatedSource)
+        classpathFiles.from(databaseEngine.compileClasspath)
+        targets.set(listOf(dialectId))
+        schemas.set(listOf(managementDatabaseEngineSchema))
+        strictWraparound.set(false)
+        sqlSafety.set("strict")
+        observability.set(dialectId == "postgresql")
+        debugMode.set(false)
+        sensitiveColumns.set(listOf("document"))
+        outputDir.set(sqlDirectory)
+    }
+
+    tasks.register<Sync>(stageTask) {
+        dependsOn(transpileTask)
+        from(sqlDirectory)
+        from("src/database-engine-migrations/management/$dialectId") { into(dialectId) }
+        into(packageSourceDirectory)
+    }
+
+    tasks.register<JavaExec>(packageIdentityTask) {
+        group = "verification"
+        dependsOn(stageTask)
+        classpath = sourceSets["main"].runtimeClasspath
+        mainClass.set("io.titan.graphql.artifact.TitanGraphqlDatabasePackageIdentityCli")
+        args(dialectId, packageSourceDirectory.get().dir(dialectId).asFile.absolutePath,
+            packageIdentity.get().asFile.absolutePath,
+            packageSourceDirectory.get().file("$dialectId/R__titan_005_graphql_package_identity.sql")
+                .asFile.absolutePath,
+            "$managementDatabaseEngineSchema.execute_graphql_request")
+        inputs.dir(packageSourceDirectory)
+        outputs.file(packageIdentity)
+        outputs.file(packageSourceDirectory.map {
+            it.file("$dialectId/R__titan_005_graphql_package_identity.sql")
+        })
+    }
+
+    tasks.register<TitanPackageTask>(packageTask) {
+        group = "verification"
+        dependsOn(packageIdentityTask)
+        sqlInputDir.set(packageSourceDirectory)
+        mode.set("migration")
+        titanVersion.set(providers.provider { titanGraphqlProjectVersion })
+        outputDir.set(packageDirectory)
+    }
+
+    tasks.register<TitanVerifyInstallTask>(verifyTask) {
+        group = "verification"
+        dependsOn(packageTask)
+        sqlInputDir.set(packageSourceDirectory)
+        artifactDir.set(packageDirectory)
+        mode.set("migration")
+        titanVersion.set(providers.provider { titanGraphqlProjectVersion })
+        jdbcUrl.set("")
+        username.set("")
+        password.set("")
+        dialect.set(dialectId)
+        failOnVerificationError.set(true)
+        jdbcDriverClasspath.from(configurations["titanJdbc"])
+        outputs.upToDateWhen { false }
+    }
+
+    tasks.register<JavaExec>(bindTask) {
+        group = "titan"
+        dependsOn(verifyTask, identityTask)
+        classpath = sourceSets["main"].runtimeClasspath
+        mainClass.set("io.titan.graphql.artifact.TitanGraphqlPackageBindingCli")
+        args(managementDatabaseModelFile.asFile.absolutePath, packageDirectory.get().asFile.absolutePath,
+            runtimeIdentity.get().asFile.absolutePath, packageIdentity.get().asFile.absolutePath)
+        inputs.files(managementDatabaseModelFile, runtimeIdentity, packageIdentity)
+        inputs.files(
+            packageDirectory.map { it.file("titan-artifact.json") },
+            packageDirectory.map { it.file("titan-object-inventory.json") },
+            packageDirectory.map { it.file("titan-install-plan.json") },
+            packageDirectory.map { it.file("titan-install-verification.json") })
+        outputs.files(
+            packageDirectory.map { it.file("titan-graphql-package.json") },
+            packageDirectory.map { it.file("titan-graphql-database-runtime-identity.sha256") },
+            packageDirectory.map { it.file("titan-graphql-database-package-identity.sha256") })
+    }
+
+    tasks.register<JavaExec>("titanGraphqlGenerateManagement${taskSuffix}DatabaseEngineFrontendDescriptor") {
+        group = "titan"
+        dependsOn(bindTask)
+        classpath = sourceSets["main"].runtimeClasspath
+        mainClass.set("io.titan.graphql.artifact.TitanGraphqlDatabaseFrontendDescriptorCli")
+        val descriptor = layout.buildDirectory.file("$root/frontend-deployment.properties")
+        args(packageDirectory.get().asFile.absolutePath, dialectId, descriptor.get().asFile.absolutePath)
+        inputs.files(
+            packageDirectory.map { it.file("titan-artifact.json") },
+            packageDirectory.map { it.file("titan-object-inventory.json") },
+            packageDirectory.map { it.file("titan-install-verification.json") },
+            packageDirectory.map { it.file("titan-graphql-package.json") },
+            packageDirectory.map { it.file("titan-graphql-database-runtime-identity.sha256") },
+            packageDirectory.map { it.file("titan-graphql-database-package-identity.sha256") })
+        outputs.file(descriptor)
+    }
+}
+
+val previewModelOption = providers.gradleProperty("titanGraphqlPreviewModel").orNull
+val previewIdOption = providers.gradleProperty("titanGraphqlPreviewId").orNull
+if (previewModelOption != null || previewIdOption != null) {
+    check(previewModelOption != null && previewIdOption != null) {
+        "titanGraphqlPreviewModel and titanGraphqlPreviewId must be supplied together"
+    }
+    check(previewIdOption.matches(Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,127}"))) {
+        "titanGraphqlPreviewId is invalid"
+    }
+    val previewModelSource = file(previewModelOption)
+    check(previewModelSource.isFile) { "titanGraphqlPreviewModel does not exist: $previewModelSource" }
+    val candidateDigest = MessageDigest.getInstance("SHA-256").apply {
+        update(previewIdOption.toByteArray(StandardCharsets.UTF_8))
+        update(0)
+        update(previewModelSource.readBytes())
+    }.digest()
+    val candidateKey = HexFormat.of().formatHex(candidateDigest).take(24)
+    val previewSchema = "preview_$candidateKey"
+    listOf("postgresql" to "PostgreSql", "mysql" to "MySql").forEach { (dialectId, taskSuffix) ->
+        val root = "generated/preview-candidates/$previewIdOption-$candidateKey/$dialectId"
+        val generatedClass = if (dialectId == "mysql")
+            "GeneratedDatabaseGraphqlMySqlProcedure.java" else "GeneratedDatabaseGraphqlSchema.java"
+        val generatedSource = layout.buildDirectory.file(
+            "$root/sources/io/titan/graphql/database/generated/$generatedClass"
+        )
+        val sqlDirectory = layout.buildDirectory.dir("$root/sql")
+        val packageSourceDirectory = layout.buildDirectory.dir("$root/package-source")
+        val packageDirectory = layout.buildDirectory.dir("$root/package")
+        val runtimeIdentity = layout.buildDirectory.file("$root/runtime-identity.$dialectId.sha256")
+        val packageIdentity = layout.buildDirectory.file("$root/package-identity.$dialectId.sha256")
+        val identityTask = "titanGraphqlGeneratePreview${taskSuffix}RuntimeIdentity"
+        val sourceTask = "titanGraphqlGeneratePreview${taskSuffix}Source"
+        val transpileTask = "titanGraphqlTranspilePreview$taskSuffix"
+        val stageTask = "titanGraphqlStagePreview${taskSuffix}Package"
+        val packageIdentityTask = "titanGraphqlGeneratePreview${taskSuffix}PackageIdentity"
+        val packageTask = "titanGraphqlPackagePreview$taskSuffix"
+        val verifyTask = "titanGraphqlVerifyPreview${taskSuffix}Install"
+        val bindTask = "titanGraphqlBindPreview${taskSuffix}Package"
+
+        tasks.register<JavaExec>(identityTask) {
+            group = "titan"
+            dependsOn("titanGraphqlVerifyDatabaseMutationHandlers")
+            classpath = sourceSets["main"].runtimeClasspath
+            mainClass.set("io.titan.graphql.artifact.TitanGraphqlDatabaseRuntimeIdentityCli")
+            args(previewModelSource.absolutePath, dialectId, runtimeIdentity.get().asFile.absolutePath,
+                "common-engine", titanGraphqlDatabaseEngineCommonSource.asFile.absolutePath,
+                "common-language", titanGraphqlDatabaseLanguageSource.asFile.absolutePath,
+                "schema-generator", layout.projectDirectory.file(
+                    "src/main/java/io/titan/graphql/codegen/TitanGraphqlDatabaseEngineSourceGenerator.java")
+                    .asFile.absolutePath,
+                "build-options", layout.projectDirectory.file("build.gradle.kts").asFile.absolutePath,
+                "dependency-locks", layout.projectDirectory.file("gradle.lockfile").asFile.absolutePath,
+                "titan-version", layout.projectDirectory.file("vendor/titan/gradle.properties")
+                    .asFile.absolutePath)
+            args(*databaseMutationHandlerIdentityArgs.toTypedArray())
+            inputs.files(previewModelSource, titanGraphqlDatabaseEngineCommonSource,
+                titanGraphqlDatabaseLanguageSource, databaseMutationHandlerSources,
+                layout.projectDirectory.file(
+                    "src/main/java/io/titan/graphql/codegen/TitanGraphqlDatabaseEngineSourceGenerator.java"),
+                layout.projectDirectory.file("build.gradle.kts"),
+                layout.projectDirectory.file("gradle.lockfile"),
+                layout.projectDirectory.file("vendor/titan/gradle.properties"))
+            outputs.file(runtimeIdentity)
+        }
+
+        tasks.register<JavaExec>(sourceTask) {
+            group = "titan"
+            dependsOn(identityTask)
+            classpath = sourceSets["main"].runtimeClasspath
+            mainClass.set(if (dialectId == "mysql")
+                "io.titan.graphql.codegen.TitanGraphqlMySqlDatabaseEngineSourceGeneratorCli"
+                else "io.titan.graphql.codegen.TitanGraphqlDatabaseEngineSourceGeneratorCli")
+            args(previewModelSource.absolutePath, generatedSource.get().asFile.absolutePath,
+                runtimeIdentity.get().asFile.absolutePath, previewSchema)
+            inputs.files(previewModelSource, runtimeIdentity)
+            outputs.file(generatedSource)
+        }
+
+        tasks.register<TitanTranspileTask>(transpileTask) {
+            group = "verification"
+            dependsOn("titanGraphqlVerifyDatabaseEngineBoundary", sourceTask)
+            sourceFiles.setFrom(titanGraphqlDatabaseEngineCommonSource, titanGraphqlDatabaseLanguageSource,
+                titanGraphqlDatabaseAstSource, titanGraphqlDatabaseTypeReferenceSource,
+                databaseMutationHandlerSources, generatedSource)
+            classpathFiles.from(databaseEngine.compileClasspath)
+            targets.set(listOf(dialectId))
+            schemas.set(listOf(previewSchema))
+            strictWraparound.set(false)
+            sqlSafety.set("strict")
+            observability.set(dialectId == "postgresql")
+            debugMode.set(false)
+            sensitiveColumns.set(listOf("email", "document"))
+            outputDir.set(sqlDirectory)
+        }
+
+        tasks.register<Sync>(stageTask) {
+            dependsOn(transpileTask)
+            from(sqlDirectory)
+            from("src/database-engine-migrations/$dialectId") { into(dialectId) }
+            into(packageSourceDirectory)
+            doLast {
+                val schemaMigration = packageSourceDirectory.get()
+                    .file("$dialectId/R__titan_001_preview_schema.sql").asFile
+                schemaMigration.writeText(if (dialectId == "postgresql")
+                    "CREATE SCHEMA IF NOT EXISTS \"$previewSchema\";\n"
+                    else "CREATE DATABASE IF NOT EXISTS `$previewSchema`;\n")
+            }
+        }
+
+        tasks.register<JavaExec>(packageIdentityTask) {
+            group = "verification"
+            dependsOn(stageTask)
+            classpath = sourceSets["main"].runtimeClasspath
+            mainClass.set("io.titan.graphql.artifact.TitanGraphqlDatabasePackageIdentityCli")
+            args(dialectId, packageSourceDirectory.get().dir(dialectId).asFile.absolutePath,
+                packageIdentity.get().asFile.absolutePath,
+                packageSourceDirectory.get().file("$dialectId/R__titan_005_graphql_package_identity.sql")
+                    .asFile.absolutePath,
+                "$previewSchema.execute_graphql_request")
+            inputs.dir(packageSourceDirectory)
+            outputs.file(packageIdentity)
+            outputs.file(packageSourceDirectory.map {
+                it.file("$dialectId/R__titan_005_graphql_package_identity.sql")
+            })
+        }
+
+        tasks.register<TitanPackageTask>(packageTask) {
+            group = "verification"
+            dependsOn(packageIdentityTask)
+            sqlInputDir.set(packageSourceDirectory)
+            mode.set("migration")
+            titanVersion.set(providers.provider { titanGraphqlProjectVersion })
+            if (dialectId == "mysql") additionalRuntimeSchemas.set(listOf(previewSchema))
+            outputDir.set(packageDirectory)
+        }
+
+        tasks.register<TitanVerifyInstallTask>(verifyTask) {
+            group = "verification"
+            dependsOn(packageTask)
+            sqlInputDir.set(packageSourceDirectory)
+            artifactDir.set(packageDirectory)
+            mode.set("migration")
+            titanVersion.set(providers.provider { titanGraphqlProjectVersion })
+            if (dialectId == "mysql") additionalRuntimeSchemas.set(listOf(previewSchema))
+            jdbcUrl.set("")
+            username.set("")
+            password.set("")
+            dialect.set(dialectId)
+            failOnVerificationError.set(true)
+            jdbcDriverClasspath.from(configurations["titanJdbc"])
+            outputs.upToDateWhen { false }
+        }
+
+        tasks.register<JavaExec>(bindTask) {
+            group = "titan"
+            dependsOn(verifyTask, identityTask)
+            classpath = sourceSets["main"].runtimeClasspath
+            mainClass.set("io.titan.graphql.artifact.TitanGraphqlPackageBindingCli")
+            args(previewModelSource.absolutePath, packageDirectory.get().asFile.absolutePath,
+                runtimeIdentity.get().asFile.absolutePath, packageIdentity.get().asFile.absolutePath)
+            inputs.files(previewModelSource, runtimeIdentity, packageIdentity,
+                packageDirectory.map { it.file("titan-artifact.json") },
+                packageDirectory.map { it.file("titan-object-inventory.json") },
+                packageDirectory.map { it.file("titan-install-plan.json") },
+                packageDirectory.map { it.file("titan-install-verification.json") })
+            outputs.file(packageDirectory.map { it.file("titan-graphql-package.json") })
+        }
+
+        tasks.register<JavaExec>("titanGraphqlBuildPreview$taskSuffix") {
+            description = "Builds and scratch-verifies an isolated $dialectId preview package."
+            group = "titan"
+            dependsOn(bindTask)
+            classpath = sourceSets["main"].runtimeClasspath
+            mainClass.set("io.titan.graphql.artifact.TitanGraphqlDatabaseFrontendDescriptorCli")
+            args(packageDirectory.get().asFile.absolutePath, dialectId,
+                packageDirectory.get().file("frontend-deployment.properties").asFile.absolutePath)
+            inputs.files(packageDirectory.map { it.file("titan-graphql-package.json") },
+                packageDirectory.map { it.file("titan-install-verification.json") })
+            outputs.file(packageDirectory.map { it.file("frontend-deployment.properties") })
+            doLast {
+                logger.lifecycle("Preview candidate package: {}", packageDirectory.get().asFile.absolutePath)
+                logger.lifecycle("Preview candidate schema: {}", previewSchema)
+            }
+        }
+
+        tasks.register<TitanVerifyInstallTask>("titanGraphqlInstallPreview$taskSuffix") {
+            description = "Installs the isolated $dialectId preview package into a configured database."
+            group = "titan"
+            dependsOn("titanGraphqlBuildPreview$taskSuffix")
+            sqlInputDir.set(packageSourceDirectory)
+            artifactDir.set(packageDirectory)
+            mode.set("migration")
+            titanVersion.set(providers.provider { titanGraphqlProjectVersion })
+            if (dialectId == "mysql") additionalRuntimeSchemas.set(listOf(previewSchema))
+            jdbcUrl.set(providers.gradleProperty("titanGraphqlPreviewJdbcUrl").orElse(""))
+            username.set(providers.environmentVariable("TITAN_GRAPHQL_CONTROL_DB_USER").orElse(""))
+            password.set(providers.environmentVariable("TITAN_GRAPHQL_CONTROL_DB_PASSWORD").orElse(""))
+            dialect.set(dialectId)
+            failOnVerificationError.set(true)
+            jdbcDriverClasspath.from(configurations["titanJdbc"])
+            outputs.upToDateWhen { false }
+            doFirst {
+                check(jdbcUrl.get().isNotBlank()) {
+                    "titanGraphqlPreviewJdbcUrl is required for target preview installation"
+                }
+            }
+        }
+    }
+
+    tasks.register<Test>("databaseEnginePreviewCandidateIntegrationTest") {
+        description = "Proves draft-to-candidate preview publication on PostgreSQL and MySQL."
+        group = "verification"
+        dependsOn("titanGraphqlBuildPreviewPostgreSql", "titanGraphqlBuildPreviewMySql",
+            "titanGraphqlGenerateManagementPostgreSqlDatabaseEngineFrontendDescriptor",
+            "titanGraphqlGenerateManagementMySqlDatabaseEngineFrontendDescriptor")
+        testClassesDirs = sourceSets["test"].output.classesDirs
+        classpath = sourceSets["test"].runtimeClasspath
+        useJUnitPlatform { includeTags("database-engine-preview-candidate") }
+        systemProperty("titan.graphql.preview.candidate.model", previewModelSource.absolutePath)
+        systemProperty("titan.graphql.preview.candidate.package.postgresql",
+            layout.buildDirectory.dir("generated/preview-candidates/$previewIdOption-$candidateKey/postgresql/package")
+                .get().asFile.absolutePath)
+        systemProperty("titan.graphql.preview.candidate.package.mysql",
+            layout.buildDirectory.dir("generated/preview-candidates/$previewIdOption-$candidateKey/mysql/package")
+                .get().asFile.absolutePath)
+        inputs.file(previewModelSource)
+        inputs.dir(layout.buildDirectory.dir(
+            "generated/preview-candidates/$previewIdOption-$candidateKey/postgresql/package"))
+        inputs.dir(layout.buildDirectory.dir(
+            "generated/preview-candidates/$previewIdOption-$candidateKey/mysql/package"))
+        shouldRunAfter(tasks.named("test"))
+    }
+}
+
+tasks.register<Test>("databaseEngineManagementIntegrationTest") {
+    group = "verification"
+    dependsOn("titanGraphqlGenerateManagementPostgreSqlDatabaseEngineFrontendDescriptor",
+        "titanGraphqlGenerateManagementMySqlDatabaseEngineFrontendDescriptor",
+        "titanGraphqlBindCommerceDatabaseEnginePackage",
+        "titanGraphqlBindCommerceMySqlDatabaseEnginePackage")
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    inputs.files(
+        commerceDatabaseEnginePackageIdentity,
+        commerceMySqlDatabaseEnginePackageIdentity,
+        layout.buildDirectory.file("generated/proofs/database-engine-management-postgresql/package-identity.postgresql.sha256"),
+        layout.buildDirectory.file("generated/proofs/database-engine-management-mysql/package-identity.mysql.sha256"),
+        layout.buildDirectory.file("generated/proofs/database-engine-management-postgresql/frontend-deployment.properties"),
+        layout.buildDirectory.file("generated/proofs/database-engine-management-mysql/frontend-deployment.properties"))
+    useJUnitPlatform { includeTags("database-engine-management") }
+    shouldRunAfter(tasks.named("integrationTest"))
+}
+
+tasks.register<Test>("databaseEngineManagementHttpIntegrationTest") {
+    group = "verification"
+    dependsOn(
+        "titanGraphqlGenerateDatabaseEngineFrontendDescriptor",
+        "titanGraphqlGenerateMySqlDatabaseEngineFrontendDescriptor",
+        "titanGraphqlGenerateManagementPostgreSqlDatabaseEngineFrontendDescriptor",
+        "titanGraphqlGenerateManagementMySqlDatabaseEngineFrontendDescriptor",
+        databaseHttpFrontendDistribution,
+        controlJobWorkerDistribution,
+        databaseHttpFrontendTest.classesTaskName)
+    testClassesDirs = databaseHttpFrontendTest.output.classesDirs
+    classpath = databaseHttpFrontendTest.runtimeClasspath
+    inputs.dir(titanGraphqlDatabaseEnginePackageDirectory)
+    inputs.dir(titanGraphqlMySqlDatabaseEnginePackageDirectory)
+    inputs.dir(layout.buildDirectory.dir("generated/proofs/database-engine-management-postgresql/package"))
+    inputs.dir(layout.buildDirectory.dir("generated/proofs/database-engine-management-mysql/package"))
+    inputs.file(databaseHttpFrontendDistribution.flatMap { it.archiveFile })
+    inputs.file(controlJobWorkerDistribution.flatMap { it.archiveFile })
+    useJUnitPlatform { includeTags("database-engine-management-http") }
+    jvmArgs("-Djava.util.logging.manager=java.util.logging.LogManager")
+    systemProperty("titan.graphql.database-engine.migrations.dir",
+        titanGraphqlDatabaseEnginePackageDirectory.get().dir("postgresql").asFile.absolutePath)
+    systemProperty("titan.graphql.database-engine.mysql.migrations.dir",
+        titanGraphqlMySqlDatabaseEnginePackageDirectory.get().dir("mysql").asFile.absolutePath)
+    systemProperty("titan.graphql.database-frontend.descriptor",
+        titanGraphqlDatabaseEngineFrontendDescriptor.get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-frontend.mysql.descriptor",
+        titanGraphqlMySqlDatabaseEngineFrontendDescriptor.get().asFile.absolutePath)
+    systemProperty("titan.graphql.management-frontend.descriptor",
+        layout.buildDirectory.file("generated/proofs/database-engine-management-postgresql/frontend-deployment.properties")
+            .get().asFile.absolutePath)
+    systemProperty("titan.graphql.management-frontend.mysql.descriptor",
+        layout.buildDirectory.file("generated/proofs/database-engine-management-mysql/frontend-deployment.properties")
+            .get().asFile.absolutePath)
+    systemProperty("titan.graphql.management.migrations.dir",
+        layout.buildDirectory.dir("generated/proofs/database-engine-management-postgresql/package/postgresql")
+            .get().asFile.absolutePath)
+    systemProperty("titan.graphql.management.mysql.migrations.dir",
+        layout.buildDirectory.dir("generated/proofs/database-engine-management-mysql/package/mysql")
+            .get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-frontend.distribution",
+        databaseHttpFrontendDistribution.get().archiveFile.get().asFile.absolutePath)
+    systemProperty("titan.graphql.control-job.worker.distribution",
+        controlJobWorkerDistribution.get().archiveFile.get().asFile.absolutePath)
+}
+
+tasks.register<Test>("databaseEngineContainerDeploymentIntegrationTest") {
+    group = "verification"
+    dependsOn(
+        "titanGraphqlGenerateDatabaseEngineFrontendDescriptor",
+        "titanGraphqlGenerateMySqlDatabaseEngineFrontendDescriptor",
+        "titanGraphqlGenerateManagementPostgreSqlDatabaseEngineFrontendDescriptor",
+        "titanGraphqlGenerateManagementMySqlDatabaseEngineFrontendDescriptor",
+        "titanGraphqlVerifyDatabaseHttpFrontendReleaseArtifact",
+        controlJobWorkerDistribution,
+        "testClasses")
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { includeTags("database-engine-container-deployment") }
+    inputs.dir(titanGraphqlDatabaseEnginePackageDirectory)
+    inputs.dir(titanGraphqlMySqlDatabaseEnginePackageDirectory)
+    inputs.dir(layout.buildDirectory.dir("generated/proofs/database-engine-management-postgresql/package"))
+    inputs.dir(layout.buildDirectory.dir("generated/proofs/database-engine-management-mysql/package"))
+    inputs.file(layout.buildDirectory.file(
+        "generated/proofs/database-engine-management-postgresql/frontend-deployment.properties"))
+    inputs.file(layout.buildDirectory.file(
+        "generated/proofs/database-engine-management-mysql/frontend-deployment.properties"))
+    inputs.file(databaseHttpFrontendDistribution.flatMap { it.archiveFile })
+    inputs.file(controlJobWorkerDistribution.flatMap { it.archiveFile })
+    inputs.files("deployment/compose.yaml", "deployment/Dockerfile.frontend", "deployment/Dockerfile.worker")
+    systemProperty("titan.graphql.database-frontend.descriptor",
+        titanGraphqlDatabaseEngineFrontendDescriptor.get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-frontend.mysql.descriptor",
+        titanGraphqlMySqlDatabaseEngineFrontendDescriptor.get().asFile.absolutePath)
+    systemProperty("titan.graphql.management-frontend.descriptor",
+        layout.buildDirectory.file("generated/proofs/database-engine-management-postgresql/frontend-deployment.properties")
+            .get().asFile.absolutePath)
+    systemProperty("titan.graphql.management-frontend.mysql.descriptor",
+        layout.buildDirectory.file("generated/proofs/database-engine-management-mysql/frontend-deployment.properties")
+            .get().asFile.absolutePath)
+    systemProperty("titan.graphql.database-engine.migrations.dir",
+        titanGraphqlDatabaseEnginePackageDirectory.get().dir("postgresql").asFile.absolutePath)
+    systemProperty("titan.graphql.database-engine.mysql.migrations.dir",
+        titanGraphqlMySqlDatabaseEnginePackageDirectory.get().dir("mysql").asFile.absolutePath)
+    systemProperty("titan.graphql.management.migrations.dir",
+        layout.buildDirectory.dir("generated/proofs/database-engine-management-postgresql/package/postgresql")
+            .get().asFile.absolutePath)
+    systemProperty("titan.graphql.management.mysql.migrations.dir",
+        layout.buildDirectory.dir("generated/proofs/database-engine-management-mysql/package/mysql")
+            .get().asFile.absolutePath)
+}
+
 tasks.register<Test>("databaseEngineCommerceIntegrationTest") {
     description = "Runs the unrelated-schema database engine proof against PostgreSQL."
     group = "verification"
@@ -1553,6 +2124,59 @@ tasks.register<Test>("databaseEngineCommerceMySqlIntegrationTest") {
         commerceMySqlDatabaseEnginePackageDirectory.get().asFile.absolutePath
     )
     shouldRunAfter(tasks.named("databaseEngineCommerceIntegrationTest"))
+}
+
+tasks.register<Test>("databaseEngineCommerceHttpRestartIntegrationTest") {
+    description = "Proves keyed Commerce mutation recovery across standalone frontend processes."
+    group = "verification"
+    dependsOn(
+        "titanGraphqlBindCommerceDatabaseEnginePackage",
+        "titanGraphqlBindCommerceMySqlDatabaseEnginePackage",
+        databaseHttpFrontendDistribution)
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { includeTags("database-engine-commerce-http-restart") }
+    systemProperty(
+        "titan.graphql.database-engine.commerce.migrations.dir",
+        commerceDatabaseEnginePackageDirectory.map { it.dir("postgresql") }.get().asFile.absolutePath)
+    systemProperty(
+        "titan.graphql.database-engine.commerce.migrations.dir.mysql",
+        commerceMySqlDatabaseEnginePackageDirectory.map { it.dir("mysql") }.get().asFile.absolutePath)
+    systemProperty(
+        "titan.graphql.database-engine.commerce.package.dir",
+        commerceDatabaseEnginePackageDirectory.get().asFile.absolutePath)
+    systemProperty(
+        "titan.graphql.database-engine.commerce.package.dir.mysql",
+        commerceMySqlDatabaseEnginePackageDirectory.get().asFile.absolutePath)
+    systemProperty(
+        "titan.graphql.database-frontend.distribution",
+        databaseHttpFrontendDistribution.get().archiveFile.get().asFile.absolutePath)
+    shouldRunAfter(tasks.named("databaseEngineCommerceMySqlIntegrationTest"))
+}
+
+tasks.register<Test>("databaseEngineControlJobRestartIntegrationTest") {
+    description = "Proves control-plane artifact jobs survive separate command processes."
+    group = "verification"
+    dependsOn(
+        "titanGraphqlBindCommerceDatabaseEnginePackage",
+        "titanGraphqlBindCommerceMySqlDatabaseEnginePackage",
+        controlJobWorkerDistribution)
+    testClassesDirs = sourceSets["test"].output.classesDirs
+    classpath = sourceSets["test"].runtimeClasspath
+    useJUnitPlatform { includeTags("database-engine-control-job-restart") }
+    systemProperty(
+        "titan.graphql.database-engine.commerce.migrations.dir",
+        commerceDatabaseEnginePackageDirectory.map { it.dir("postgresql") }.get().asFile.absolutePath)
+    systemProperty(
+        "titan.graphql.database-engine.commerce.migrations.dir.mysql",
+        commerceMySqlDatabaseEnginePackageDirectory.map { it.dir("mysql") }.get().asFile.absolutePath)
+    doFirst {
+        systemProperty("titan.graphql.control-job.classpath", sourceSets["main"].runtimeClasspath.asPath)
+    }
+    systemProperty(
+        "titan.graphql.control-job.worker.distribution",
+        controlJobWorkerDistribution.get().archiveFile.get().asFile.absolutePath)
+    shouldRunAfter(tasks.named("databaseEngineCommerceMySqlIntegrationTest"))
 }
 
 tasks.register<JavaExec>("titanGraphqlGenerateCommerceRoutines") {

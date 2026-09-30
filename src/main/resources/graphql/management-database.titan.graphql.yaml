@@ -1,0 +1,496 @@
+apiVersion: titan.graphql/v1alpha1
+kind: ProjectionModel
+metadata:
+  name: titan-graphql-management-database
+  version: 1
+  owner: platform
+  description: Database projection of installed management drafts and control jobs.
+
+database:
+  catalog: management
+  defaultSchema: management
+  tables:
+    drafts:
+      physicalName: management_drafts
+      schema: management
+      primaryKey: id
+    control_jobs:
+      physicalName: titan_graphql_control_jobs
+      schema: public
+      primaryKey: job_id
+    artifact_requests:
+      physicalName: graphql_artifact_requests
+      schema: management
+      primaryKey: job_id
+    validation_requests:
+      physicalName: graphql_validation_requests
+      schema: management
+      primaryKey: job_id
+    import_requests:
+      physicalName: graphql_import_requests
+      schema: management
+      primaryKey: job_id
+    observed_operations:
+      physicalName: graphql_observed_operations
+      schema: management
+      primaryKey: id
+    operation_registries:
+      physicalName: graphql_operation_registries
+      schema: management
+      primaryKey: id
+    review_requests:
+      physicalName: graphql_review_requests
+      schema: management
+      primaryKey: job_id
+
+policies:
+  canReadManagementDraft:
+    appliesTo: [Query.modelDraft, ManagedDraft.*]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:operator,admin,platform"
+  canReadControlJob:
+    appliesTo: [Query.controlJob, ControlJob.*]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:operator,admin,platform"
+  canReadObservedOperation:
+    appliesTo: [Query.observedOperation, ObservedOperation.*]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:operator,admin,platform"
+  canReadOperationRegistry:
+    appliesTo: [Query.operationRegistry, OperationRegistry.*]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:operator,admin,platform"
+  canRequestArtifacts:
+    appliesTo: [Mutation.requestArtifactGeneration, ArtifactGenerationRequest.*]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:operator,admin,platform"
+  canRequestValidation:
+    appliesTo: [Mutation.requestModelValidation, ModelValidationRequest.*]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:operator,admin,platform"
+  canRequestImport:
+    appliesTo: [Mutation.requestModelImport, ModelImportRequest.*]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:operator,admin,platform"
+  canRequestReview:
+    appliesTo: [Mutation.requestObservedOperationReview, ObservedOperationReviewRequest.*]
+    mode: reject
+    expression:
+      kind: named
+      name: "roleIn:operator,admin,platform"
+
+mutations:
+  requestObservedOperationReview:
+    operation: createProcedure
+    type: ObservedOperationReviewRequest
+    policies: [canRequestReview]
+    handler:
+      className: io.titan.graphql.database.handlers.ManagementReviewProcedures
+      methodName: requestObservedOperationReview
+      maximumStatements: 5
+      maximumRows: 2
+      includeTrustedContext: true
+    arguments:
+      id:
+        type: ID
+        column: job_id
+        key: true
+      observedOperationId:
+        type: String
+        column: observed_operation_id
+      decision:
+        type: String
+        column: decision
+    payload:
+      id:
+        argument: id
+      observedOperationId:
+        argument: observedOperationId
+      decision:
+        argument: decision
+  requestModelImport:
+    operation: createProcedure
+    type: ModelImportRequest
+    policies: [canRequestImport]
+    handler:
+      className: io.titan.graphql.database.handlers.ManagementImportProcedures
+      methodName: requestModelImport
+      maximumStatements: 4
+      maximumRows: 2
+      includeTrustedContext: true
+    arguments:
+      id:
+        type: ID
+        column: job_id
+        key: true
+      workspaceId:
+        type: String
+        column: workspace_id
+      yaml:
+        type: String
+        column: yaml_source
+    payload:
+      id:
+        argument: id
+      workspaceId:
+        argument: workspaceId
+  requestModelValidation:
+    operation: createProcedure
+    type: ModelValidationRequest
+    policies: [canRequestValidation]
+    handler:
+      className: io.titan.graphql.database.handlers.ManagementValidationProcedures
+      methodName: requestModelValidation
+      maximumStatements: 4
+      maximumRows: 2
+    arguments:
+      id:
+        type: ID
+        column: job_id
+        key: true
+      draftId:
+        type: String
+        column: draft_id
+    payload:
+      id:
+        argument: id
+      draftId:
+        argument: draftId
+  requestArtifactGeneration:
+    operation: createProcedure
+    type: ArtifactGenerationRequest
+    policies: [canRequestArtifacts]
+    handler:
+      className: io.titan.graphql.database.handlers.ManagementArtifactProcedures
+      methodName: requestArtifactGeneration
+      maximumStatements: 4
+      maximumRows: 2
+    arguments:
+      id:
+        type: ID
+        column: job_id
+        key: true
+      draftId:
+        type: String
+        column: draft_id
+      generationProfile:
+        type: String
+        column: generation_profile
+      enableIntrospection:
+        type: Boolean
+        column: enable_introspection
+    payload:
+      id:
+        argument: id
+      draftId:
+        argument: draftId
+      generationProfile:
+        argument: generationProfile
+      enableIntrospection:
+        argument: enableIntrospection
+
+types:
+  ManagedDraft:
+    table: drafts
+    schema: management
+    physicalTable: management_drafts
+    primaryKey: id
+    policies: [canReadManagementDraft]
+    fields:
+      id:
+        column: id
+        type: ID
+        idStorage: string
+        nullable: false
+      workspaceId:
+        column: workspace_id
+        type: String
+        nullable: false
+      modelId:
+        column: model_id
+        type: String
+        nullable: false
+      version:
+        column: version
+        type: Int
+        nullable: false
+      status:
+        column: status
+        type: String
+        nullable: false
+      documentHash:
+        column: document_hash
+        type: String
+        nullable: false
+      updatedAt:
+        column: updated_at
+        type: String
+        nullable: false
+  ControlJob:
+    table: control_jobs
+    schema: public
+    physicalTable: titan_graphql_control_jobs
+    primaryKey: job_id
+    policies: [canReadControlJob]
+    fields:
+      id:
+        column: job_id
+        type: ID
+        idStorage: string
+        nullable: false
+      type:
+        column: job_type
+        type: String
+        nullable: false
+      status:
+        column: status
+        type: String
+        nullable: false
+      attemptCount:
+        column: attempt_count
+        type: Int
+        nullable: false
+      resultJson:
+        column: result_json
+        type: String
+        nullable: true
+      failureCode:
+        column: failure_code
+        type: String
+        nullable: true
+  ArtifactGenerationRequest:
+    table: artifact_requests
+    schema: management
+    physicalTable: graphql_artifact_requests
+    primaryKey: job_id
+    policies: [canRequestArtifacts]
+    fields:
+      id:
+        column: job_id
+        type: ID
+        idStorage: string
+        nullable: false
+      draftId:
+        column: draft_id
+        type: String
+        nullable: false
+      generationProfile:
+        column: generation_profile
+        type: String
+        nullable: false
+      enableIntrospection:
+        column: enable_introspection
+        type: Boolean
+        nullable: false
+  ModelValidationRequest:
+    table: validation_requests
+    schema: management
+    physicalTable: graphql_validation_requests
+    primaryKey: job_id
+    policies: [canRequestValidation]
+    fields:
+      id:
+        column: job_id
+        type: ID
+        idStorage: string
+        nullable: false
+      draftId:
+        column: draft_id
+        type: String
+        nullable: false
+  ModelImportRequest:
+    table: import_requests
+    schema: management
+    physicalTable: graphql_import_requests
+    primaryKey: job_id
+    policies: [canRequestImport]
+    fields:
+      id:
+        column: job_id
+        type: ID
+        idStorage: string
+        nullable: false
+      workspaceId:
+        column: workspace_id
+        type: String
+        nullable: false
+      yaml:
+        column: yaml_source
+        type: String
+        nullable: false
+  ObservedOperation:
+    table: observed_operations
+    schema: management
+    physicalTable: graphql_observed_operations
+    primaryKey: id
+    policies: [canReadObservedOperation]
+    fields:
+      id:
+        column: id
+        type: ID
+        idStorage: string
+        nullable: false
+      modelId:
+        column: model_id
+        type: String
+        nullable: false
+      environment:
+        column: environment
+        type: String
+        nullable: false
+      role:
+        column: role
+        type: String
+        nullable: false
+      client:
+        column: client
+        type: String
+        nullable: false
+      operationHash:
+        column: operation_hash
+        type: String
+        nullable: false
+      operationName:
+        column: operation_name
+        type: String
+        nullable: false
+      document:
+        column: document
+        type: String
+        nullable: false
+      status:
+        column: status
+        type: String
+        nullable: false
+      depth:
+        column: depth
+        type: Int
+        nullable: false
+      estimatedCost:
+        column: estimated_cost
+        type: Int
+        nullable: false
+      fieldUsageJson:
+        column: field_usage_json
+        type: String
+        nullable: false
+      firstSeenAt:
+        column: first_seen_at
+        type: String
+        nullable: false
+      lastSeenAt:
+        column: last_seen_at
+        type: String
+        nullable: false
+      observedCount:
+        column: observed_count
+        type: Int
+        nullable: false
+  ObservedOperationReviewRequest:
+    table: review_requests
+    schema: management
+    physicalTable: graphql_review_requests
+    primaryKey: job_id
+    policies: [canRequestReview]
+    fields:
+      id:
+        column: job_id
+        type: ID
+        idStorage: string
+        nullable: false
+      observedOperationId:
+        column: observed_operation_id
+        type: String
+        nullable: false
+      decision:
+        column: decision
+        type: String
+        nullable: false
+  OperationRegistry:
+    table: operation_registries
+    schema: management
+    physicalTable: graphql_operation_registries
+    primaryKey: id
+    policies: [canReadOperationRegistry]
+    fields:
+      id:
+        column: id
+        type: ID
+        idStorage: string
+        nullable: false
+      modelId:
+        column: model_id
+        type: String
+        nullable: false
+      environment:
+        column: environment
+        type: String
+        nullable: false
+      mode:
+        column: mode
+        type: String
+        nullable: false
+      operationsJson:
+        column: operations_json
+        type: String
+        nullable: false
+      updatedAt:
+        column: updated_at
+        type: String
+        nullable: false
+
+roots:
+  modelDraft:
+    type: ManagedDraft
+    operation: point
+    policies: [canReadManagementDraft]
+    argument:
+      name: id
+      type: ID
+      kind: equals
+      column: id
+      path: id
+  controlJob:
+    type: ControlJob
+    operation: point
+    policies: [canReadControlJob]
+    argument:
+      name: id
+      type: ID
+      kind: equals
+      column: job_id
+      path: id
+  observedOperation:
+    type: ObservedOperation
+    operation: point
+    policies: [canReadObservedOperation]
+    argument:
+      name: id
+      type: ID
+      kind: equals
+      column: id
+      path: id
+  operationRegistry:
+    type: OperationRegistry
+    operation: point
+    policies: [canReadOperationRegistry]
+    argument:
+      name: id
+      type: ID
+      kind: equals
+      column: id
+      path: id

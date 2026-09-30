@@ -652,7 +652,7 @@
       ],
       "properties": {
         "operation": {
-          "const": "update"
+          "enum": ["update", "procedure", "createProcedure"]
         },
         "type": {
           "type": "string",
@@ -684,6 +684,9 @@
         "policies": {
           "$ref": "#/$defs/stringList"
         },
+        "handler": {
+          "$ref": "#/$defs/mutationHandler"
+        },
         "payload": {
           "type": "object",
           "additionalProperties": false,
@@ -695,6 +698,11 @@
           }
         }
       },
+      "allOf": [{
+        "if": {"properties": {"operation": {"enum": ["procedure", "createProcedure"]}}},
+        "then": {"required": ["handler"]},
+        "else": {"not": {"required": ["handler"]}}
+      }],
       "oneOf": [
         {
           "required": ["arguments"],
@@ -711,6 +719,18 @@
         }
       ]
     },
+    "mutationHandler": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["className", "methodName", "maximumStatements", "maximumRows"],
+      "properties": {
+        "className": {"type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)+$"},
+        "methodName": {"type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$"},
+        "maximumStatements": {"type": "integer", "minimum": 1},
+        "maximumRows": {"type": "integer", "minimum": 0},
+        "includeTrustedContext": {"type": "boolean"}
+      }
+    },
     "mutationArgument": {
       "type": "object",
       "additionalProperties": false,
@@ -719,7 +739,8 @@
         "type": {"type": "string", "minLength": 1},
         "column": {"type": "string", "minLength": 1},
         "key": {"type": "boolean"},
-        "defaultValue": {"type": "string", "minLength": 1}
+        "defaultValue": {"type": "string", "minLength": 1},
+        "nullable": {"type": "boolean"}
       }
     },
     "mutationInput": {
@@ -740,7 +761,8 @@
         "path": {"type": "string", "pattern": "^[_A-Za-z][_0-9A-Za-z]*(\\.[_A-Za-z][_0-9A-Za-z]*)*$"},
         "type": {"type": "string", "minLength": 1},
         "column": {"type": "string", "minLength": 1},
-        "key": {"type": "boolean"}
+        "key": {"type": "boolean"},
+        "nullable": {"type": "boolean"}
       }
     },
     "mutationPayloadField": {

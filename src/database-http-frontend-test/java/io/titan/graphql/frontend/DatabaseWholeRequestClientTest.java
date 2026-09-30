@@ -1,12 +1,14 @@
 package io.titan.graphql.frontend;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Proxy;
 import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -16,6 +18,48 @@ import org.junit.jupiter.api.Test;
 class DatabaseWholeRequestClientTest {
 
     private static final String HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    @Test
+    void previewVerifierRunsInRequestTransactionBeforeRoutine() {
+        AtomicBoolean transactionOpened = new AtomicBoolean();
+        AtomicInteger rollbacks = new AtomicInteger();
+        AtomicInteger routineCalls = new AtomicInteger();
+        Connection connection = (Connection) Proxy.newProxyInstance(
+                getClass().getClassLoader(), new Class<?>[]{Connection.class}, (proxy, method, args) -> switch (method.getName()) {
+                    case "getAutoCommit" -> true;
+                    case "getTransactionIsolation" -> Connection.TRANSACTION_READ_COMMITTED;
+                    case "setTransactionIsolation", "close" -> null;
+                    case "setAutoCommit" -> {
+                        if (Boolean.FALSE.equals(args[0])) transactionOpened.set(true);
+                        yield null;
+                    }
+                    case "prepareStatement" -> {
+                        routineCalls.incrementAndGet();
+                        throw new AssertionError("preview verifier must reject before routine invocation");
+                    }
+                    case "rollback" -> {
+                        rollbacks.incrementAndGet();
+                        yield null;
+                    }
+                    default -> throw new UnsupportedOperationException(method.getName());
+                });
+        DatabaseWholeRequestClient client = new DatabaseWholeRequestClient(
+                DatabaseWholeRequestClient.Dialect.POSTGRESQL, () -> connection,
+                new DatabaseWholeRequestClient.EntryPoint("public", "execute_graphql_request"), 30,
+                (active, timeout) -> {
+                    assertTrue(transactionOpened.get());
+                    assertTrue(active == connection);
+                    assertEquals(7, timeout);
+                    throw new SQLException("preview deployment changed");
+                });
+
+        SQLException failure = assertThrows(SQLException.class, () -> client.execute(
+                new DatabaseWholeRequestClient.Request("{ __typename }", "", "{}", "{}", "{}",
+                        false, HASH, HASH, HASH, 7)));
+        assertEquals("preview deployment changed", failure.getMessage());
+        assertEquals(1, rollbacks.get());
+        assertEquals(0, routineCalls.get());
+    }
 
     @Test
     void mysqlCommitComesFromTheDedicatedOutcomeColumnNotTheGraphqlPayload() throws Exception {
@@ -86,7 +130,8 @@ class DatabaseWholeRequestClientTest {
         Connection connection = (Connection) Proxy.newProxyInstance(
                 getClass().getClassLoader(), new Class<?>[]{Connection.class}, (proxy, method, args) -> switch (method.getName()) {
                     case "getAutoCommit" -> true;
-                    case "setAutoCommit", "close" -> null;
+                    case "getTransactionIsolation" -> Connection.TRANSACTION_READ_COMMITTED;
+                    case "setAutoCommit", "setTransactionIsolation", "close" -> null;
                     case "prepareCall" -> {
                         call[0] = (String) args[0];
                         yield statement;

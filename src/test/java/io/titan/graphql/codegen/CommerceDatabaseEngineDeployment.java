@@ -140,6 +140,7 @@ final class CommerceDatabaseEngineDeployment {
                 statement.execute("CREATE SCHEMA IF NOT EXISTS commerce");
             }
             statement.execute("DROP TABLE IF EXISTS commerce.orders");
+            statement.execute("DROP TABLE IF EXISTS commerce.customer_changes");
             statement.execute("DROP TABLE IF EXISTS commerce.customers");
             statement.execute("DROP TABLE IF EXISTS commerce.inventory_items");
             statement.execute("DROP TABLE IF EXISTS commerce.api_clients");
@@ -148,12 +149,15 @@ final class CommerceDatabaseEngineDeployment {
                     + "external_id VARCHAR(120) NOT NULL, sort_rank BIGINT NOT NULL, "
                     + "tenant_key VARCHAR(80) NOT NULL, "
                     + "name VARCHAR(120) NOT NULL, nickname VARCHAR(120), active BOOLEAN NOT NULL, "
-                    + "status VARCHAR(24) NOT NULL, "
-                    + "rating INTEGER, credit_limit DOUBLE PRECISION NOT NULL, verified BOOLEAN)");
+                    + "status VARCHAR(24) NOT NULL, optional_status VARCHAR(24), "
+                    + "rating INTEGER, rebate DOUBLE PRECISION, "
+                    + "credit_limit DOUBLE PRECISION NOT NULL, verified BOOLEAN)");
             statement.execute("CREATE TABLE commerce.orders (id BIGINT PRIMARY KEY, "
                     + "customer_id BIGINT NOT NULL, reference VARCHAR(120) NOT NULL, "
                     + "status VARCHAR(24) NOT NULL, "
                     + "FOREIGN KEY (customer_id) REFERENCES commerce.customers(id))");
+            statement.execute("CREATE TABLE commerce.customer_changes (customer_id BIGINT NOT NULL, "
+                    + "new_name VARCHAR(120) NOT NULL)");
             statement.execute("CREATE TABLE commerce.countries (code VARCHAR(8) PRIMARY KEY, "
                     + "name VARCHAR(120) NOT NULL)");
             statement.execute("CREATE TABLE commerce.api_clients (id "
@@ -168,9 +172,9 @@ final class CommerceDatabaseEngineDeployment {
     private static void seed(Connection connection) throws SQLException {
         try (Statement statement = connection.createStatement()) {
             statement.executeUpdate("INSERT INTO commerce.customers "
-                    + "(id, node_id, external_id, sort_rank, tenant_key, name, nickname, active, status, rating, credit_limit, verified) VALUES "
-                    + "(7, 7001, '7001', 10, 'tenant-a', 'Northwind', NULL, true, 'ACTIVE', 42, 1250.5, NULL), "
-                    + "(8, 7002, 'customer:adventure', 10, 'tenant-b', 'Adventure Works', 'Adventure', false, 'INACTIVE', NULL, 500.0, true)");
+                    + "(id, node_id, external_id, sort_rank, tenant_key, name, nickname, active, status, optional_status, rating, rebate, credit_limit, verified) VALUES "
+                    + "(7, 7001, '7001', 10, 'tenant-a', 'Northwind', NULL, true, 'ACTIVE', 'LEGACY', 42, 12.5, 1250.5, NULL), "
+                    + "(8, 7002, 'customer:adventure', 10, 'tenant-b', 'Adventure Works', 'Adventure', false, 'INACTIVE', NULL, NULL, NULL, 500.0, true)");
             statement.executeUpdate("INSERT INTO commerce.orders (id, customer_id, reference, status) VALUES "
                     + "(70, 7, 'NW-001', 'OPEN')");
             statement.executeUpdate("INSERT INTO commerce.countries (code, name) VALUES "
@@ -183,13 +187,13 @@ final class CommerceDatabaseEngineDeployment {
         }
     }
 
-    private static void executePostgreSqlScript(Connection connection, Path script) throws IOException, SQLException {
+    static void executePostgreSqlScript(Connection connection, Path script) throws IOException, SQLException {
         try (Statement statement = connection.createStatement()) {
             statement.execute(readScript(script));
         }
     }
 
-    private static void executeMySqlScript(Connection connection, Path script) throws IOException, SQLException {
+    static void executeMySqlScript(Connection connection, Path script) throws IOException, SQLException {
         for (String statementSql : splitMySqlStatements(readScript(script))) {
             try (Statement statement = connection.createStatement()) {
                 statement.execute(statementSql);

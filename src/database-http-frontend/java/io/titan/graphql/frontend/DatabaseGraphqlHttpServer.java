@@ -18,7 +18,10 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.MessageDigest;
 import java.sql.SQLException;
+import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -66,9 +69,13 @@ public final class DatabaseGraphqlHttpServer implements AutoCloseable {
             String expectedRuntimeIdentity,
             String expectedPackageIdentity,
             String deploymentFingerprint,
+            String operationRegistryId,
+            String previewBuildId,
+            Instant previewExpiresAt,
             boolean trustRequestContextHeaders,
             int maxBodyBytes,
-            int statementTimeoutSeconds
+            int statementTimeoutSeconds,
+            String previewDeploymentSha256
     ) {
         public Configuration {
             Objects.requireNonNull(dialect, "dialect");
@@ -88,12 +95,79 @@ public final class DatabaseGraphqlHttpServer implements AutoCloseable {
                     && deploymentFingerprint.matches("[0-9a-f]{64}") == false)) {
                 throw new IllegalArgumentException("deployment fingerprint must be empty or a lowercase SHA-256 value");
             }
+            if (operationRegistryId == null || operationRegistryId.length() > 512
+                    || (!operationRegistryId.isEmpty() && operationRegistryId.isBlank())) {
+                throw new IllegalArgumentException("operation registry ID must be empty or a nonblank value within 512 characters");
+            }
+            if (previewBuildId == null || (!previewBuildId.isEmpty()
+                    && !previewBuildId.matches("[A-Za-z0-9][A-Za-z0-9._-]{0,127}"))) {
+                throw new IllegalArgumentException("preview build ID is invalid");
+            }
             if (maxBodyBytes <= 0) {
                 throw new IllegalArgumentException("max body bytes must be positive");
             }
             if (statementTimeoutSeconds <= 0) {
                 throw new IllegalArgumentException("database statement timeout must be positive");
             }
+            if (previewDeploymentSha256 == null || (!previewDeploymentSha256.isEmpty()
+                    && !previewDeploymentSha256.matches("[0-9a-f]{64}"))) {
+                throw new IllegalArgumentException("preview deployment snapshot is invalid");
+            }
+        }
+
+        public Configuration(
+                DatabaseWholeRequestClient.Dialect dialect,
+                DatabaseWholeRequestClient.ConnectionProvider connectionProvider,
+                DatabaseWholeRequestClient.EntryPoint entryPoint,
+                String expectedModelSemanticHash,
+                String expectedRuntimeIdentity,
+                String expectedPackageIdentity,
+                String deploymentFingerprint,
+                String operationRegistryId,
+                String previewBuildId,
+                Instant previewExpiresAt,
+                boolean trustRequestContextHeaders,
+                int maxBodyBytes,
+                int statementTimeoutSeconds
+        ) {
+            this(dialect, connectionProvider, entryPoint, expectedModelSemanticHash, expectedRuntimeIdentity,
+                    expectedPackageIdentity, deploymentFingerprint, operationRegistryId, previewBuildId,
+                    previewExpiresAt, trustRequestContextHeaders, maxBodyBytes, statementTimeoutSeconds, "");
+        }
+
+        public Configuration(
+                DatabaseWholeRequestClient.Dialect dialect,
+                DatabaseWholeRequestClient.ConnectionProvider connectionProvider,
+                DatabaseWholeRequestClient.EntryPoint entryPoint,
+                String expectedModelSemanticHash,
+                String expectedRuntimeIdentity,
+                String expectedPackageIdentity,
+                String deploymentFingerprint,
+                String operationRegistryId,
+                boolean trustRequestContextHeaders,
+                int maxBodyBytes,
+                int statementTimeoutSeconds
+        ) {
+            this(dialect, connectionProvider, entryPoint, expectedModelSemanticHash, expectedRuntimeIdentity,
+                    expectedPackageIdentity, deploymentFingerprint, operationRegistryId, "", null,
+                    trustRequestContextHeaders, maxBodyBytes, statementTimeoutSeconds);
+        }
+
+        public Configuration(
+                DatabaseWholeRequestClient.Dialect dialect,
+                DatabaseWholeRequestClient.ConnectionProvider connectionProvider,
+                DatabaseWholeRequestClient.EntryPoint entryPoint,
+                String expectedModelSemanticHash,
+                String expectedRuntimeIdentity,
+                String expectedPackageIdentity,
+                String deploymentFingerprint,
+                boolean trustRequestContextHeaders,
+                int maxBodyBytes,
+                int statementTimeoutSeconds
+        ) {
+            this(dialect, connectionProvider, entryPoint, expectedModelSemanticHash, expectedRuntimeIdentity,
+                    expectedPackageIdentity, deploymentFingerprint, "", "", null,
+                    trustRequestContextHeaders, maxBodyBytes, statementTimeoutSeconds);
         }
 
         public Configuration(
@@ -106,9 +180,26 @@ public final class DatabaseGraphqlHttpServer implements AutoCloseable {
                 boolean trustRequestContextHeaders
         ) {
             this(dialect, connectionProvider, entryPoint, expectedModelSemanticHash, expectedRuntimeIdentity,
-                    expectedPackageIdentity, "",
+                    expectedPackageIdentity, "", "", "", null,
                     trustRequestContextHeaders, DEFAULT_MAX_BODY_BYTES,
                     DatabaseWholeRequestClient.DEFAULT_STATEMENT_TIMEOUT_SECONDS);
+        }
+    }
+
+    public record AdminConfiguration(
+            Configuration database,
+            String bearerToken,
+            String actorRole,
+            String actorKey
+    ) {
+        public AdminConfiguration {
+            Objects.requireNonNull(database, "admin database configuration");
+            if (bearerToken == null || bearerToken.isBlank()) {
+                throw new IllegalArgumentException("admin bearer token must be configured");
+            }
+            if (actorRole == null || actorRole.isBlank() || actorKey == null || actorKey.isBlank()) {
+                throw new IllegalArgumentException("admin role and actor key must be configured");
+            }
         }
     }
 
@@ -150,9 +241,24 @@ public final class DatabaseGraphqlHttpServer implements AutoCloseable {
                 requiredProperty(properties, "runtime-identity-sha256"),
                 requiredProperty(properties, "package-identity-sha256"),
                 requiredProperty(properties, "deployment-fingerprint"),
+                properties.getProperty("operation-registry-id", ""),
+                properties.getProperty("preview-build-id", "").trim(),
+                optionalExpiration(properties.getProperty("preview-expires-at", "")),
                 trustRequestContextHeaders,
                 maxBodyBytes,
-                statementTimeoutSeconds);
+                statementTimeoutSeconds,
+                properties.getProperty("preview-deployment-sha256", "").trim());
+    }
+
+    private static Instant optionalExpiration(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Instant.parse(value.trim());
+        } catch (DateTimeParseException invalid) {
+            throw new IllegalArgumentException("preview descriptor expiration is invalid", invalid);
+        }
     }
 
     private final HttpServer server;
@@ -166,13 +272,64 @@ public final class DatabaseGraphqlHttpServer implements AutoCloseable {
     /** Starts a host bound to the supplied address (use port {@code 0} for an ephemeral port). */
     public static DatabaseGraphqlHttpServer start(InetSocketAddress address, Configuration configuration)
             throws IOException {
+        return start(address, configuration, null, Map.of());
+    }
+
+    public static DatabaseGraphqlHttpServer start(
+            InetSocketAddress address, Configuration configuration, AdminConfiguration admin
+    ) throws IOException {
+        return start(address, configuration, admin, Map.of());
+    }
+
+    public static DatabaseGraphqlHttpServer start(
+            InetSocketAddress address, Configuration configuration, AdminConfiguration admin,
+            Map<String, Configuration> previews
+    ) throws IOException {
         Objects.requireNonNull(address, "address");
         Objects.requireNonNull(configuration, "configuration");
+        Objects.requireNonNull(previews, "previews");
+        if (admin != null && admin.database().dialect() != configuration.dialect()) {
+            throw new IllegalArgumentException("admin and application database dialects must match");
+        }
+        for (Map.Entry<String, Configuration> preview : previews.entrySet()) {
+            if (preview.getKey() == null || !preview.getKey().matches("[A-Za-z0-9][A-Za-z0-9._-]{0,127}")) {
+                throw new IllegalArgumentException("preview build ID is not a valid path segment");
+            }
+            if (preview.getValue() == null || preview.getValue().dialect() != configuration.dialect()) {
+                throw new IllegalArgumentException("preview and application database dialects must match");
+            }
+            if (!preview.getKey().equals(preview.getValue().previewBuildId())) {
+                throw new IllegalArgumentException("preview descriptor build ID does not match route: "
+                        + preview.getKey());
+            }
+            if (preview.getValue().previewExpiresAt() == null) {
+                throw new IllegalArgumentException("preview descriptor expiration is required: "
+                        + preview.getKey());
+            }
+            if (preview.getValue().operationRegistryId().isBlank()
+                    || preview.getValue().previewDeploymentSha256().isEmpty()) {
+                throw new IllegalArgumentException("preview descriptor requires a sealed operation registry: "
+                        + preview.getKey());
+            }
+        }
         HttpServer server = HttpServer.create(address, 0);
         ExecutorService executor = Executors.newCachedThreadPool();
         server.setExecutor(executor);
-        com.sun.net.httpserver.HttpContext context = server.createContext("/graphql", new Handler(configuration));
+        com.sun.net.httpserver.HttpContext context = server.createContext(
+                "/graphql", new Handler(configuration, null, "/graphql"));
         context.getAttributes().put("maxBodyBytes", configuration.maxBodyBytes());
+        if (admin != null) {
+            com.sun.net.httpserver.HttpContext adminContext = server.createContext(
+                    "/admin/graphql", new Handler(admin.database(), admin, "/admin/graphql"));
+            adminContext.getAttributes().put("maxBodyBytes", admin.database().maxBodyBytes());
+        }
+        for (Map.Entry<String, Configuration> preview : previews.entrySet()) {
+            String previewPath = "/preview/" + preview.getKey() + "/graphql";
+            Configuration previewDatabase = preview.getValue();
+            com.sun.net.httpserver.HttpContext previewContext = server.createContext(
+                    previewPath, new Handler(previewDatabase, null, previewPath));
+            previewContext.getAttributes().put("maxBodyBytes", previewDatabase.maxBodyBytes());
+        }
         server.start();
         return new DatabaseGraphqlHttpServer(server, executor);
     }
@@ -191,21 +348,50 @@ public final class DatabaseGraphqlHttpServer implements AutoCloseable {
     private static final class Handler implements HttpHandler {
 
         private final Configuration configuration;
+        private final AdminConfiguration admin;
+        private final String path;
         private final DatabaseWholeRequestClient client;
 
-        private Handler(Configuration configuration) {
+        private Handler(Configuration configuration, AdminConfiguration admin, String path) {
             this.configuration = configuration;
+            this.admin = admin;
+            this.path = path;
+            DatabaseWholeRequestClient.ConnectionVerifier verifier = (connection, timeout) -> {};
+            if (!configuration.previewDeploymentSha256().isEmpty()) {
+                DatabasePreviewDeploymentAttestation attestation = new DatabasePreviewDeploymentAttestation(
+                        configuration.operationRegistryId(), configuration.expectedPackageIdentity(),
+                        configuration.previewDeploymentSha256());
+                verifier = (connection, timeout) -> attestation.verify(connection,
+                        configuration.dialect(), configuration.entryPoint(), timeout);
+            }
             this.client = new DatabaseWholeRequestClient(
                     configuration.dialect(), configuration.connectionProvider(), configuration.entryPoint(),
-                    configuration.statementTimeoutSeconds());
+                    configuration.statementTimeoutSeconds(), verifier);
         }
 
         @Override
         public void handle(HttpExchange exchange) throws IOException {
+            if (!path.equals(exchange.getRequestURI().getPath())) {
+                exchange.sendResponseHeaders(404, -1);
+                exchange.close();
+                return;
+            }
+            if (admin != null && !authorizedAdmin(exchange, admin.bearerToken())) {
+                exchange.getResponseHeaders().set("WWW-Authenticate", "Bearer");
+                send(exchange, 401, GRAPHQL_RESPONSE_JSON, transportError("admin authorization is required"),
+                        configuration.deploymentFingerprint());
+                return;
+            }
             String responseType = responseMediaType(exchange.getRequestHeaders().getFirst("Accept"));
             if (responseType.isEmpty()) {
                 send(exchange, 406, GRAPHQL_RESPONSE_JSON,
                         transportError("GraphQL response media type is not acceptable"),
+                        configuration.deploymentFingerprint());
+                return;
+            }
+            if (path.startsWith("/preview/") && configuration.previewExpiresAt() != null
+                    && !Instant.now().isBefore(configuration.previewExpiresAt())) {
+                send(exchange, 410, responseType, transportError("preview build has expired"),
                         configuration.deploymentFingerprint());
                 return;
             }
@@ -221,8 +407,9 @@ public final class DatabaseGraphqlHttpServer implements AutoCloseable {
                             configuration.deploymentFingerprint());
                     return;
                 }
-                TrustedContext trustedContext = trustedContext(exchange, configuration.trustRequestContextHeaders(),
-                        configuration.statementTimeoutSeconds());
+                TrustedContext trustedContext = trustedContext(exchange,
+                        admin == null && configuration.trustRequestContextHeaders(),
+                        configuration.statementTimeoutSeconds(), admin, configuration.operationRegistryId());
                 String response = client.execute(new DatabaseWholeRequestClient.Request(
                         envelope.query(), envelope.operationName(), envelope.variablesJson(), envelope.extensionsJson(),
                         trustedContext.json(), envelope.allowMutations(), configuration.expectedModelSemanticHash(),
@@ -243,6 +430,16 @@ public final class DatabaseGraphqlHttpServer implements AutoCloseable {
                         configuration.deploymentFingerprint());
             }
         }
+    }
+
+    private static boolean authorizedAdmin(HttpExchange exchange, String token) {
+        List<String> authorizations = headerValues(exchange, "Authorization");
+        if (authorizations.size() != 1 || !authorizations.get(0).startsWith("Bearer ")) {
+            return false;
+        }
+        byte[] provided = authorizations.get(0).substring("Bearer ".length()).getBytes(StandardCharsets.UTF_8);
+        byte[] expected = token.getBytes(StandardCharsets.UTF_8);
+        return MessageDigest.isEqual(provided, expected);
     }
 
     private record Envelope(
@@ -390,7 +587,9 @@ public final class DatabaseGraphqlHttpServer implements AutoCloseable {
     private static TrustedContext trustedContext(
             HttpExchange exchange,
             boolean trustHeaders,
-            int configuredStatementTimeoutSeconds
+            int configuredStatementTimeoutSeconds,
+            AdminConfiguration admin,
+            String operationRegistryId
     ) throws TransportException {
         ObjectNode context = JSON.createObjectNode();
         context.put("contextVersion", "titan.graphql.request-context/v1");
@@ -399,6 +598,7 @@ public final class DatabaseGraphqlHttpServer implements AutoCloseable {
         boolean introspectionEnabled = false;
         String tenantId = "";
         String requestId = "";
+        String idempotencyKey = "";
         List<String> policyFlags = List.of();
         List<String> enabledContextFilters = List.of();
         long deadlineBudgetMillis = 0L;
@@ -409,21 +609,30 @@ public final class DatabaseGraphqlHttpServer implements AutoCloseable {
             introspectionEnabled = optionalBoolean(header(exchange, "X-Titan-Introspection"), "X-Titan-Introspection");
             tenantId = header(exchange, "X-Titan-Tenant-Id");
             requestId = header(exchange, "X-Titan-Request-Id");
+            idempotencyKey = header(exchange, "Idempotency-Key");
             policyFlags = commaSeparated(header(exchange, "X-Titan-Policy-Flags"));
             enabledContextFilters = commaSeparated(header(exchange, "X-Titan-Context-Filters"));
             appendTrustedContextValues(exchange, values);
             deadlineBudgetMillis = nonNegativeLong(
                     header(exchange, "X-Titan-Deadline-Budget-Millis"), "X-Titan-Deadline-Budget-Millis");
+        } else if (admin != null) {
+            actorRole = admin.actorRole();
+            requestId = header(exchange, "X-Titan-Management-Request-Id");
+            idempotencyKey = header(exchange, "X-Titan-Management-Idempotency-Key");
+            introspectionEnabled = optionalBoolean(
+                    header(exchange, "X-Titan-Management-Introspection"), "X-Titan-Management-Introspection");
+            policyFlags = List.of("management");
         }
         context.put("actorId", actorId);
         context.put("actorRole", actorRole);
-        context.put("actorKey", actorId > 0L ? "actor-" + actorId : "");
+        context.put("actorKey", admin != null ? admin.actorKey() : actorId > 0L ? "actor-" + actorId : "");
         context.put("tenantId", tenantId);
         context.put("requestId", requestId);
-        context.put("idempotencyKey", "");
+        context.put("idempotencyKey", idempotencyKey);
         stringArray(context.putArray("policyFlags"), policyFlags);
         stringArray(context.putArray("enabledContextFilters"), enabledContextFilters);
         context.put("introspectionEnabled", introspectionEnabled);
+        context.put("operationRegistryId", operationRegistryId);
         context.put("deadlineEpochMillis",
                 deadlineBudgetMillis == 0L ? 0L : Math.addExact(System.currentTimeMillis(), deadlineBudgetMillis));
         try {

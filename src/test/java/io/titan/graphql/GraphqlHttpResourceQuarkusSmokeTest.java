@@ -56,7 +56,7 @@ class GraphqlHttpResourceQuarkusSmokeTest {
     }
 
     @Test
-    void bootsAndServesAdminGraphqlSeparatelyFromApplicationGraphql() {
+    void adminHttpRouteRequiresDatabaseDescriptor() {
         given()
                 .contentType(MediaType.APPLICATION_JSON)
                 .accept("application/graphql-response+json")
@@ -70,9 +70,8 @@ class GraphqlHttpResourceQuarkusSmokeTest {
                 .when()
                 .post("/admin/graphql")
                 .then()
-                .statusCode(200)
+                .statusCode(503)
                 .header("Content-Type", startsWith("application/graphql-response+json"))
-                .body("data.__type.name", equalTo("ManagedWorkspace"))
-                .body("data.__type.fields[0].name", equalTo("id"));
+                .body("errors[0].extensions.code", equalTo("EXECUTION_MODE_UNAVAILABLE"));
     }
 }

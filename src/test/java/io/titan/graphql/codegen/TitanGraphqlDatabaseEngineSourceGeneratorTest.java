@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import io.titan.graphql.model.TitanGraphqlModelDocument;
+import io.titan.graphql.model.TitanGraphqlModelDocumentJson;
 import io.titan.graphql.model.TitanGraphqlModelDocumentYaml;
 import java.io.IOException;
 import java.io.InputStream;
@@ -29,20 +30,66 @@ final class TitanGraphqlDatabaseEngineSourceGeneratorTest {
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
     @Test
+    void installedManagementDraftProjectionGeneratesForBothDialects(@TempDir Path directory) throws IOException {
+        TitanGraphqlModelDocument model;
+        try (InputStream stream = getClass().getResourceAsStream(
+                "/graphql/management-database.titan.graphql.yaml")) {
+            assertNotNull(stream);
+            model = TitanGraphqlModelDocumentYaml.parse(new String(stream.readAllBytes(), StandardCharsets.UTF_8));
+        }
+        String postgreSql = TitanGraphqlDatabaseEngineSourceGenerator.generate(
+                model, RUNTIME_IDENTITY, "management_graphql");
+        String mySql = TitanGraphqlDatabaseEngineSourceGenerator.generateMySqlProcedure(
+                model, RUNTIME_IDENTITY, "management_graphql");
+        for (String generated : List.of(postgreSql, mySql)) {
+            assertTrue(generated.contains("management.management_drafts"), generated);
+            assertTrue(generated.contains("modelDraft"), generated);
+            assertTrue(generated.contains("management_graphql.execute_graphql_request"), generated);
+            assertTrue(generated.contains("ManagementImportProcedures.requestModelImport(connection"), generated);
+            assertTrue(generated.contains(", trustedContextJson);"), generated);
+        }
+        assertGeneratedSourceAnalyzes(directory, "GeneratedDatabaseGraphqlSchema", postgreSql);
+        assertGeneratedSourceAnalyzes(directory, "GeneratedDatabaseGraphqlMySqlProcedure", mySql);
+    }
+
+    @Test
+    void emitsTheReviewedMutationRegistryIdentityForBothDialects() throws IOException {
+        TitanGraphqlModelDocument model = commerceModel();
+        String registryHash = TitanGraphqlModelDocumentJson.mutationRegistryHash(model);
+
+        assertTrue(TitanGraphqlDatabaseEngineSourceGenerator.generate(model, RUNTIME_IDENTITY)
+                .contains("public static String mutationRegistryIdentity() {\n"
+                        + "        return \"" + registryHash + "\";"));
+        assertTrue(TitanGraphqlDatabaseEngineSourceGenerator.generateMySqlProcedure(model, RUNTIME_IDENTITY)
+                .contains("public static String mutationRegistryIdentity() {\n"
+                        + "        return \"" + registryHash + "\";"));
+    }
+
+    @Test
     void emitsLockedTargetReadsForEveryGeneratedUpdateMutation() throws IOException {
         TitanGraphqlModelDocument model = commerceModel();
 
         String postgreSqlSource = TitanGraphqlDatabaseEngineSourceGenerator.generate(model, RUNTIME_IDENTITY);
         String mySqlSource = TitanGraphqlDatabaseEngineSourceGenerator.generateMySqlProcedure(model, RUNTIME_IDENTITY);
 
-        assertEquals(model.mutations().size(), occurrences(postgreSqlSource, "SELECT 1 AS tgql_lock FROM "));
-        assertEquals(model.mutations().size(), occurrences(mySqlSource, "SELECT 1 AS tgql_lock FROM "));
-        assertEquals(model.mutations().size(), occurrences(postgreSqlSource, " FOR UPDATE"));
-        assertEquals(model.mutations().size(), occurrences(mySqlSource, " FOR UPDATE"));
+        assertEquals(model.mutations().size(), occurrences(postgreSqlSource, "SELECT 1 AS tgql_lock"));
+        assertEquals(model.mutations().size(), occurrences(mySqlSource, "SELECT 1 AS tgql_lock"));
+        assertEquals(model.mutations().size() + 1, occurrences(postgreSqlSource, " FOR UPDATE"));
+        assertEquals(model.mutations().size() + 1, occurrences(mySqlSource, " FOR UPDATE"));
         assertEquals(model.mutations().size(), occurrences(postgreSqlSource, "SELECT COUNT(*) AS tgql_found FROM "));
         assertEquals(model.mutations().size(), occurrences(mySqlSource, "SELECT COUNT(*) AS tgql_found FROM "));
         assertFalse(postgreSqlSource.contains("SELECT 1 AS tgql_found FROM "));
         assertFalse(mySqlSource.contains("SELECT 1 AS tgql_found FROM "));
+        assertTrue(postgreSqlSource.contains(
+                "nickname = CASE WHEN ? THEN CASE WHEN ? THEN NULL ELSE ? END ELSE nickname END"));
+        assertTrue(mySqlSource.contains(
+                "nickname = CASE WHEN ? THEN CASE WHEN ? THEN NULL ELSE ? END ELSE nickname END"));
+        assertTrue(postgreSqlSource.contains("nickname IS NULL AS tgql_payload_null_0"));
+        assertTrue(mySqlSource.contains("nickname IS NULL AS tgql_payload_null_0"));
+        assertTrue(postgreSqlSource.contains("nickname AS tgql_payload_value_0"));
+        assertTrue(mySqlSource.contains("nickname AS tgql_payload_value_0"));
+        assertFalse(postgreSqlSource.contains(".setNull("));
+        assertFalse(mySqlSource.contains(".setNull("));
     }
 
     @Test
@@ -497,7 +544,7 @@ final class TitanGraphqlDatabaseEngineSourceGeneratorTest {
             assertTrue(source.contains("if (RelationItemIndex_") && source.contains(" >= 100L)"), source);
             assertTrue(source.contains("int applicationSqlStatements = 0"), source);
             assertTrue(source.contains("request exceeds application SQL statement budget of 64"), source);
-            assertTrue(source.contains("mutationCount > 21"), source);
+            assertTrue(source.contains("mutationCount > maximumGenericMutationRoots"), source);
             assertTrue(source.contains("long decodedApplicationRows = 0L"), source);
             assertTrue(source.contains("request exceeds decoded application row budget of 1000"), source);
             assertTrue(source.contains("trustedContextFlag(trustedContextJson, \"includeExecutionMetrics\")"),
@@ -524,7 +571,7 @@ final class TitanGraphqlDatabaseEngineSourceGeneratorTest {
             int publicEntry = source.indexOf("public static ");
             int firstRootHelper = source.indexOf("static String executeQueryRootApiClient(");
             assertTrue(publicEntry >= 0 && firstRootHelper > publicEntry, source);
-            assertTrue(firstRootHelper - publicEntry < 250_000,
+            assertTrue(source.substring(publicEntry, firstRootHelper).contains("executeQueryRootCustomers("),
                     "the public whole-request routine must dispatch roots instead of inlining them");
             assertTrue(source.contains("relation batch produced an invalid parent-key carrier"), source);
             assertTrue(source.contains("relation batch placeholder was missing or ambiguous"), source);
@@ -538,9 +585,9 @@ final class TitanGraphqlDatabaseEngineSourceGeneratorTest {
                 mySqlSource);
         assertTrue(mySqlSource.contains("TITAN-GRAPHQL-TRANSPORT/1 ROLLBACK"), mySqlSource);
         assertTrue(mySqlSource.contains("TITAN-GRAPHQL-TRANSPORT/1 COMMIT"), mySqlSource);
-        assertFalse(mySqlSource.contains("DatabaseGraphqlEngine.transactionOutcomeJson("), mySqlSource);
-        assertFalse(mySqlSource.contains("DatabaseGraphqlEngine.transportOutcome("), mySqlSource);
-        assertFalse(mySqlSource.contains("DatabaseGraphqlEngine.transportResponseJson("), mySqlSource);
+        assertTrue(mySqlSource.contains("DatabaseGraphqlEngine.transactionOutcomeJson("), mySqlSource);
+        assertTrue(mySqlSource.contains("DatabaseGraphqlEngine.transportOutcome("), mySqlSource);
+        assertTrue(mySqlSource.contains("DatabaseGraphqlEngine.transportResponseJson("), mySqlSource);
         assertTrue(mySqlSource.contains("boolean framedResponse = response != null"), mySqlSource);
         assertTrue(mySqlSource.contains("responseJson.length() > 16384"), mySqlSource);
         assertTrue(mySqlSource.contains("response exceeds the database engine character budget"), mySqlSource);
@@ -640,6 +687,22 @@ final class TitanGraphqlDatabaseEngineSourceGeneratorTest {
             assertTrue(source.contains("renameCustomer:Customer:0:O|id=Int!=S,name=String!=S;"), source);
             assertTrue(source.contains("renameCustomerWithInput:Customer:0:O|"
                     + "input=RenameCustomerInput!=I=~e2lkOiA4LCBwYXRjaDoge319;"), source);
+            assertTrue(source.contains("renameCustomerWithProcedure:Customer:0:O|id=Int!=S,name=String!=S;"),
+                    source);
+            assertTrue(source.contains("CommerceMutationProcedures.renameCustomer(connection,"), source);
+            assertTrue(source.contains("setCustomerNicknameWithProcedure:Customer:0:O|id=Int!=S,nickname=String=S;"),
+                    source);
+            int nullableProcedureCall = source.indexOf("CommerceMutationProcedures.setNickname(connection,");
+            assertTrue(nullableProcedureCall >= 0, source);
+            String nullableProcedureArguments = source.substring(nullableProcedureCall,
+                    source.indexOf(");", nullableProcedureCall));
+            assertTrue(nullableProcedureArguments.contains(".length() != 0"), nullableProcedureArguments);
+            assertTrue(nullableProcedureArguments.contains(".equals(\"null\")"), nullableProcedureArguments);
+            assertTrue(source.contains("catch (SQLException procedureFailure)"), source);
+            assertTrue(source.contains("procedure handler failed"), source);
+            assertTrue(source.contains("SELECT 1 AS tgql_found, id IS NULL AS tgql_payload_null_0, "
+                    + "id AS tgql_payload_value_0, name IS NULL AS tgql_payload_null_1"), source);
+            assertTrue(source.contains("setCustomerNicknameFlat:Customer:0:O|id=Int!=S,nickname=String=S;"), source);
             assertTrue(source.contains("setCustomerStatus:Customer:0:O|id=Int!=S,status=CustomerStatus!=E=~QUNUSVZF;"), source);
             assertTrue(source.contains("D:Query.defaultedCustomerFeed.status:8:INACTIVE;"), source);
             assertTrue(source.contains("D:Customer.openOrderConnection.status:4:OPEN;"), source);

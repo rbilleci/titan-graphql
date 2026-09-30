@@ -1,0 +1,45 @@
+services:
+  frontend:
+    build:
+      context: ../build/distributions
+      dockerfile: ../../deployment/Dockerfile.frontend
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${TITAN_GRAPHQL_HOST_PORT:-8080}:8080"
+    environment:
+      TITAN_GRAPHQL_FRONTEND_DESCRIPTOR: /deploy/application.properties
+      TITAN_GRAPHQL_ADMIN_FRONTEND_DESCRIPTOR: /deploy/management.properties
+      TITAN_GRAPHQL_PREVIEW_FRONTEND_REGISTRY: ${TITAN_GRAPHQL_PREVIEW_FRONTEND_REGISTRY:-}
+      TITAN_GRAPHQL_HTTP_TRUST_REQUEST_CONTEXT_HEADERS: ${TITAN_GRAPHQL_HTTP_TRUST_REQUEST_CONTEXT_HEADERS:-false}
+      TITAN_GRAPHQL_ADMIN_ACCESS_TOKEN: ${TITAN_GRAPHQL_ADMIN_ACCESS_TOKEN:?set an admin access token}
+      TITAN_GRAPHQL_JDBC_URL: ${TITAN_GRAPHQL_JDBC_URL:?set a container-reachable JDBC URL}
+      TITAN_GRAPHQL_JDBC_USERNAME: ${TITAN_GRAPHQL_JDBC_USERNAME:?set a database username}
+      TITAN_GRAPHQL_JDBC_PASSWORD: ${TITAN_GRAPHQL_JDBC_PASSWORD:?set a database password}
+    volumes:
+      - type: bind
+        source: ${TITAN_GRAPHQL_DEPLOY_DIR:?set an absolute deployment directory}
+        target: /deploy
+        read_only: true
+
+  worker:
+    build:
+      context: ../build/distributions
+      dockerfile: ../../deployment/Dockerfile.worker
+    restart: unless-stopped
+    init: true
+    command:
+      - ${TITAN_GRAPHQL_DIALECT:?set postgresql or mysql}
+      - ${TITAN_GRAPHQL_JDBC_URL:?set a container-reachable JDBC URL}
+      - jdbc
+      - "60"
+      - "500"
+    environment:
+      TITAN_GRAPHQL_CONTROL_DB_USER: ${TITAN_GRAPHQL_JDBC_USERNAME:?set a database username}
+      TITAN_GRAPHQL_CONTROL_DB_PASSWORD: ${TITAN_GRAPHQL_JDBC_PASSWORD:?set a database password}
+      TITAN_GRAPHQL_ARTIFACT_PACKAGE_REGISTRY: /deploy/artifacts.properties
+    volumes:
+      - type: bind
+        source: ${TITAN_GRAPHQL_DEPLOY_DIR:?set an absolute deployment directory}
+        target: /deploy
+        read_only: true

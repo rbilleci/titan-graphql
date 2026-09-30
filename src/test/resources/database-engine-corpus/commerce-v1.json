@@ -260,6 +260,21 @@
       }
     },
     {
+      "name": "nullable-mutation-payload-sequence",
+      "operationName": "NullablePayload",
+      "variables": "{}",
+      "actorRole": "editor",
+      "allowMutations": true,
+      "query": "mutation NullablePayload { written: setCustomerNicknameFlat(id: 7, nickname: \"Saved\") { id nickname } omitted: setCustomerNicknameFlat(id: 7) { id nickname } cleared: setCustomerNicknameFlat(id: 7, nickname: null) { id nickname } }",
+      "expected": {
+        "data": {
+          "written": { "id": 7, "nickname": "Saved" },
+          "omitted": { "id": 7, "nickname": "Saved" },
+          "cleared": { "id": 7, "nickname": null }
+        }
+      }
+    },
+    {
       "name": "declared-enum-point-root-variable",
       "operationName": "CustomerByStatus",
       "variables": "{\"status\":\"INACTIVE\"}",
@@ -650,6 +665,13 @@
                 "args": [ { "name": "input", "defaultValue": "{id: 8, patch: {}}" } ]
               },
               {
+                "name": "renameCustomerWithProcedure",
+                "args": [
+                  { "name": "id", "defaultValue": null },
+                  { "name": "name", "defaultValue": null }
+                ]
+              },
+              {
                 "name": "setCustomerActive",
                 "args": [
                   { "name": "active", "defaultValue": null },
@@ -664,10 +686,60 @@
                 ]
               },
               {
+                "name": "setCustomerNickname",
+                "args": [ { "name": "input", "defaultValue": null } ]
+              },
+              {
+                "name": "setCustomerNicknameFlat",
+                "args": [
+                  { "name": "id", "defaultValue": null },
+                  { "name": "nickname", "defaultValue": null }
+                ]
+              },
+              {
+                "name": "setCustomerNicknameWithInputProcedure",
+                "args": [ { "name": "input", "defaultValue": null } ]
+              },
+              {
+                "name": "setCustomerNicknameWithProcedure",
+                "args": [
+                  { "name": "id", "defaultValue": null },
+                  { "name": "nickname", "defaultValue": null }
+                ]
+              },
+              {
+                "name": "setCustomerOptionalStatus",
+                "args": [
+                  { "name": "id", "defaultValue": null },
+                  { "name": "optionalStatus", "defaultValue": null }
+                ]
+              },
+              {
+                "name": "setCustomerRating",
+                "args": [
+                  { "name": "id", "defaultValue": null },
+                  { "name": "rating", "defaultValue": null }
+                ]
+              },
+              {
+                "name": "setCustomerRebate",
+                "args": [
+                  { "name": "id", "defaultValue": null },
+                  { "name": "rebate", "defaultValue": null }
+                ]
+              },
+              {
                 "name": "setCustomerStatus",
                 "args": [
                   { "name": "id", "defaultValue": null },
                   { "name": "status", "defaultValue": "ACTIVE" }
+                ]
+              },
+              {
+                "name": "setCustomerVerified",
+                "args": [
+                  { "name": "id", "defaultValue": null },
+                  { "name": "verified", "defaultValue": null }
                 ]
               }
             ]

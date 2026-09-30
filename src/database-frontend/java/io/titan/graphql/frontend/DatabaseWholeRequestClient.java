@@ -35,6 +35,11 @@ public final class DatabaseWholeRequestClient {
         Connection open() throws SQLException;
     }
 
+    @FunctionalInterface
+    public interface ConnectionVerifier {
+        void verify(Connection connection, int timeoutSeconds) throws SQLException;
+    }
+
     public record EntryPoint(String schemaName, String routineName) {
         public EntryPoint {
             if (schemaName == null || !schemaName.matches("[A-Za-z_][A-Za-z0-9_]*")) {
@@ -123,6 +128,7 @@ public final class DatabaseWholeRequestClient {
     private final ConnectionProvider connectionProvider;
     private final EntryPoint entryPoint;
     private final int statementTimeoutSeconds;
+    private final ConnectionVerifier connectionVerifier;
 
     public DatabaseWholeRequestClient(Dialect dialect, ConnectionProvider connectionProvider, EntryPoint entryPoint) {
         this(dialect, connectionProvider, entryPoint, DEFAULT_STATEMENT_TIMEOUT_SECONDS);
@@ -139,9 +145,20 @@ public final class DatabaseWholeRequestClient {
             EntryPoint entryPoint,
             int statementTimeoutSeconds
     ) {
+        this(dialect, connectionProvider, entryPoint, statementTimeoutSeconds, (connection, timeout) -> {});
+    }
+
+    public DatabaseWholeRequestClient(
+            Dialect dialect,
+            ConnectionProvider connectionProvider,
+            EntryPoint entryPoint,
+            int statementTimeoutSeconds,
+            ConnectionVerifier connectionVerifier
+    ) {
         this.dialect = Objects.requireNonNull(dialect, "dialect");
         this.connectionProvider = Objects.requireNonNull(connectionProvider, "connectionProvider");
         this.entryPoint = Objects.requireNonNull(entryPoint, "entryPoint");
+        this.connectionVerifier = Objects.requireNonNull(connectionVerifier, "connectionVerifier");
         if (statementTimeoutSeconds <= 0) {
             throw new IllegalArgumentException("database statement timeout must be positive");
         }
@@ -163,6 +180,7 @@ public final class DatabaseWholeRequestClient {
             }
             try {
                 beginRequestTransaction(connection);
+                connectionVerifier.verify(connection, effectiveStatementTimeoutSeconds(request));
                 Response response = invoke(connection, request);
                 if (response.transactionOutcome() == TransactionOutcome.COMMIT) connection.commit();
                 else connection.rollback();

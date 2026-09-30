@@ -27,7 +27,7 @@ public final class TitanGraphqlArtifactsDirectory {
     public static final String DEFAULT_DIRECTORY = "build/generated/migrations/titan";
 
     /** Reproducible display root used when an absolute directory cannot be relativized. */
-    static final String FALLBACK_DISPLAY_ROOT = "titan-package";
+    public static final String PORTABLE_DISPLAY_ROOT = "titan-package";
 
     private TitanGraphqlArtifactsDirectory() {
     }
@@ -52,7 +52,17 @@ public final class TitanGraphqlArtifactsDirectory {
      *         placeholder branch
      */
     public static TitanGraphqlGap005ArtifactMetadata readGap005Metadata() {
-        Path directory = configuredDirectory();
+        return readGap005Metadata(displayRoot(configuredDirectory()));
+    }
+
+    public static TitanGraphqlGap005ArtifactMetadata readGap005Metadata(String displayArtifactRoot) {
+        return readGap005Metadata(configuredDirectory(), displayArtifactRoot);
+    }
+
+    public static TitanGraphqlGap005ArtifactMetadata readGap005Metadata(
+            Path directory,
+            String displayArtifactRoot
+    ) {
         if (Files.isDirectory(directory) == false) {
             throw new IllegalStateException(
                     "Titan artifacts directory does not exist: " + directory.toAbsolutePath()
@@ -79,13 +89,13 @@ public final class TitanGraphqlArtifactsDirectory {
                             + SYSTEM_PROPERTY + " / " + ENVIRONMENT_VARIABLE
                             + " at a complete Titan package directory");
         }
-        return TitanGraphqlGap005ArtifactMetadata.read(directory, displayRoot(directory));
+        return TitanGraphqlGap005ArtifactMetadata.read(directory, displayArtifactRoot);
     }
 
     /**
      * GAP-005 metadata records reproducible relative artifact roots. Relative configurations
      * are kept verbatim; absolute ones are relativized against the working directory when
-     * possible, otherwise the stable {@link #FALLBACK_DISPLAY_ROOT} label is used.
+     * possible, otherwise the stable {@link #PORTABLE_DISPLAY_ROOT} label is used.
      */
     public static String displayRoot(Path directory) {
         if (directory.isAbsolute() == false) {
@@ -95,7 +105,7 @@ public final class TitanGraphqlArtifactsDirectory {
         if (directory.normalize().startsWith(workingDirectory)) {
             return normalizeSlashes(workingDirectory.relativize(directory.normalize()).toString());
         }
-        return FALLBACK_DISPLAY_ROOT;
+        return PORTABLE_DISPLAY_ROOT;
     }
 
     private static String normalizeSlashes(String path) {

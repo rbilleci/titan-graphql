@@ -51,8 +51,8 @@ import java.util.function.Supplier;
  * {@code quarkus.datasource.*}); all require the reviewed model path and the exact
  * model/package binding emitted by {@code titanGraphqlBindPackage}. The surfaced deployment
  * fingerprint identifies that combined binding, not merely an unbound SQL artifact.
- * The admin/management plane ({@code /admin/graphql}) is not affected — only the application
- * kernel is transpiled and deployable.</p>
+ * This mode property selects only the application kernel. The admin route selects its own
+ * database package through {@code titan.graphql.admin.database-descriptor}.</p>
  */
 @Singleton
 public class GraphqlExecutionEngine {

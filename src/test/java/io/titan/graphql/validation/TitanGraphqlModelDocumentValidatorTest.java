@@ -719,6 +719,128 @@ final class TitanGraphqlModelDocumentValidatorTest {
     }
 
     @Test
+    void validatesNullableMutationBindingsAndPayloadFieldMapping() {
+        String source = """
+                apiVersion: titan.graphql/v1alpha1
+                kind: ProjectionModel
+                metadata: {name: nullable-mutation-validation}
+                roots: {}
+                inputObjects:
+                  ChangeInput:
+                    fields:
+                      id: {type: Int!}
+                      nickname: {type: String}
+                mutations:
+                  changeNickname:
+                    operation: update
+                    type: Customer
+                    input: {name: input, type: ChangeInput}
+                    inputBindings:
+                      id: {path: id, type: Int, column: id, key: true}
+                      nickname: {path: nickname, type: String, column: nickname, nullable: true}
+                    payload:
+                      id: {argument: id}
+                  changeNicknameFlat:
+                    operation: update
+                    type: Customer
+                    arguments:
+                      id: {type: Int, column: id, key: true}
+                      nickname: {type: String, column: nickname, nullable: true}
+                    payload:
+                      id: {argument: id}
+                types:
+                  Customer:
+                    table: customers
+                    fields:
+                      id: {type: Int, column: id}
+                      nickname: {type: String, column: nickname, nullable: true}
+                """;
+        TitanGraphqlValidationReport valid = TitanGraphqlModelDocumentValidator.validate(
+                TitanGraphqlModelDocumentYaml.parse(source));
+        TitanGraphqlValidationReport nonNullableStorage = TitanGraphqlModelDocumentValidator.validate(
+                TitanGraphqlModelDocumentYaml.parse(source.replace(
+                        "nickname: {type: String, column: nickname, nullable: true}",
+                        "nickname: {type: String, column: nickname, nullable: false}")));
+        TitanGraphqlValidationReport nullableKey = TitanGraphqlModelDocumentValidator.validate(
+                TitanGraphqlModelDocumentYaml.parse(source.replace(
+                        "id: {path: id, type: Int, column: id, key: true}",
+                        "id: {path: id, type: Int, column: id, key: true, nullable: true}")));
+        TitanGraphqlValidationReport nullablePayload = TitanGraphqlModelDocumentValidator.validate(
+                TitanGraphqlModelDocumentYaml.parse(source.replace(
+                        "id: {argument: id}", "nickname: {argument: nickname}")));
+        TitanGraphqlValidationReport mismatchedPayload = TitanGraphqlModelDocumentValidator.validate(
+                TitanGraphqlModelDocumentYaml.parse(source.replace(
+                        "id: {argument: id}", "id: {argument: nickname}")));
+
+        assertTrue(valid.valid(), () -> valid.issues().toString());
+        assertTrue(nonNullableStorage.issues().stream()
+                .anyMatch(issue -> issue.message().contains("requires a nullable stored field")));
+        assertTrue(nullableKey.issues().stream()
+                .anyMatch(issue -> issue.message().contains("cannot be a key")));
+        assertTrue(nullablePayload.valid(), () -> nullablePayload.issues().toString());
+        assertTrue(mismatchedPayload.issues().stream()
+                .anyMatch(issue -> issue.message().contains("must match its bound stored field")));
+    }
+
+    @Test
+    void requiresReviewedProcedureHandlerAndValidNullableBindings() {
+        String source = """
+                apiVersion: titan.graphql/v1alpha1
+                kind: ProjectionModel
+                metadata: {name: procedure-mutation-validation}
+                roots: {}
+                mutations:
+                  changeName:
+                    operation: procedure
+                    type: Customer
+                    handler:
+                      className: example.CustomerProcedures
+                      methodName: changeName
+                      maximumStatements: 2
+                      maximumRows: 0
+                    arguments:
+                      id: {type: Int, column: id, key: true}
+                      name: {type: String, column: name}
+                    payload:
+                      id: {argument: id}
+                      name: {argument: name}
+                types:
+                  Customer:
+                    table: customers
+                    primaryKey: id
+                    fields:
+                      id: {type: Int, column: id}
+                      name: {type: String, column: name}
+                """;
+        TitanGraphqlValidationReport valid = TitanGraphqlModelDocumentValidator.validate(
+                TitanGraphqlModelDocumentYaml.parse(source));
+        TitanGraphqlValidationReport updateWithHandler = TitanGraphqlModelDocumentValidator.validate(
+                TitanGraphqlModelDocumentYaml.parse(source.replace(
+                        "operation: procedure", "operation: update")));
+        TitanGraphqlValidationReport missingHandler = TitanGraphqlModelDocumentValidator.validate(
+                TitanGraphqlModelDocumentYaml.parse(source.replace("""
+                            handler:
+                              className: example.CustomerProcedures
+                              methodName: changeName
+                              maximumStatements: 2
+                              maximumRows: 0
+                        """, "")));
+        TitanGraphqlValidationReport nullableBinding = TitanGraphqlModelDocumentValidator.validate(
+                TitanGraphqlModelDocumentYaml.parse(source.replace(
+                        "name: {type: String, column: name}",
+                        "name: {type: String, column: name, nullable: true}")));
+
+        assertTrue(valid.valid(), () -> valid.issues().toString());
+        assertTrue(updateWithHandler.issues().stream()
+                .anyMatch(issue -> issue.message().contains("cannot declare a procedure handler")),
+                () -> updateWithHandler.issues().toString());
+        assertTrue(missingHandler.issues().stream()
+                .anyMatch(issue -> issue.message().contains("needs a reviewed handler")),
+                () -> missingHandler.issues().toString());
+        assertTrue(nullableBinding.valid(), () -> nullableBinding.issues().toString());
+    }
+
+    @Test
     void validatesGeneratedFieldArgumentDefaultsAsTypedGraphqlConstants() {
         String source = """
                 apiVersion: titan.graphql/v1alpha1

@@ -79,7 +79,7 @@ policies:
       name: "roleIn:reader,admin"
   canRenameCustomer:
     description: Customer updates are explicit reviewed write operations.
-    appliesTo: [Mutation.renameCustomer, Mutation.renameCustomerWithInput, Mutation.setCustomerActive, Mutation.setCustomerCreditLimit, Mutation.setCustomerStatus]
+    appliesTo: [Mutation.renameCustomer, Mutation.renameCustomerWithInput, Mutation.renameCustomerWithProcedure, Mutation.setCustomerNicknameWithInputProcedure, Mutation.setCustomerNicknameWithProcedure, Mutation.setCustomerActive, Mutation.setCustomerCreditLimit, Mutation.setCustomerStatus, Mutation.setCustomerRating, Mutation.setCustomerVerified, Mutation.setCustomerRebate, Mutation.setCustomerOptionalStatus]
     mode: reject
     expression:
       kind: named
@@ -90,6 +90,28 @@ mutations:
     operation: update
     type: Customer
     policies: [canRenameCustomer]
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      name:
+        type: String
+        column: name
+    payload:
+      id:
+        argument: id
+      name:
+        argument: name
+  renameCustomerWithProcedure:
+    operation: procedure
+    type: Customer
+    policies: [canRenameCustomer]
+    handler:
+      className: io.titan.graphql.database.handlers.CommerceMutationProcedures
+      methodName: renameCustomer
+      maximumStatements: 3
+      maximumRows: 0
     arguments:
       id:
         type: Int
@@ -126,6 +148,98 @@ mutations:
         argument: id
       name:
         argument: name
+  setCustomerNickname:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    input:
+      name: input
+      type: SetCustomerNicknameInput
+    inputBindings:
+      id:
+        path: id
+        type: Int
+        column: id
+        key: true
+      nickname:
+        path: patch.nickname
+        type: String
+        column: nickname
+        nullable: true
+    payload:
+      id:
+        argument: id
+      nickname:
+        argument: nickname
+  setCustomerNicknameFlat:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      nickname:
+        type: String
+        column: nickname
+        nullable: true
+    payload:
+      id:
+        argument: id
+      nickname:
+        argument: nickname
+  setCustomerNicknameWithProcedure:
+    operation: procedure
+    type: Customer
+    policies: [canRenameCustomer]
+    handler:
+      className: io.titan.graphql.database.handlers.CommerceMutationProcedures
+      methodName: setNickname
+      maximumStatements: 1
+      maximumRows: 0
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      nickname:
+        type: String
+        column: nickname
+        nullable: true
+    payload:
+      id:
+        argument: id
+      nickname:
+        argument: nickname
+  setCustomerNicknameWithInputProcedure:
+    operation: procedure
+    type: Customer
+    policies: [canRenameCustomer]
+    handler:
+      className: io.titan.graphql.database.handlers.CommerceMutationProcedures
+      methodName: setNickname
+      maximumStatements: 1
+      maximumRows: 0
+    input:
+      name: input
+      type: SetCustomerNicknameInput
+    inputBindings:
+      id:
+        path: id
+        type: Int
+        column: id
+        key: true
+      nickname:
+        path: patch.nickname
+        type: String
+        column: nickname
+        nullable: true
+    payload:
+      id:
+        argument: id
+      nickname:
+        argument: nickname
   setCustomerActive:
     operation: update
     type: Customer
@@ -143,6 +257,78 @@ mutations:
         argument: id
       active:
         argument: active
+  setCustomerRating:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      rating:
+        type: Int
+        column: rating
+        nullable: true
+    payload:
+      id:
+        argument: id
+      rating:
+        argument: rating
+  setCustomerVerified:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      verified:
+        type: Boolean
+        column: verified
+        nullable: true
+    payload:
+      id:
+        argument: id
+      verified:
+        argument: verified
+  setCustomerRebate:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      rebate:
+        type: Float
+        column: rebate
+        nullable: true
+    payload:
+      id:
+        argument: id
+      rebate:
+        argument: rebate
+  setCustomerOptionalStatus:
+    operation: update
+    type: Customer
+    policies: [canRenameCustomer]
+    arguments:
+      id:
+        type: Int
+        column: id
+        key: true
+      optionalStatus:
+        type: CustomerStatus
+        column: optional_status
+        nullable: true
+    payload:
+      id:
+        argument: id
+      optionalStatus:
+        argument: optionalStatus
   setCustomerCreditLimit:
     operation: update
     type: Customer
@@ -210,6 +396,16 @@ enums:
     values: [OPEN, CLOSED]
 
 inputObjects:
+  SetCustomerNicknameInput:
+    fields:
+      id:
+        type: Int!
+      patch:
+        type: SetCustomerNicknamePatch!
+  SetCustomerNicknamePatch:
+    fields:
+      nickname:
+        type: String
   RenameCustomerInput:
     description: Reviewed customer rename request.
     fields:
@@ -305,9 +501,19 @@ types:
         column: status
         type: CustomerStatus
         nullable: true
+      optionalStatus:
+        column: optional_status
+        type: CustomerStatus
+        nullable: true
       rating:
         column: rating
         type: Int
+        nullable: true
+        filter:
+          operators: [eq, in]
+      rebate:
+        column: rebate
+        type: Float
         nullable: true
         filter:
           operators: [eq, in]

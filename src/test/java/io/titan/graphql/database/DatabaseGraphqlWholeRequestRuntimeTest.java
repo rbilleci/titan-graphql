@@ -50,6 +50,20 @@ class DatabaseGraphqlWholeRequestRuntimeTest {
     }
 
     @Test
+    void registrySelectionComesFromDeploymentRatherThanNamedContextValues() throws Exception {
+        GraphqlRequestContext context = GraphqlRequestContext.legacy(7L, "reader")
+                .withValues(Map.of("operationRegistryId", "caller-registry"));
+
+        JsonNode json = JSON.readTree(DatabaseGraphqlWholeRequestRuntime.trustedContextJson(
+                context, "deployment-registry"));
+
+        assertEquals("deployment-registry", json.path("operationRegistryId").asText());
+        assertEquals("caller-registry", json.at("/contextValues/operationRegistryId").asText());
+        assertEquals("", JSON.readTree(DatabaseGraphqlWholeRequestRuntime.trustedContextJson(context))
+                .path("operationRegistryId").asText());
+    }
+
+    @Test
     void invokesExactlyOneManifestSelectedWholeRequestRoutineWithTheUntouchedEnvelope() {
         AtomicInteger prepareCount = new AtomicInteger();
         AtomicInteger commitCount = new AtomicInteger();

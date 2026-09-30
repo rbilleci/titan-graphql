@@ -3,8 +3,8 @@ package io.titan.graphql;
 import io.titan.graphql.management.TitanGraphqlDurableManagementStore;
 import io.titan.graphql.management.TitanGraphqlInMemoryManagementStore;
 import io.titan.graphql.management.TitanGraphqlManagementStore;
+import io.titan.graphql.management.TitanGraphqlManagementSchemaInstaller;
 import io.titan.management.JdbcTransactionalMutationStore;
-import io.titan.management.ManagementSchemaInstaller;
 import io.titan.management.ManagementSchemaInstaller.Dialect;
 import io.titan.management.ManagementTransactions.TransactionalMutationStore;
 import java.nio.file.Path;
@@ -34,11 +34,8 @@ import javax.sql.DataSource;
  * fails fast and descriptively, telling the operator to configure {@code quarkus.datasource} or switch
  * the mode back to file.
  *
- * <p>In jdbc mode the management schema + Titan-transpiled routines are bootstrapped ONCE at
- * construction via {@link ManagementSchemaInstaller} against the configured datasource, so
- * {@code /admin/graphql} works against a freshly provisioned database. Production bootstrap remains
- * out-of-band (the installer is idempotent enough for the dogfood demo: {@code CREATE SCHEMA IF NOT
- * EXISTS} + {@code CREATE TABLE} guarded so a re-provisioned process does not double-apply).
+ * <p>Runtime jdbc mode requires an installed management schema and routines. Scratch-test callers
+ * use {@link #jdbcStore(DataSource, Dialect)} to install the bundle explicitly.
  */
 final class TitanGraphqlManagementStoreFactory {
 
@@ -83,7 +80,7 @@ final class TitanGraphqlManagementStoreFactory {
         }
         return jdbcStore(
                 quarkusManagementDataSourceSupplier(),
-                resolveDialect(configuredDialect(), null));
+                resolveDialect(configuredDialect(), null), false);
     }
 
     /**
@@ -92,15 +89,27 @@ final class TitanGraphqlManagementStoreFactory {
      * GraphQL store. Used by the management IT against a live container datasource.
      */
     static TitanGraphqlDurableManagementStore jdbcStore(DataSource dataSource, Dialect dialect) {
-        return jdbcStore(() -> dataSource, dialect);
+        return jdbcStore(() -> dataSource, dialect, true);
     }
 
-    private static TitanGraphqlDurableManagementStore jdbcStore(Supplier<DataSource> dataSourceSupplier, Dialect dialect) {
+    static TitanGraphqlDurableManagementStore jdbcStoreInstalled(DataSource dataSource, Dialect dialect) {
+        return jdbcStore(() -> dataSource, dialect, false);
+    }
+
+    private static TitanGraphqlDurableManagementStore jdbcStore(
+            Supplier<DataSource> dataSourceSupplier,
+            Dialect dialect,
+            boolean install
+    ) {
         DataSource dataSource = dataSourceSupplier.get();
+        if (install) {
+            bootstrapSchema(dataSource, dialect);
+        } else {
+            verifySchema(dataSource);
+        }
         DataSource schemaScoped = ManagementSchemaDataSource.wrap(dataSource, dialect);
-        bootstrapSchema(schemaScoped, dialect);
         TransactionalMutationStore titanStore = new JdbcTransactionalMutationStore(schemaScoped);
-        return new TitanGraphqlDurableManagementStore(titanStore);
+        return new TitanGraphqlDurableManagementStore(titanStore, schemaScoped);
     }
 
     private static TitanGraphqlManagementStore fileStore() {
@@ -123,11 +132,7 @@ final class TitanGraphqlManagementStoreFactory {
      */
     private static void bootstrapSchema(DataSource dataSource, Dialect dialect) {
         try (Connection connection = dataSource.getConnection()) {
-            ensureManagementSchema(connection, dialect);
-            if (alreadyInstalled(connection, dialect)) {
-                return;
-            }
-            ManagementSchemaInstaller.install(connection, dialect);
+            TitanGraphqlManagementSchemaInstaller.install(connection, dialect);
         } catch (SQLException failure) {
             throw new IllegalStateException(
                     "jdbc management store (" + STORE_PROPERTY + "=jdbc) could not bootstrap the management"
@@ -139,39 +144,12 @@ final class TitanGraphqlManagementStoreFactory {
         }
     }
 
-    private static void ensureManagementSchema(Connection connection, Dialect dialect) throws SQLException {
-        try (Statement statement = connection.createStatement()) {
-            if (dialect == Dialect.POSTGRESQL) {
-                statement.execute("CREATE SCHEMA IF NOT EXISTS " + MANAGEMENT_SCHEMA);
-            } else {
-                // MySQL schemas ARE databases. Try to create the management database; a deployment
-                // whose connecting user lacks the global CREATE privilege (the common case — the
-                // database is provisioned out-of-band and the user is scoped to it) must still
-                // proceed, so a denied CREATE is tolerated as long as the database already exists
-                // (the following USE proves it). Any other USE failure surfaces.
-                try {
-                    statement.execute("CREATE DATABASE IF NOT EXISTS " + MANAGEMENT_SCHEMA);
-                } catch (SQLException createDenied) {
-                    // fall through to USE — the database may already exist with the user scoped to it
-                }
-                statement.execute("USE " + MANAGEMENT_SCHEMA);
-            }
-        }
-    }
-
-    /**
-     * Cheap re-provision guard: if the core drafts table already resolves in the management schema the
-     * bundle was applied before, so {@code install} (which uses bare {@code CREATE TABLE}) is skipped.
-     */
-    private static boolean alreadyInstalled(Connection connection, Dialect dialect) {
-        String probe = dialect == Dialect.POSTGRESQL
-                ? "SELECT 1 FROM " + MANAGEMENT_SCHEMA + ".management_drafts WHERE FALSE"
-                : "SELECT 1 FROM " + MANAGEMENT_SCHEMA + ".management_drafts WHERE FALSE";
-        try (Statement statement = connection.createStatement()) {
-            statement.executeQuery(probe).close();
-            return true;
-        } catch (SQLException notInstalled) {
-            return false;
+    private static void verifySchema(DataSource dataSource) {
+        try (Connection connection = dataSource.getConnection()) {
+            TitanGraphqlManagementSchemaInstaller.verifyInstalled(connection);
+        } catch (SQLException failure) {
+            throw new IllegalStateException("jdbc management store requires an installed schema and routines; "
+                    + "run TitanGraphqlArtifactJobCli install-management before serving", failure);
         }
     }
 

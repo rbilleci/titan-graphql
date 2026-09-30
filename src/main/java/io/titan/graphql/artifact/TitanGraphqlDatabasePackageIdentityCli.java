@@ -25,11 +25,12 @@ public final class TitanGraphqlDatabasePackageIdentityCli {
     }
 
     public static void main(String[] args) throws IOException {
-        if (args.length != 4) {
+        if (args.length != 4 && args.length != 5) {
             throw new IllegalArgumentException("usage: <postgresql|mysql> <generated-sql-directory> "
-                    + "<identity-output.sha256> <identity-migration.sql>");
+                    + "<identity-output.sha256> <identity-migration.sql> [engine-schema.execute_graphql_request]");
         }
         String dialect = dialect(args[0]);
+        String entryPoint = args.length == 5 ? entryPoint(args[4]) : ENTRY_POINT;
         Path sqlDirectory = Path.of(args[1]).toAbsolutePath().normalize();
         Path identityOutput = Path.of(args[2]);
         Path identityMigration = Path.of(args[3]).toAbsolutePath().normalize();
@@ -37,7 +38,7 @@ public final class TitanGraphqlDatabasePackageIdentityCli {
             throw new IllegalArgumentException("generated SQL directory does not exist: " + sqlDirectory);
         }
 
-        String identity = inventoryIdentity(dialect, sqlDirectory, identityMigration);
+        String identity = inventoryIdentity(dialect, sqlDirectory, identityMigration, entryPoint);
         if (identityOutput.getParent() != null) {
             Files.createDirectories(identityOutput.getParent());
         }
@@ -45,12 +46,19 @@ public final class TitanGraphqlDatabasePackageIdentityCli {
             Files.createDirectories(identityMigration.getParent());
         }
         Files.writeString(identityOutput, identity + "\n", StandardCharsets.UTF_8);
-        Files.writeString(identityMigration, identityMigrationSql(dialect, identity), StandardCharsets.UTF_8);
+        Files.writeString(identityMigration, identityMigrationSql(dialect, identity, entryPoint), StandardCharsets.UTF_8);
         System.out.println("Wrote database package identity " + identityOutput.toAbsolutePath());
     }
 
     static String inventoryIdentity(String dialect, Path sqlDirectory, Path identityMigration) throws IOException {
+        return inventoryIdentity(dialect, sqlDirectory, identityMigration, ENTRY_POINT);
+    }
+
+    static String inventoryIdentity(
+            String dialect, Path sqlDirectory, Path identityMigration, String entryPoint
+    ) throws IOException {
         String normalizedDialect = dialect(dialect);
+        String verifiedEntryPoint = entryPoint(entryPoint);
         Path normalizedDirectory = sqlDirectory.toAbsolutePath().normalize();
         Path normalizedMigration = identityMigration.toAbsolutePath().normalize();
         List<Path> sqlFiles;
@@ -69,7 +77,7 @@ public final class TitanGraphqlDatabasePackageIdentityCli {
         MessageDigest digest = sha256();
         update(digest, "schema", "titan.graphql.database-package-identity.v1");
         update(digest, "dialect", normalizedDialect);
-        update(digest, "entry-point", ENTRY_POINT);
+        update(digest, "entry-point", verifiedEntryPoint);
         for (Path sqlFile : sqlFiles) {
             update(digest, "sql-path", normalizedDirectory.relativize(sqlFile).toString().replace('\\', '/'));
             digest.update(Files.readAllBytes(sqlFile));
@@ -79,8 +87,14 @@ public final class TitanGraphqlDatabasePackageIdentityCli {
     }
 
     static String identityMigrationSql(String dialect, String identity) {
+        return identityMigrationSql(dialect, identity, ENTRY_POINT);
+    }
+
+    static String identityMigrationSql(String dialect, String identity, String entryPoint) {
         String normalizedDialect = dialect(dialect);
         String verifiedIdentity = TitanGraphqlDatabasePackageIdentity.require(identity);
+        String verifiedEntryPoint = entryPoint(entryPoint);
+        String engineSchema = verifiedEntryPoint.substring(0, verifiedEntryPoint.indexOf('.'));
         if (normalizedDialect.equals("postgresql")) {
             return """
                     -- titan:database-package-identity:v1
@@ -89,21 +103,29 @@ public final class TitanGraphqlDatabasePackageIdentityCli {
                         package_identity CHAR(64) NOT NULL
                     );
                     INSERT INTO public.titan_graphql_package_identity (entry_point, package_identity)
-                    VALUES ('public.execute_graphql_request', '%s')
+                    VALUES ('%s', '%s')
                     ON CONFLICT (entry_point) DO UPDATE SET package_identity = EXCLUDED.package_identity;
-                    """.formatted(verifiedIdentity);
+                    """.formatted(verifiedEntryPoint, verifiedIdentity);
         }
         return """
                 -- titan:database-package-identity:v1
-                CREATE TABLE IF NOT EXISTS titan_graphql_package_identity (
+                CREATE TABLE IF NOT EXISTS %s.titan_graphql_package_identity (
                     entry_point VARCHAR(191) NOT NULL,
                     package_identity CHAR(64) NOT NULL,
                     PRIMARY KEY (entry_point)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-                INSERT INTO titan_graphql_package_identity (entry_point, package_identity)
-                VALUES ('public.execute_graphql_request', '%s')
+                INSERT INTO %s.titan_graphql_package_identity (entry_point, package_identity)
+                VALUES ('%s', '%s')
                 ON DUPLICATE KEY UPDATE package_identity = '%s';
-                """.formatted(verifiedIdentity, verifiedIdentity);
+                """.formatted(engineSchema, engineSchema, verifiedEntryPoint,
+                verifiedIdentity, verifiedIdentity);
+    }
+
+    private static String entryPoint(String value) {
+        if (value == null || !value.matches("[a-z][a-z0-9_]{0,62}\\.execute_graphql_request")) {
+            throw new IllegalArgumentException("database package entry point must name a lowercase engine schema");
+        }
+        return value;
     }
 
     private static String dialect(String value) {

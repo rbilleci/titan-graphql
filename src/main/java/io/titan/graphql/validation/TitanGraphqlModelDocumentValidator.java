@@ -457,9 +457,22 @@ public final class TitanGraphqlModelDocumentValidator {
             for (TitanGraphqlMutationDocument mutation : document.mutations()) {
                 TitanGraphqlModelPath mutationPath = path("mutations", mutation.name());
                 TitanGraphqlTypeDocument type = types.get(mutation.type());
-                if (mutation.operation() != TitanGraphqlMutationDocument.MutationDocumentOperation.UPDATE) {
-                    issue(TitanGraphqlValidationIssueCode.UNSUPPORTED_CAPABILITY,
-                            "Mutation '" + mutation.name() + "' must declare operation update.", mutationPath);
+                if (mutation.operation() == TitanGraphqlMutationDocument.MutationDocumentOperation.PROCEDURE
+                        || mutation.operation() == TitanGraphqlMutationDocument.MutationDocumentOperation.CREATE_PROCEDURE) {
+                    if (mutation.handler() == null) {
+                        issue(TitanGraphqlValidationIssueCode.MISSING_REQUIRED_FIELD,
+                                "Mutation '" + mutation.name() + "' procedure needs a reviewed handler.", mutationPath);
+                    } else if (!mutation.handler().className().matches(
+                            "[A-Za-z_$][A-Za-z0-9_$]*(\\.[A-Za-z_$][A-Za-z0-9_$]*)+")
+                            || !mutation.handler().methodName().matches("[A-Za-z_$][A-Za-z0-9_$]*")) {
+                        issue(TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                                "Mutation '" + mutation.name() + "' handler must name a Java class and method.",
+                                mutationPath);
+                    }
+                } else if (mutation.handler() != null) {
+                    issue(TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                            "Mutation '" + mutation.name() + "' update cannot declare a procedure handler.",
+                            mutationPath);
                 }
                 if (type == null) {
                     issue(TitanGraphqlValidationIssueCode.UNKNOWN_REFERENCE,
@@ -492,6 +505,18 @@ public final class TitanGraphqlModelDocumentValidator {
                                 "Mutation '" + mutation.name() + "' argument '" + argument.name()
                                         + "' type must match field '" + field.name() + "'.", argumentPath);
                     }
+                    if (argument.nullable()) {
+                        if (argument.key()) {
+                            issue(TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                                    "Mutation '" + mutation.name() + "' nullable argument '"
+                                            + argument.name() + "' cannot be a key.", argumentPath);
+                        }
+                        if (field == null || !field.nullable()) {
+                            issue(TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                                    "Mutation '" + mutation.name() + "' nullable argument '"
+                                            + argument.name() + "' requires a nullable stored field.", argumentPath);
+                        }
+                    }
                     String argumentType = normalizeType(argument.type());
                     if (!Set.of("Int", "Long", "String", "ID", "UUID", "Boolean", "Float", "Decimal")
                             .contains(argumentType) && !enums.containsKey(argumentType)) {
@@ -521,6 +546,18 @@ public final class TitanGraphqlModelDocumentValidator {
                                 "Mutation '" + mutation.name() + "' payload field '" + field.name()
                                         + "' must reference one declared argument.",
                                 path("mutations", mutation.name(), "payload", field.name()));
+                    } else {
+                        MutationValidationBinding binding = bindings.stream()
+                                .filter(candidate -> candidate.name().equals(field.argument()))
+                                .findFirst().orElse(null);
+                        TitanGraphqlFieldDocument storedField = binding == null
+                                ? null : typeIndex.byColumn(binding.column());
+                        if (storedField == null || !storedField.name().equals(field.name())) {
+                            issue(TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                                    "Mutation '" + mutation.name() + "' payload field '" + field.name()
+                                            + "' must match its bound stored field.",
+                                    path("mutations", mutation.name(), "payload", field.name()));
+                        }
                     }
                 }
                 if (mutation.payload().isEmpty()) {
@@ -575,11 +612,13 @@ public final class TitanGraphqlModelDocumentValidator {
                 }
                 for (TitanGraphqlMutationDocument.MutationDocumentArgument argument : mutation.arguments()) {
                     validateArgumentDefault("Mutation '" + mutation.name() + "' argument '"
-                                    + argument.name() + "'", requiredInputType(argument.type()),
+                                    + argument.name() + "'",
+                            argument.nullable() ? argument.type() : requiredInputType(argument.type()),
                             argument.defaultValue(),
                             path("mutations", mutation.name(), "arguments", argument.name()));
                     result.add(new MutationValidationBinding(
-                            argument.name(), argument.type(), argument.column(), argument.key(), false));
+                            argument.name(), argument.type(), argument.column(), argument.key(), false,
+                            argument.nullable()));
                 }
                 return result;
             }
@@ -626,13 +665,18 @@ public final class TitanGraphqlModelDocumentValidator {
                     issue(TitanGraphqlValidationIssueCode.INVALID_BINDING,
                             "Mutation '" + mutation.name() + "' input binding '" + binding.name()
                                     + "' type must match input field '" + binding.path() + "'.", bindingPath);
-                } else if (!field.type().endsWith("!") && field.defaultValue().isEmpty()) {
+                } else if (binding.nullable() && field.type().endsWith("!")) {
+                    issue(TitanGraphqlValidationIssueCode.INVALID_BINDING,
+                            "Mutation '" + mutation.name() + "' nullable input binding '"
+                                    + binding.path() + "' must target an optional input field.", bindingPath);
+                } else if (!binding.nullable() && !field.type().endsWith("!") && field.defaultValue().isEmpty()) {
                     issue(TitanGraphqlValidationIssueCode.INVALID_BINDING,
                             "Mutation '" + mutation.name() + "' database-bound input field '"
                                     + binding.path() + "' must be non-null or declare a default.", bindingPath);
                 }
                 result.add(new MutationValidationBinding(
-                        binding.name(), binding.type(), binding.column(), binding.key(), true));
+                        binding.name(), binding.type(), binding.column(), binding.key(), true,
+                        binding.nullable()));
             }
             return result;
         }
@@ -1378,7 +1422,8 @@ public final class TitanGraphqlModelDocumentValidator {
                 String type,
                 String column,
                 boolean key,
-                boolean inputPath
+                boolean inputPath,
+                boolean nullable
         ) {
         }
 

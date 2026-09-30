@@ -92,6 +92,7 @@ public final class DatabaseGraphqlEngine {
     private static final String AUTHORIZATION_ERROR = "AUTHORIZATION_ERROR";
     private static final String UNSUPPORTED_OPERATION = "UNSUPPORTED_OPERATION";
     private static final String EXECUTION_ERROR = "EXECUTION_ERROR";
+    private static final String IDEMPOTENCY_CONFLICT = "IDEMPOTENCY_CONFLICT";
     private static final String DEADLINE_EXCEEDED = "DEADLINE_EXCEEDED";
     private static final String RESOURCE_LIMIT_ERROR = "RESOURCE_LIMIT_ERROR";
     private static final String INTERNAL_ERROR = "INTERNAL_ERROR";
@@ -1357,6 +1358,21 @@ public final class DatabaseGraphqlEngine {
         return rollbackCodedErrorJson(message, EXECUTION_ERROR);
     }
 
+    public static String rollbackIdempotencyConflictErrorJson(String message) {
+        return rollbackCodedErrorJson(message, IDEMPOTENCY_CONFLICT);
+    }
+
+    public static boolean validMutationIdempotencyKey(String key) {
+        if (key == null || key.isEmpty() || key.length() > 128) return false;
+        for (int index = 0; index < key.length(); index++) {
+            char value = key.charAt(index);
+            boolean letter = value >= 'a' && value <= 'z';
+            boolean digit = value >= '0' && value <= '9';
+            if (!letter && !digit && value != '-' && value != '_' && value != '.' && value != ':') return false;
+        }
+        return true;
+    }
+
     /** Rolls back mutation work after a policy rejection. */
     public static String rollbackAuthorizationErrorJson(String message) {
         return rollbackCodedErrorJson(message, AUTHORIZATION_ERROR);
@@ -2270,24 +2286,15 @@ public final class DatabaseGraphqlEngine {
         if (value == null) {
             return "";
         }
-        String escaped = "";
+        String escaped = value.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
         int position = 0;
-        while (position < value.length()) {
-            char current = value.charAt(position);
-            if (current == '"') {
-                escaped = escaped + "\\\"";
-            } else if (current == '\\') {
-                escaped = escaped + "\\\\";
-            } else if (current == '\n') {
-                escaped = escaped + "\\n";
-            } else if (current == '\r') {
-                escaped = escaped + "\\r";
-            } else if (current == '\t') {
-                escaped = escaped + "\\t";
-            } else if (current < ' ') {
-                escaped = escaped + " ";
-            } else {
-                escaped = escaped + current;
+        while (position < escaped.length()) {
+            if (escaped.charAt(position) < ' ') {
+                escaped = escaped.replace(escaped.substring(position, position + 1), " ");
             }
             position++;
         }
@@ -4251,6 +4258,120 @@ public final class DatabaseGraphqlEngine {
             }
         }
         return false;
+    }
+
+    public static boolean operationRegistryScopeMatches(String scopeJson, String value) {
+        if (scopeJson == null || scopeJson.length() > MAX_REQUEST_ENVELOPE_CHARACTERS) {
+            return false;
+        }
+        int start = skipJsonWhitespace(scopeJson, 0, scopeJson.length());
+        int end = strictJsonValueEnd(scopeJson, start, scopeJson.length());
+        if (start >= scopeJson.length() || scopeJson.charAt(start) != '[' || end < 0
+                || skipJsonWhitespace(scopeJson, end, scopeJson.length()) != scopeJson.length()) {
+            return false;
+        }
+        int position = start + 1;
+        int count = 0;
+        boolean matched = false;
+        boolean afterComma = false;
+        while (position < end - 1) {
+            position = skipJsonWhitespace(scopeJson, position, end);
+            if (position == end - 1) {
+                break;
+            }
+            if (position > end - 1 || scopeJson.charAt(position) != '"') {
+                return false;
+            }
+            int itemEnd = strictJsonStringEnd(scopeJson, position, end);
+            if (itemEnd < 0) {
+                return false;
+            }
+            count++;
+            if (count > MAX_INPUT_COERCION_ITEMS) {
+                return false;
+            }
+            if (value != null && value.length() != 0
+                    && jsonStringValue(scopeJson.substring(position, itemEnd)).equals(value)) {
+                matched = true;
+            }
+            position = skipJsonWhitespace(scopeJson, itemEnd, end);
+            if (position < end - 1 && scopeJson.charAt(position) == ',') {
+                position++;
+                afterComma = true;
+            } else if (position != end - 1) {
+                return false;
+            } else {
+                afterComma = false;
+            }
+        }
+        return !afterComma && (count == 0 || matched);
+    }
+
+    public static String operationRegistryClient(String extensionsJson) {
+        String client = jsonObjectFieldValue(extensionsJson, "client");
+        if (client.length() == 0 || client.equals("null")) {
+            client = jsonObjectFieldValue(extensionsJson, "clientId");
+        }
+        if (client.length() == 0 || client.equals("null")) {
+            client = jsonObjectFieldValue(extensionsJson, "titanClient");
+        }
+        return client.length() >= 2 && client.charAt(0) == '"'
+                && strictJsonStringEnd(client, 0, client.length()) == client.length()
+                        ? jsonStringValue(client).trim() : "";
+    }
+
+    public static String operationRegistryRejectionJson(String mode, String status, String operationHash) {
+        if (!"ENFORCE".equals(mode) || "APPROVED".equals(status)) {
+            return "";
+        }
+        String normalizedStatus = "REJECTED".equals(status) || "DEPRECATED".equals(status)
+                ? "REJECTED" : "UNKNOWN";
+        String hash = operationHash == null ? "" : operationHash;
+        String message = "operation registry rejected "
+                + (normalizedStatus.equals("REJECTED") ? "rejected" : "unknown")
+                + " operation '" + hash + "'";
+        return "{\"errors\":[{\"message\":" + jsonString(message)
+                + ",\"extensions\":{\"code\":\"OPERATION_REGISTRY_REJECTED\",\"operationRegistry\":{"
+                + "\"mode\":\"ENFORCE\",\"status\":" + jsonString(normalizedStatus)
+                + ",\"operationHash\":" + jsonString(hash) + "}}}]}";
+    }
+
+    public static String appendOperationRegistryWarning(
+            String response, String mode, String status, String operationHash
+    ) {
+        if (!"WARN".equals(mode) || "APPROVED".equals(status)) {
+            return response;
+        }
+        if (response == null || response.length() < 2 || response.charAt(0) != '{'
+                || response.charAt(response.length() - 1) != '}') {
+            return RESPONSE_ASSEMBLY_LIMIT;
+        }
+        String normalizedStatus = "REJECTED".equals(status) || "DEPRECATED".equals(status)
+                ? "REJECTED" : "UNKNOWN";
+        String hash = operationHash == null ? "" : operationHash;
+        String message = "operation registry warning: "
+                + (normalizedStatus.equals("REJECTED") ? "rejected" : "unknown")
+                + " operation '" + hash + "'";
+        String warning = "{\"message\":" + jsonString(message)
+                + ",\"extensions\":{\"code\":\"OPERATION_REGISTRY_WARNING\",\"operationRegistry\":{"
+                + "\"mode\":\"WARN\",\"status\":" + jsonString(normalizedStatus)
+                + ",\"operationHash\":" + jsonString(hash) + "}}}";
+        String extensions = jsonObjectFieldValue(response, "extensions");
+        String completed;
+        if (extensions.length() == 0) {
+            completed = response.substring(0, response.length() - 1)
+                    + ",\"extensions\":{\"warnings\":[" + warning + "]}}";
+        } else {
+            String suffix = ",\"extensions\":" + extensions + "}";
+            if (extensions.charAt(0) != '{' || extensions.charAt(extensions.length() - 1) != '}'
+                    || !response.endsWith(suffix)) {
+                return RESPONSE_ASSEMBLY_LIMIT;
+            }
+            completed = response.substring(0, response.length() - suffix.length())
+                    + ",\"extensions\":" + extensions.substring(0, extensions.length() - 1)
+                    + (extensions.length() == 2 ? "" : ",") + "\"warnings\":[" + warning + "]}}";
+        }
+        return completed.length() > MAX_RESPONSE_CHARACTERS ? RESPONSE_ASSEMBLY_LIMIT : completed;
     }
 
     public static boolean roleAllowed(String actorRole, String expression) {
@@ -8718,31 +8839,38 @@ public final class DatabaseGraphqlEngine {
         }
         String value = "";
         int position = 1;
-        while (position < jsonLiteral.length() - 1) {
+        int segmentStart = position;
+        int end = jsonLiteral.length() - 1;
+        while (position < end) {
             char current = jsonLiteral.charAt(position);
-            if (current == '\\' && position + 1 < jsonLiteral.length() - 1) {
+            if (current == '\\' && position + 1 < end) {
+                if (segmentStart < position) {
+                    value = value + jsonLiteral.substring(segmentStart, position);
+                }
                 char escaped = jsonLiteral.charAt(position + 1);
                 if (escaped == 'b') value = value + '\b';
                 else if (escaped == 'f') value = value + '\f';
                 else if (escaped == 'n') value = value + '\n';
                 else if (escaped == 'r') value = value + '\r';
                 else if (escaped == 't') value = value + '\t';
-                else if (escaped == 'u' && position + 5 < jsonLiteral.length() - 1) {
+                else if (escaped == 'u' && position + 5 < end) {
                     // Titan represents a Java char as TEXT and cannot lower a UTF-16 numeric
                     // char cast. Preserve a validated escaped code unit rather than silently
                     // substituting a different character. The generated scalar coercers can
                     // still handle direct Unicode JSON text; escape decoding awaits a portable
                     // Titan string-code-point primitive.
                     value = value + "\\u" + jsonLiteral.substring(position + 2, position + 6);
-                    position += 6;
                 } else {
                     value = value + escaped;
-                    position += 2;
                 }
+                position += escaped == 'u' && position + 5 < end ? 6 : 2;
+                segmentStart = position;
             } else {
-                value = value + current;
                 position++;
             }
+        }
+        if (segmentStart < end) {
+            value = value + jsonLiteral.substring(segmentStart, end);
         }
         return value;
     }

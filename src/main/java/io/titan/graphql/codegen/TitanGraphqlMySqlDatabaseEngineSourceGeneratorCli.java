@@ -12,15 +12,16 @@ public final class TitanGraphqlMySqlDatabaseEngineSourceGeneratorCli {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length != 3) {
-            throw new IllegalArgumentException("usage: <model.yaml> <output.java> <runtime-identity.sha256>");
+        if (args.length != 3 && args.length != 4) {
+            throw new IllegalArgumentException(
+                    "usage: <model.yaml> <output.java> <runtime-identity.sha256> [engine-schema]");
         }
         Path modelFile = Path.of(args[0]);
         Path output = Path.of(args[1]);
         Path runtimeIdentityFile = Path.of(args[2]);
         TitanGraphqlModelDocument model = TitanGraphqlModelDocumentYaml.parse(Files.readString(modelFile));
         String generated = TitanGraphqlDatabaseEngineSourceGenerator.generateMySqlProcedure(
-                model, Files.readString(runtimeIdentityFile).trim());
+                model, Files.readString(runtimeIdentityFile).trim(), args.length == 4 ? args[3] : "public");
         Files.createDirectories(output.getParent());
         Files.writeString(output, generated);
     }

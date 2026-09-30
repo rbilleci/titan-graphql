@@ -225,7 +225,11 @@ database-resident engine.
 `/admin/graphql` is disabled unless `titan.graphql.admin.access-token` is configured. Its actor role
 and key come from server configuration, never request context headers. The default file store is for
 single-process development. Select `titan.graphql.management.store=jdbc` for Titan GAP-006-backed
-durable management state. See [operations.md](operations.md) and
+durable management state. The transitional Quarkus route invokes the installed management database
+package when `titan.graphql.admin.database-descriptor` points to its generated frontend descriptor;
+an authenticated HTTP request returns HTTP 503 without that descriptor. See the
+Management package binding section of [database-http-frontend.md](database-http-frontend.md),
+[operations.md](operations.md), and
 [mutation-runtime-lowering-boundary.md](mutation-runtime-lowering-boundary.md).
 
 ## Common Failures

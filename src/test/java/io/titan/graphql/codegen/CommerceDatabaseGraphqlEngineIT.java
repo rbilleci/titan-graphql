@@ -3,10 +3,13 @@ package io.titan.graphql.codegen;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.titan.graphql.GraphqlApplicationMutationProvider;
 import io.titan.graphql.GraphqlCursorCodec;
 import io.titan.graphql.GraphqlExecutionEngine;
@@ -14,6 +17,8 @@ import io.titan.graphql.GraphqlHttpResource;
 import io.titan.graphql.GraphqlRequestContext;
 import io.titan.graphql.GraphqlRootField;
 import io.titan.graphql.GraphqlRuntimeRequest;
+import io.titan.graphql.controlplane.TitanGraphqlControlJobQueue;
+import io.titan.graphql.controlplane.TitanGraphqlOutboxWorker;
 import io.titan.graphql.database.DatabaseGraphqlWholeRequestRuntime;
 import io.titan.runtime.jdbc.SingleConnectionDataSource;
 import io.titan.runtime.testing.DatabaseTarget;
@@ -23,8 +28,18 @@ import jakarta.ws.rs.core.Response;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.sql.Statement;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -35,6 +50,238 @@ import org.junit.jupiter.api.Test;
 class CommerceDatabaseGraphqlEngineIT {
 
     private static final ObjectMapper JSON = new ObjectMapper();
+
+    @Test
+    void installedPackageDispatchesEveryDeclaredCommerceMutation(TitanTestContext context) throws Exception {
+        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
+        Map<String, String> requests = CommerceMutationRegistryContract.requests();
+        assertEquals(CommerceMutationRegistryContract.declaredNames(), requests.keySet());
+        assertEquals(CommerceMutationRegistryContract.expectedIdentity(),
+                CommerceMutationRegistryContract.installedIdentity(connection));
+        connection.setAutoCommit(false);
+        try {
+            for (Map.Entry<String, String> entry : requests.entrySet()) {
+                JsonNode result = execute(connection, entry.getValue(), "", "{}", "admin", true);
+                assertFalse(result.has("errors"), entry.getKey() + ": " + result);
+                assertTrue(result.at("/data/" + entry.getKey()).isObject(),
+                        entry.getKey() + ": " + result);
+                connection.rollback();
+            }
+        } finally {
+            connection.rollback();
+            connection.setAutoCommit(true);
+        }
+    }
+
+    @Test
+    void controlPlaneJobLifecycleIsDurableAndLeaseFenced(TitanTestContext context) throws Exception {
+        CommerceDatabaseEngineDeployment.deployPostgreSql(context.connection(DatabaseTarget.POSTGRESQL));
+        TitanGraphqlControlJobQueueContract.verify(
+                context, DatabaseTarget.POSTGRESQL, TitanGraphqlControlJobQueue.Dialect.POSTGRESQL);
+    }
+
+    @Test
+    void procedureMutationReturnsStoredValuesAndRollsBackLaterFailure(TitanTestContext context)
+            throws Exception {
+        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
+        DatabaseGraphqlWholeRequestRuntime runtime = new DatabaseGraphqlWholeRequestRuntime(
+                DatabaseGraphqlWholeRequestRuntime.Dialect.POSTGRESQL,
+                () -> context.connection(DatabaseTarget.POSTGRESQL),
+                DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml"),
+                DatabaseEngineTestRequestContract.runtimeIdentity(),
+                DatabaseEngineTestRequestContract.packageIdentity(),
+                "Titan PostgreSQL test connection");
+
+        JsonNode accepted = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { renameCustomerWithProcedure(id: 7, name: \"Procedure\") { id name } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+        assertEquals("Procedure!", accepted.at("/data/renameCustomerWithProcedure/name").asText(),
+                accepted::toString);
+        assertEquals("Procedure!", customerName(connection, 7));
+        assertEquals(1L, customerChangeCount(connection));
+        assertEquals(1L, outboxCount(connection));
+
+        JsonNode handlerFailure = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { renameCustomerWithProcedure(id: 7, name: \"Reject after write\") { id name } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+        assertEquals("mutation 'renameCustomerWithProcedure' procedure handler failed",
+                handlerFailure.at("/errors/0/message").asText(), handlerFailure::toString);
+        assertEquals("EXECUTION_ERROR", handlerFailure.at("/errors/0/extensions/code").asText(),
+                handlerFailure::toString);
+        assertEquals("Procedure!", customerName(connection, 7));
+        assertEquals(1L, customerChangeCount(connection));
+        assertEquals(1L, outboxCount(connection));
+
+        JsonNode rejected = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { changed: renameCustomerWithProcedure(id: 7, name: \"Staged\") { id name } "
+                        + "missing: renameCustomer(id: 999, name: \"Missing\") { id } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+        assertTrue(rejected.at("/errors/0/message").asText().contains("target row does not exist"),
+                rejected::toString);
+        assertEquals("Procedure!", customerName(connection, 7));
+        assertEquals(1L, customerChangeCount(connection));
+        assertEquals(1L, outboxCount(connection));
+
+        Clock clock = Clock.fixed(Instant.parse("2030-01-01T00:00:00Z"), ZoneOffset.UTC);
+        SingleConnectionDataSource dataSource = new SingleConnectionDataSource(connection);
+        TitanGraphqlOutboxWorker worker = new TitanGraphqlOutboxWorker(dataSource, clock);
+        TitanGraphqlOutboxWorker.Event first = worker.claimNext(Duration.ofMinutes(1)).orElseThrow();
+        assertEquals("commerce.customer_renamed", first.type());
+        assertEquals("Procedure!", JSON.readTree(first.payloadJson()).path("name").asText());
+        assertEquals(1, first.attempt());
+
+        TitanGraphqlOutboxWorker afterLease = new TitanGraphqlOutboxWorker(
+                dataSource, Clock.offset(clock, Duration.ofMinutes(2)));
+        TitanGraphqlOutboxWorker.Event retry = afterLease.claimNext(Duration.ofMinutes(1)).orElseThrow();
+        assertEquals(first.id(), retry.id());
+        assertEquals(2, retry.attempt());
+        assertFalse(worker.acknowledge(first));
+        assertTrue(afterLease.release(retry));
+        assertTrue(worker.deliverOne(Duration.ofMinutes(1), event -> {
+            assertEquals(first.id(), event.id());
+            assertEquals(3, event.attempt());
+        }));
+        assertTrue(worker.claimNext(Duration.ofMinutes(1)).isEmpty());
+
+        JsonNode second = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { renameCustomerWithProcedure(id: 7, name: \"Retry delivery\") { id name } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+        assertEquals("Retry delivery!", second.at("/data/renameCustomerWithProcedure/name").asText(),
+                second::toString);
+        try (Connection locking = context.openAdditionalConnection(DatabaseTarget.POSTGRESQL)) {
+            locking.setAutoCommit(false);
+            try {
+                try (PreparedStatement lock = locking.prepareStatement(
+                        "SELECT event_id FROM public.titan_graphql_outbox WHERE status = 'pending' FOR UPDATE");
+                        ResultSet locked = lock.executeQuery()) {
+                    assertTrue(locked.next());
+                }
+                assertTrue(worker.claimNext(Duration.ofMinutes(1)).isEmpty());
+            } finally {
+                locking.rollback();
+            }
+        }
+        IllegalStateException deliveryFailure = new IllegalStateException("temporary delivery failure");
+        assertEquals(deliveryFailure, assertThrows(IllegalStateException.class,
+                () -> worker.deliverOne(Duration.ofMinutes(1), event -> {
+                    throw deliveryFailure;
+                })));
+        TitanGraphqlOutboxWorker.Event retriedDelivery = worker.claimNext(Duration.ofMinutes(1)).orElseThrow();
+        assertEquals(2, retriedDelivery.attempt());
+        assertTrue(worker.acknowledge(retriedDelivery));
+        assertTrue(worker.claimNext(Duration.ofMinutes(1)).isEmpty());
+
+        GraphqlRequestContext keyedContext = new GraphqlRequestContext(
+                11L, "editor", "test-editor", "test-tenant", "test-request",
+                "procedure-outbox", List.of(), List.of(),
+                false, false, false, 0L);
+        GraphqlRuntimeRequest keyedRequest = new GraphqlRuntimeRequest(
+                "mutation { renameCustomerWithProcedure(id: 7, name: \"Keyed event\") { id name } }",
+                "", "{}", "{}", true);
+        JsonNode keyedFirst = JSON.readTree(runtime.execute(keyedRequest, keyedContext));
+        assertEquals("Keyed event!", keyedFirst.at("/data/renameCustomerWithProcedure/name").asText(),
+                keyedFirst::toString);
+        assertEquals(3L, outboxCount(connection));
+        JsonNode keyedReplay = JSON.readTree(runtime.execute(keyedRequest, keyedContext));
+        assertEquals(keyedFirst, keyedReplay);
+        assertEquals(3L, outboxCount(connection));
+    }
+
+    @Test
+    void nullableProcedureBindingDistinguishesOmissionValueAndNull(TitanTestContext context) throws Exception {
+        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
+        DatabaseGraphqlWholeRequestRuntime runtime = new DatabaseGraphqlWholeRequestRuntime(
+                DatabaseGraphqlWholeRequestRuntime.Dialect.POSTGRESQL,
+                () -> context.connection(DatabaseTarget.POSTGRESQL),
+                DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml"),
+                DatabaseEngineTestRequestContract.runtimeIdentity(),
+                DatabaseEngineTestRequestContract.packageIdentity(),
+                "Titan PostgreSQL test connection");
+
+        JsonNode omitted = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { setCustomerNicknameWithProcedure(id: 8) { id nickname } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+        assertEquals("Adventure", omitted.at("/data/setCustomerNicknameWithProcedure/nickname").asText(),
+                omitted::toString);
+        assertEquals("Adventure", customerNickname(connection, 8));
+
+        JsonNode supplied = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { setCustomerNicknameWithProcedure(id: 8, nickname: \"Reviewed\") { id nickname } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+        assertEquals("Reviewed", supplied.at("/data/setCustomerNicknameWithProcedure/nickname").asText(),
+                supplied::toString);
+        assertEquals("Reviewed", customerNickname(connection, 8));
+
+        JsonNode denied = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { setCustomerNicknameWithProcedure(id: 8, nickname: \"Denied\") { id nickname } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "reader")));
+        assertTrue(denied.has("errors"), denied::toString);
+        assertEquals("Reviewed", customerNickname(connection, 8));
+
+        JsonNode cleared = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { setCustomerNicknameWithProcedure(id: 8, nickname: null) { id nickname } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+        assertTrue(cleared.at("/data/setCustomerNicknameWithProcedure/nickname").isNull(), cleared::toString);
+        assertNull(customerNickname(connection, 8));
+    }
+
+    @Test
+    void nullableInputProcedureBindingDistinguishesOmissionValueAndNull(TitanTestContext context) throws Exception {
+        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
+        DatabaseGraphqlWholeRequestRuntime runtime = new DatabaseGraphqlWholeRequestRuntime(
+                DatabaseGraphqlWholeRequestRuntime.Dialect.POSTGRESQL,
+                () -> context.connection(DatabaseTarget.POSTGRESQL),
+                DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml"),
+                DatabaseEngineTestRequestContract.runtimeIdentity(),
+                DatabaseEngineTestRequestContract.packageIdentity(),
+                "Titan PostgreSQL test connection");
+
+        JsonNode omitted = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { setCustomerNicknameWithInputProcedure(input: {id: 8, patch: {}}) { id nickname } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+        assertEquals("Adventure", omitted.at("/data/setCustomerNicknameWithInputProcedure/nickname").asText(),
+                omitted::toString);
+        assertEquals("Adventure", customerNickname(connection, 8));
+
+        JsonNode supplied = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { setCustomerNicknameWithInputProcedure(input: {id: 8, patch: {nickname: \"Reviewed\"}}) { id nickname } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+        assertEquals("Reviewed", supplied.at("/data/setCustomerNicknameWithInputProcedure/nickname").asText(),
+                supplied::toString);
+        assertEquals("Reviewed", customerNickname(connection, 8));
+
+        JsonNode denied = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { setCustomerNicknameWithInputProcedure(input: {id: 8, patch: {nickname: \"Denied\"}}) { id nickname } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "reader")));
+        assertTrue(denied.has("errors"), denied::toString);
+        assertEquals("Reviewed", customerNickname(connection, 8));
+
+        JsonNode cleared = JSON.readTree(runtime.execute(new GraphqlRuntimeRequest(
+                "mutation { setCustomerNicknameWithInputProcedure(input: {id: 8, patch: {nickname: null}}) { id nickname } }",
+                "", "{}", "{}", true), GraphqlRequestContext.legacy(11L, "editor")));
+        assertTrue(cleared.at("/data/setCustomerNicknameWithInputProcedure/nickname").isNull(), cleared::toString);
+        assertNull(customerNickname(connection, 8));
+    }
+
+    private static long customerChangeCount(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement();
+                ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM commerce.customer_changes")) {
+            rows.next();
+            return rows.getLong(1);
+        }
+    }
+
+    private static long outboxCount(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement();
+                ResultSet rows = statement.executeQuery("SELECT COUNT(*) FROM public.titan_graphql_outbox")) {
+            rows.next();
+            return rows.getLong(1);
+        }
+    }
 
     @Test
     void thinAdapterForwardsTheWholeEnvelopeAndOwnsTheDatabaseTransaction(TitanTestContext context)
@@ -189,6 +436,12 @@ class CommerceDatabaseGraphqlEngineIT {
                     name kind description ofType { kind name }
                     fields(includeDeprecated: $includeDeprecated) { name type { kind name ofType { kind name ofType { kind name ofType { kind name } } } } }
                   }
+                }
+                """, "SchemaIdentity", "{\"name\":\"Customer\",\"includeDeprecated\":true}", "reader", false,
+                DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml"),
+                DatabaseEngineTestRequestContract.introspectionTrustedContext("reader"));
+        JsonNode introspectionArguments = execute(connection, """
+                {
                   queryArguments: __type(name: "Query") {
                     fields { name args { name description defaultValue isDeprecated deprecationReason __typename
                       type { kind name ofType { kind name ofType { kind name } } }
@@ -197,6 +450,12 @@ class CommerceDatabaseGraphqlEngineIT {
                   mutationArguments: __type(name: "Mutation") {
                     fields { name args { name type { kind name ofType { kind name } } } }
                   }
+                }
+                """, "", "{}", "reader", false,
+                DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml"),
+                DatabaseEngineTestRequestContract.introspectionTrustedContext("reader"));
+        JsonNode introspectionWrappers = execute(connection, """
+                {
                   connectionType: __type(name: "CustomerConnection") {
                     name kind
                     fields { name type { kind name ofType { kind name ofType { kind name ofType { kind name } } } } }
@@ -208,9 +467,11 @@ class CommerceDatabaseGraphqlEngineIT {
                   stringType: __type(name: "String") { name kind }
                   absent: __type(name: "NotAType") { name kind }
                 }
-                """, "SchemaIdentity", "{\"name\":\"Customer\",\"includeDeprecated\":true}", "reader", false,
+                """, "", "{}", "reader", false,
                 DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml"),
                 DatabaseEngineTestRequestContract.introspectionTrustedContext("reader"));
+        ((ObjectNode) introspection.path("data")).setAll((ObjectNode) introspectionArguments.path("data"));
+        ((ObjectNode) introspection.path("data")).setAll((ObjectNode) introspectionWrappers.path("data"));
         assertEquals("Query", introspection.at("/data/schema/queryType/name").asText(), introspection::toString);
         assertEquals("OBJECT", introspection.at("/data/schema/queryType/kind").asText(), introspection::toString);
         assertTrue(introspection.at("/data/schema/queryType/description").isNull(), introspection::toString);
@@ -2640,6 +2901,268 @@ class CommerceDatabaseGraphqlEngineIT {
     }
 
     @Test
+    void installedMutationDistinguishesOmittedAndExplicitNullInput(TitanTestContext context) throws Exception {
+        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
+        boolean originalAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try {
+            JsonNode initiallyNull = execute(connection,
+                    "mutation { setCustomerNickname(input: {id: 7, patch: {}}) { nickname } }",
+                    "", "{}", "editor", true);
+            assertTrue(initiallyNull.at("/data/setCustomerNickname/nickname").isNull(), initiallyNull::toString);
+
+            JsonNode written = execute(connection,
+                    "mutation { setCustomerNickname(input: {id: 7, patch: {nickname: \"Saved\"}}) { id nickname } }",
+                    "", "{}", "editor", true);
+            assertEquals(7, written.at("/data/setCustomerNickname/id").asInt(), written::toString);
+            assertEquals("Saved", written.at("/data/setCustomerNickname/nickname").asText(), written::toString);
+            assertEquals("Saved", customerNickname(connection, 7));
+
+            JsonNode omitted = execute(connection,
+                    "mutation { setCustomerNickname(input: {id: 7, patch: {}}) { id nickname } }",
+                    "", "{}", "editor", true);
+            assertEquals(7, omitted.at("/data/setCustomerNickname/id").asInt(), omitted::toString);
+            assertEquals("Saved", omitted.at("/data/setCustomerNickname/nickname").asText(), omitted::toString);
+            assertEquals("Saved", customerNickname(connection, 7));
+
+            JsonNode cleared = execute(connection,
+                    "mutation ClearNickname($input: SetCustomerNicknameInput!) { "
+                            + "setCustomerNickname(input: $input) { id nickname } }",
+                    "ClearNickname", "{\"input\":{\"id\":7,\"patch\":{\"nickname\":null}}}",
+                    "editor", true);
+            assertEquals(7, cleared.at("/data/setCustomerNickname/id").asInt(), cleared::toString);
+            assertTrue(cleared.at("/data/setCustomerNickname/nickname").isNull(), cleared::toString);
+            assertNull(customerNickname(connection, 7));
+            connection.rollback();
+            assertNull(customerNickname(connection, 7));
+
+            JsonNode flatOmitted = execute(connection,
+                    "mutation { setCustomerNicknameFlat(id: 8) { id nickname } }",
+                    "", "{}", "editor", true);
+            assertEquals(8, flatOmitted.at("/data/setCustomerNicknameFlat/id").asInt(), flatOmitted::toString);
+            assertEquals("Adventure", flatOmitted.at("/data/setCustomerNicknameFlat/nickname").asText(),
+                    flatOmitted::toString);
+            assertEquals("Adventure", customerNickname(connection, 8));
+
+            JsonNode flatWritten = execute(connection,
+                    "mutation { setCustomerNicknameFlat(id: 8, nickname: \"Flat value\") { id nickname } }",
+                    "", "{}", "editor", true);
+            assertEquals(8, flatWritten.at("/data/setCustomerNicknameFlat/id").asInt(), flatWritten::toString);
+            assertEquals("Flat value", flatWritten.at("/data/setCustomerNicknameFlat/nickname").asText(),
+                    flatWritten::toString);
+            assertEquals("Flat value", customerNickname(connection, 8));
+
+            JsonNode flatCleared = execute(connection,
+                    "mutation ClearFlatNickname($nickname: String) { "
+                            + "setCustomerNicknameFlat(id: 8, nickname: $nickname) { id nickname } }",
+                    "ClearFlatNickname", "{\"nickname\":null}", "editor", true);
+            assertEquals(8, flatCleared.at("/data/setCustomerNicknameFlat/id").asInt(), flatCleared::toString);
+            assertTrue(flatCleared.at("/data/setCustomerNicknameFlat/nickname").isNull(), flatCleared::toString);
+            assertNull(customerNickname(connection, 8));
+            connection.rollback();
+            assertEquals("Adventure", customerNickname(connection, 8));
+        } finally {
+            connection.rollback();
+            connection.setAutoCommit(originalAutoCommit);
+        }
+    }
+
+    @Test
+    void installedNullableIntegerAndBooleanPayloadsDistinguishOmissionFromNull(TitanTestContext context)
+            throws Exception {
+        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
+
+        JsonNode initialRating = execute(connection,
+                "mutation { setCustomerRating(id: 7) { rating } }", "", "{}", "admin", true);
+        assertEquals(42, initialRating.at("/data/setCustomerRating/rating").asInt(), initialRating::toString);
+        JsonNode writtenRating = execute(connection,
+                "mutation { setCustomerRating(id: 7, rating: 11) { rating } }", "", "{}", "admin", true);
+        assertEquals(11, writtenRating.at("/data/setCustomerRating/rating").asInt(), writtenRating::toString);
+        JsonNode omittedRating = execute(connection,
+                "mutation { setCustomerRating(id: 7) { rating } }", "", "{}", "admin", true);
+        assertEquals(11, omittedRating.at("/data/setCustomerRating/rating").asInt(), omittedRating::toString);
+        JsonNode clearedRating = execute(connection,
+                "mutation ClearRating($rating: Int) { setCustomerRating(id: 7, rating: $rating) { rating } }",
+                "ClearRating", "{\"rating\":null}", "admin", true);
+        assertTrue(clearedRating.at("/data/setCustomerRating/rating").isNull(), clearedRating::toString);
+
+        JsonNode initialVerified = execute(connection,
+                "mutation { setCustomerVerified(id: 8) { verified } }", "", "{}", "admin", true);
+        assertTrue(initialVerified.at("/data/setCustomerVerified/verified").asBoolean(), initialVerified::toString);
+        JsonNode writtenVerified = execute(connection,
+                "mutation { setCustomerVerified(id: 8, verified: false) { verified } }",
+                "", "{}", "admin", true);
+        assertFalse(writtenVerified.at("/data/setCustomerVerified/verified").asBoolean(),
+                writtenVerified::toString);
+        JsonNode omittedVerified = execute(connection,
+                "mutation { setCustomerVerified(id: 8) { verified } }", "", "{}", "admin", true);
+        assertFalse(omittedVerified.at("/data/setCustomerVerified/verified").asBoolean(),
+                omittedVerified::toString);
+        JsonNode clearedVerified = execute(connection,
+                "mutation ClearVerified($verified: Boolean) { "
+                        + "setCustomerVerified(id: 8, verified: $verified) { verified } }",
+                "ClearVerified", "{\"verified\":null}", "admin", true);
+        assertTrue(clearedVerified.at("/data/setCustomerVerified/verified").isNull(),
+                clearedVerified::toString);
+    }
+
+    @Test
+    void installedNullableFloatAndEnumPayloadsDistinguishOmissionFromNull(TitanTestContext context)
+            throws Exception {
+        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
+
+        JsonNode initialRebate = execute(connection,
+                "mutation { setCustomerRebate(id: 7) { rebate } }", "", "{}", "admin", true);
+        assertEquals(12.5d, initialRebate.at("/data/setCustomerRebate/rebate").asDouble(), 0.0001d,
+                initialRebate::toString);
+        JsonNode writtenRebate = execute(connection,
+                "mutation { setCustomerRebate(id: 7, rebate: 3.75) { rebate } }",
+                "", "{}", "admin", true);
+        assertEquals(3.75d, writtenRebate.at("/data/setCustomerRebate/rebate").asDouble(), 0.0001d,
+                writtenRebate::toString);
+        JsonNode omittedRebate = execute(connection,
+                "mutation { setCustomerRebate(id: 7) { rebate } }", "", "{}", "admin", true);
+        assertEquals(3.75d, omittedRebate.at("/data/setCustomerRebate/rebate").asDouble(), 0.0001d,
+                omittedRebate::toString);
+        JsonNode clearedRebate = execute(connection,
+                "mutation ClearRebate($rebate: Float) { setCustomerRebate(id: 7, rebate: $rebate) { rebate } }",
+                "ClearRebate", "{\"rebate\":null}", "admin", true);
+        assertTrue(clearedRebate.at("/data/setCustomerRebate/rebate").isNull(), clearedRebate::toString);
+
+        JsonNode initialStatus = execute(connection,
+                "mutation { setCustomerOptionalStatus(id: 7) { optionalStatus } }",
+                "", "{}", "admin", true);
+        assertEquals("LEGACY", initialStatus.at("/data/setCustomerOptionalStatus/optionalStatus").asText(),
+                initialStatus::toString);
+        JsonNode writtenStatus = execute(connection,
+                "mutation { setCustomerOptionalStatus(id: 7, optionalStatus: INACTIVE) { optionalStatus } }",
+                "", "{}", "admin", true);
+        assertEquals("INACTIVE", writtenStatus.at("/data/setCustomerOptionalStatus/optionalStatus").asText(),
+                writtenStatus::toString);
+        JsonNode omittedStatus = execute(connection,
+                "mutation { setCustomerOptionalStatus(id: 7) { optionalStatus } }",
+                "", "{}", "admin", true);
+        assertEquals("INACTIVE", omittedStatus.at("/data/setCustomerOptionalStatus/optionalStatus").asText(),
+                omittedStatus::toString);
+        JsonNode clearedStatus = execute(connection,
+                "mutation ClearOptionalStatus($status: CustomerStatus) { "
+                        + "setCustomerOptionalStatus(id: 7, optionalStatus: $status) { optionalStatus } }",
+                "ClearOptionalStatus", "{\"status\":null}", "admin", true);
+        assertTrue(clearedStatus.at("/data/setCustomerOptionalStatus/optionalStatus").isNull(),
+                clearedStatus::toString);
+    }
+
+    @Test
+    void installedConcurrentMutationsSerializeOnTheTargetRow(TitanTestContext context) throws Exception {
+        Connection primary = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(primary);
+        boolean originalAutoCommit = primary.getAutoCommit();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try (Connection contender = context.openAdditionalConnection(DatabaseTarget.POSTGRESQL)) {
+            primary.setAutoCommit(false);
+            contender.setAutoCommit(false);
+            long contenderPid;
+            try (Statement statement = contender.createStatement();
+                 ResultSet resultSet = statement.executeQuery("SELECT pg_backend_pid()")) {
+                assertTrue(resultSet.next());
+                contenderPid = resultSet.getLong(1);
+            }
+            try {
+                JsonNode first = execute(primary,
+                        "mutation { renameCustomer(id: 7, name: \"First committed\") { id name } }",
+                        "", "{}", "editor", true);
+                assertEquals("First committed", first.at("/data/renameCustomer/name").asText(), first::toString);
+
+                Future<JsonNode> pending = executor.submit(() -> execute(contender,
+                        "mutation { renameCustomer(id: 7, name: \"Second committed\") { id name } }",
+                        "", "{}", "editor", true));
+                assertTrue(waitForPostgreSqlRowLock(primary, contenderPid),
+                        "the competing mutation did not wait for the target row lock");
+                primary.commit();
+
+                JsonNode second = pending.get(20, TimeUnit.SECONDS);
+                assertEquals("Second committed", second.at("/data/renameCustomer/name").asText(), second::toString);
+                contender.commit();
+                assertEquals("Second committed", customerName(primary, 7));
+            } finally {
+                primary.rollback();
+                contender.rollback();
+            }
+        } finally {
+            executor.shutdownNow();
+            primary.setAutoCommit(originalAutoCommit);
+        }
+    }
+
+    private static boolean waitForPostgreSqlRowLock(Connection observer, long contenderPid) throws Exception {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+        while (System.nanoTime() < deadline) {
+            try (PreparedStatement statement = observer.prepareStatement(
+                    "SELECT wait_event_type FROM pg_stat_activity WHERE pid = ?")) {
+                statement.setLong(1, contenderPid);
+                try (ResultSet resultSet = statement.executeQuery()) {
+                    if (resultSet.next() && "Lock".equals(resultSet.getString(1))) return true;
+                }
+            }
+            Thread.sleep(25);
+        }
+        return false;
+    }
+
+    @Test
+    void installedConcurrentIdempotencyKeyCanBeRetriedAfterTheWinnerCommits(TitanTestContext context)
+            throws Exception {
+        Connection primary = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(primary);
+        boolean originalAutoCommit = primary.getAutoCommit();
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        String query = "mutation { renameCustomer(id: 7, name: \"Only once\") { id name } }";
+        String trustedContext = DatabaseEngineTestRequestContract.mutationDurabilityTrustedContext("racing-key");
+        String modelHash = DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml");
+        try (Connection contender = context.openAdditionalConnection(DatabaseTarget.POSTGRESQL)) {
+            primary.setAutoCommit(false);
+            contender.setAutoCommit(false);
+            long contenderPid;
+            try (Statement statement = contender.createStatement();
+                 ResultSet resultSet = statement.executeQuery("SELECT pg_backend_pid()")) {
+                assertTrue(resultSet.next());
+                contenderPid = resultSet.getLong(1);
+            }
+            try {
+                JsonNode first = execute(primary, query, "", "{}", "editor", true, modelHash, trustedContext);
+                assertEquals("Only once", first.at("/data/renameCustomer/name").asText(), first::toString);
+                Future<JsonNode> pending = executor.submit(
+                        () -> execute(contender, query, "", "{}", "editor", true, modelHash, trustedContext));
+                assertTrue(waitForPostgreSqlRowLock(primary, contenderPid),
+                        "the competing key did not wait for the uncommitted receipt");
+                primary.commit();
+                try {
+                    assertEquals(first, pending.get(20, TimeUnit.SECONDS));
+                } catch (java.util.concurrent.ExecutionException duplicate) {
+                    assertTrue(duplicate.getCause() instanceof SQLException, duplicate::toString);
+                    assertEquals("23505", ((SQLException) duplicate.getCause()).getSQLState());
+                }
+                contender.rollback();
+                JsonNode replay = execute(contender, query, "", "{}", "editor", true, modelHash, trustedContext);
+                assertEquals(first, replay);
+                contender.rollback();
+                assertEquals(1, mutationStateCount(primary, "titan_graphql_mutation_receipts", "racing-key"));
+                assertEquals(1, mutationStateCount(primary, "titan_graphql_mutation_audit", "racing-key"));
+                assertEquals("Only once", customerName(primary, 7));
+            } finally {
+                primary.rollback();
+                contender.rollback();
+            }
+        } finally {
+            executor.shutdownNow();
+            primary.setAutoCommit(originalAutoCommit);
+        }
+    }
+
+    @Test
     void installedMutationIsSerialAndLetsTheCallerCommitOrRollBack(TitanTestContext context) throws Exception {
         Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
         CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
@@ -2751,6 +3274,193 @@ class CommerceDatabaseGraphqlEngineIT {
         } finally {
             connection.rollback();
             connection.setAutoCommit(originalAutoCommit);
+        }
+    }
+
+    @Test
+    void installedCommittedMutationCanBeRetriedWhenItsResponseIsLost(TitanTestContext context) throws Exception {
+        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
+        String modelHash = DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml");
+        String query = "mutation { renameCustomer(id: 7, name: \"Response lost\") { id name } }";
+        String trustedContext = DatabaseEngineTestRequestContract.mutationDurabilityTrustedContext("lost-response");
+        connection.setAutoCommit(false);
+        try {
+            execute(connection, query, "", "{}", "editor", true, modelHash, trustedContext);
+            connection.commit();
+            assertEquals("Response lost", customerName(connection, 7));
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_receipts", "lost-response"));
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_audit", "lost-response"));
+
+            try (Connection retryConnection = context.openAdditionalConnection(DatabaseTarget.POSTGRESQL)) {
+                retryConnection.setAutoCommit(false);
+                JsonNode replay = execute(retryConnection, query, "", "{}", "editor", true, modelHash,
+                        trustedContext);
+                assertEquals("Response lost", replay.at("/data/renameCustomer/name").asText(), replay::toString);
+                retryConnection.rollback();
+            }
+            assertEquals("Response lost", customerName(connection, 7));
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_receipts", "lost-response"));
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_audit", "lost-response"));
+        } finally {
+            connection.rollback();
+            connection.setAutoCommit(true);
+        }
+    }
+
+    @Test
+    void installedMutationReceiptBindsTheSelectedNamedOperation(TitanTestContext context) throws Exception {
+        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
+        String modelHash = DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml");
+        String trustedContext = DatabaseEngineTestRequestContract.mutationDurabilityTrustedContext("named-operation");
+        String document = """
+                mutation First { renameCustomer(id: 7, name: "Named first") { id name } }
+                mutation Second { renameCustomer(id: 7, name: "Named second") { id name } }
+                """;
+        connection.setAutoCommit(false);
+        try {
+            JsonNode first = execute(connection, document, "First", "{}", "editor", true, modelHash,
+                    trustedContext);
+            assertEquals("Named first", first.at("/data/renameCustomer/name").asText(), first::toString);
+            connection.commit();
+
+            JsonNode replay = execute(connection, document, "First", "{}", "editor", true, modelHash,
+                    trustedContext);
+            assertEquals(first, replay);
+            connection.rollback();
+
+            JsonNode conflict = execute(connection, document, "Second", "{}", "editor", true, modelHash,
+                    trustedContext);
+            assertEquals("IDEMPOTENCY_CONFLICT", conflict.at("/errors/0/extensions/code").asText(),
+                    conflict::toString);
+            connection.rollback();
+            assertEquals("Named first", customerName(connection, 7));
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_receipts", "named-operation"));
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_audit", "named-operation"));
+        } finally {
+            connection.rollback();
+            connection.setAutoCommit(true);
+        }
+    }
+
+    @Test
+    void installedMutationReceiptRejectsAnotherPackageIdentity(TitanTestContext context) throws Exception {
+        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
+        String modelHash = DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml");
+        String trustedContext = DatabaseEngineTestRequestContract.mutationDurabilityTrustedContext("other-package");
+        String query = "mutation { renameCustomer(id: 7, name: \"Original package\") { id name } }";
+        connection.setAutoCommit(false);
+        try {
+            JsonNode first = execute(connection, query, "", "{}", "editor", true, modelHash, trustedContext);
+            assertEquals("Original package", first.at("/data/renameCustomer/name").asText(), first::toString);
+            connection.commit();
+
+            try (PreparedStatement statement = connection.prepareStatement(
+                    "UPDATE public.titan_graphql_mutation_receipts SET package_identity = ?"
+                            + " WHERE idempotency_key = ?")) {
+                statement.setString(1, "0".repeat(64));
+                statement.setString(2, "other-package");
+                assertEquals(1, statement.executeUpdate());
+            }
+            connection.commit();
+
+            JsonNode conflict = execute(connection, query, "", "{}", "editor", true, modelHash, trustedContext);
+            assertEquals("IDEMPOTENCY_CONFLICT", conflict.at("/errors/0/extensions/code").asText(),
+                    conflict::toString);
+            connection.rollback();
+            assertEquals("Original package", customerName(connection, 7));
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_audit", "other-package"));
+        } finally {
+            connection.rollback();
+            connection.setAutoCommit(true);
+        }
+    }
+
+    @Test
+    void installedMutationReceiptAndAuditCommitAtomically(TitanTestContext context) throws Exception {
+        Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        CommerceDatabaseEngineDeployment.deployPostgreSql(connection);
+        connection.setAutoCommit(false);
+        String modelHash = DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml");
+        String firstQuery = "mutation { renameCustomer(id: 7, name: \"Durable first\") { id name } }";
+        String firstContext = DatabaseEngineTestRequestContract.mutationDurabilityTrustedContext("durable-first");
+        try {
+            JsonNode first = execute(connection, firstQuery, "", "{}", "editor", true, modelHash, firstContext);
+            assertEquals("Durable first", first.at("/data/renameCustomer/name").asText(), first::toString);
+            connection.commit();
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_receipts", "durable-first"));
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_audit", "durable-first"));
+
+            try (Connection freshConnection = context.openAdditionalConnection(DatabaseTarget.POSTGRESQL)) {
+                freshConnection.setAutoCommit(false);
+                JsonNode replay = execute(freshConnection, firstQuery, "", "{}", "editor", true, modelHash,
+                        firstContext);
+                assertEquals(first, replay);
+                freshConnection.rollback();
+            }
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_audit", "durable-first"));
+
+            JsonNode conflict = execute(connection,
+                    "mutation { renameCustomer(id: 7, name: \"Conflicting\") { id name } }",
+                    "", "{}", "editor", true, modelHash, firstContext);
+            assertEquals("IDEMPOTENCY_CONFLICT", conflict.at("/errors/0/extensions/code").asText(),
+                    conflict::toString);
+            connection.rollback();
+            assertEquals("Durable first", customerName(connection, 7));
+
+            String rejectedContext = DatabaseEngineTestRequestContract.mutationDurabilityTrustedContext("rejected");
+            JsonNode rejected = execute(connection,
+                    "mutation { renameCustomer(id: 7) { id } }",
+                    "", "{}", "editor", true, modelHash, rejectedContext);
+            assertTrue(rejected.has("errors"), rejected::toString);
+            connection.rollback();
+            assertEquals(0, mutationStateCount(connection, "titan_graphql_mutation_receipts", "rejected"));
+            assertEquals(0, mutationStateCount(connection, "titan_graphql_mutation_audit", "rejected"));
+
+            long priorUnkeyedAudit = mutationStateCount(connection, "titan_graphql_mutation_audit", "");
+            JsonNode unkeyed = execute(connection,
+                    "mutation { renameCustomer(id: 8, name: \"Audited without key\") { id name } }",
+                    "", "{}", "editor", true, modelHash,
+                    DatabaseEngineTestRequestContract.mutationDurabilityTrustedContext(""));
+            assertEquals("Audited without key", unkeyed.at("/data/renameCustomer/name").asText(),
+                    unkeyed::toString);
+            connection.commit();
+            assertEquals(0, mutationStateCount(connection, "titan_graphql_mutation_receipts", ""));
+            assertEquals(priorUnkeyedAudit + 1,
+                    mutationStateCount(connection, "titan_graphql_mutation_audit", ""));
+
+            String retryContext = DatabaseEngineTestRequestContract.mutationDurabilityTrustedContext("rolled-back");
+            String retryQuery = "mutation { renameCustomer(id: 7, name: \"After rollback\") { id name } }";
+            JsonNode rolledBack = execute(connection, retryQuery, "", "{}", "editor", true, modelHash,
+                    retryContext);
+            assertEquals("After rollback", rolledBack.at("/data/renameCustomer/name").asText(),
+                    rolledBack::toString);
+            connection.rollback();
+            assertEquals(0, mutationStateCount(connection, "titan_graphql_mutation_receipts", "rolled-back"));
+            assertEquals(0, mutationStateCount(connection, "titan_graphql_mutation_audit", "rolled-back"));
+
+            JsonNode retried = execute(connection, retryQuery, "", "{}", "editor", true, modelHash, retryContext);
+            assertEquals(rolledBack, retried);
+            connection.commit();
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_receipts", "rolled-back"));
+            assertEquals(1, mutationStateCount(connection, "titan_graphql_mutation_audit", "rolled-back"));
+        } finally {
+            connection.rollback();
+            connection.setAutoCommit(true);
+        }
+    }
+
+    private static long mutationStateCount(Connection connection, String table, String idempotencyKey)
+            throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT COUNT(*) FROM public." + table + " WHERE idempotency_key = ?")) {
+            statement.setString(1, idempotencyKey);
+            try (ResultSet rows = statement.executeQuery()) {
+                rows.next();
+                return rows.getLong(1);
+            }
         }
     }
 
@@ -3241,6 +3951,17 @@ class CommerceDatabaseGraphqlEngineIT {
     private static String customerName(Connection connection, long id) throws Exception {
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT name FROM commerce.customers WHERE id = ?")) {
+            statement.setLong(1, id);
+            try (ResultSet resultSet = statement.executeQuery()) {
+                assertTrue(resultSet.next());
+                return resultSet.getString(1);
+            }
+        }
+    }
+
+    private static String customerNickname(Connection connection, long id) throws Exception {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT nickname FROM commerce.customers WHERE id = ?")) {
             statement.setLong(1, id);
             try (ResultSet resultSet = statement.executeQuery()) {
                 assertTrue(resultSet.next());

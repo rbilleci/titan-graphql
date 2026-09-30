@@ -167,6 +167,10 @@ public final class TitanGraphqlInMemoryManagementStore implements TitanGraphqlMa
         return operationRegistries.get(id);
     }
 
+    public List<TitanGraphqlOperationRegistry> operationRegistries() {
+        return List.copyOf(operationRegistries.values());
+    }
+
     @Override
     public TitanGraphqlUsageReport usageReport(String id) {
         return usageReports.get(id);

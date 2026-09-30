@@ -9,6 +9,22 @@ import org.junit.jupiter.api.Test;
 class DatabaseGraphqlErrorTest {
 
     @Test
+    void escapesLongStringArgumentsWithoutChangingJsonSemantics() {
+        assertEquals("line\\n".repeat(4_000),
+                DatabaseGraphqlEngine.jsonEscape("line\n".repeat(4_000)));
+        assertEquals("\\\"\\\\\\n\\r\\t ",
+                DatabaseGraphqlEngine.jsonEscape("\"\\\n\r\t\u0001"));
+    }
+
+    @Test
+    void decodesEscapedStringArgumentsAndPreservesLongUnescapedSegments() {
+        assertEquals("line\n".repeat(3_000),
+                DatabaseGraphqlEngine.stringArgument("\"" + "line\\n".repeat(3_000) + "\""));
+        assertEquals("a\"\\\b\f\r\t\\u0041z",
+                DatabaseGraphqlEngine.stringArgument("\"a\\\"\\\\\\b\\f\\r\\t\\u0041z\""));
+    }
+
+    @Test
     void encodesRetainedAstOffsetsAsGraphqlLineAndColumnLocations() {
         String source = "query Example {\r\n  unknownRoot { id }\r\n}";
         String response = DatabaseGraphqlEngine.errorJsonAt(

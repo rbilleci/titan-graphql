@@ -13,6 +13,7 @@ import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import titan.dsl.StoredFunction;
@@ -38,15 +39,31 @@ class GraphqlRuntimeBoundaryTest {
     }
 
     @Test
-    void adminHttpResourceRoutesThroughManagementRuntimeBoundary() throws IOException {
+    void adminHttpResourceHasNoManagementJvmRuntimeFallback() throws IOException {
         String source = Files.readString(Path.of("src/main/java/io/titan/graphql/GraphqlAdminHttpResource.java"));
 
-        assertTrue(source.contains("GraphqlRuntimeRegistry.managementRuntime()"),
-                "admin transport should route through the management model runtime boundary");
+        assertFalse(source.contains("GraphqlRuntimeRegistry.managementRuntime()"),
+                "admin transport must not execute the JVM management runtime");
         assertFalse(source.contains("GraphqlEngine.execute"),
                 "admin transport should not execute the management model directly");
         assertFalse(source.contains("GraphqlManagementDataModel"),
                 "admin transport should not construct management model internals directly");
+    }
+
+    @Test
+    void auxiliaryResourceRequestMethodsRequireDatabaseBindings() throws IOException {
+        GraphqlAdminHttpResource.GraphqlAdminHttpResult admin = new GraphqlAdminHttpResource().negotiatePost(
+                Map.of("query", "{ __schema { queryType { name } } }"), "application/json");
+        GraphqlPreviewHttpResource.GraphqlPreviewHttpResult preview = new GraphqlPreviewHttpResource().negotiatePost(
+                "preview-test", Map.of("query", "{ __schema { queryType { name } } }"),
+                "application/json", GraphqlHttpResource.GraphqlHttpContext.defaults());
+
+        assertEquals(503, admin.status());
+        assertEquals(503, preview.status());
+        assertTrue(admin.body().contains(GraphqlHttpResource.EXECUTION_MODE_UNAVAILABLE));
+        assertTrue(preview.body().contains(GraphqlHttpResource.EXECUTION_MODE_UNAVAILABLE));
+        String previewSource = Files.readString(Path.of("src/main/java/io/titan/graphql/GraphqlPreviewHttpResource.java"));
+        assertFalse(previewSource.contains("GraphqlPreviewRuntimeRouter.execute("));
     }
 
     @Test

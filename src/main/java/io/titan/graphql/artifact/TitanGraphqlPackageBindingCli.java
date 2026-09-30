@@ -28,6 +28,9 @@ public final class TitanGraphqlPackageBindingCli {
         }
         TitanGraphqlGap005ArtifactMetadata metadata = TitanGraphqlGap005ArtifactMetadata.read(
                 packageDirectory, TitanGraphqlArtifactsDirectory.displayRoot(packageDirectory));
+        if (args.length == 4) {
+            TitanGraphqlMutationPackageAttestor.verify(document, packageDirectory, metadata);
+        }
         TitanGraphqlPackageBinding binding = TitanGraphqlPackageBinding.create(document, metadata);
         binding.write(packageDirectory);
         if (args.length >= 3) {

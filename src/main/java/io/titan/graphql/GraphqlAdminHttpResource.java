@@ -2,6 +2,8 @@ package io.titan.graphql;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.titan.graphql.database.DatabaseGraphqlWholeRequestRuntime;
+import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
@@ -16,6 +18,9 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.Supplier;
+import javax.sql.DataSource;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @Path("/admin/graphql")
@@ -26,6 +31,7 @@ public final class GraphqlAdminHttpResource {
     private final String accessToken;
     private final String authenticatedRole;
     private final String authenticatedActorKey;
+    private final DatabaseGraphqlWholeRequestRuntime databaseRuntime;
 
     /**
      * The management plane is disabled until a bearer token is configured. The token and the
@@ -37,11 +43,35 @@ public final class GraphqlAdminHttpResource {
             @ConfigProperty(name = "titan.graphql.admin.role", defaultValue = DEFAULT_MANAGEMENT_ROLE)
             String authenticatedRole,
             @ConfigProperty(name = "titan.graphql.admin.actor-key", defaultValue = "titan-admin")
-            String authenticatedActorKey
+            String authenticatedActorKey,
+            @ConfigProperty(name = "titan.graphql.admin.database-descriptor")
+            Optional<String> databaseDescriptor,
+            Instance<DataSource> dataSources
+    ) {
+        this(accessToken, authenticatedRole, authenticatedActorKey,
+                databaseDescriptor.orElse(""), dataSources::get);
+    }
+
+    public GraphqlAdminHttpResource(
+            String accessToken,
+            String authenticatedRole,
+            String authenticatedActorKey,
+            String databaseDescriptor,
+            Supplier<DataSource> dataSources
     ) {
         this.accessToken = accessToken;
         this.authenticatedRole = authenticatedRole;
         this.authenticatedActorKey = authenticatedActorKey;
+        this.databaseRuntime = databaseDescriptor == null || databaseDescriptor.isBlank()
+                ? null
+                : GraphqlAdminDatabaseRuntime.fromDescriptor(
+                        java.nio.file.Path.of(databaseDescriptor), dataSources);
+    }
+
+    public GraphqlAdminHttpResource(String accessToken, String authenticatedRole, String authenticatedActorKey) {
+        this(accessToken, authenticatedRole, authenticatedActorKey, "", () -> {
+            throw new IllegalStateException("admin database mode has no data source");
+        });
     }
 
     /** Direct construction is retained for the embedded Java API and its unit tests. */
@@ -97,6 +127,9 @@ public final class GraphqlAdminHttpResource {
         if (authorizationFailure != null) {
             return authorizationFailure;
         }
+        if (databaseRuntime == null) {
+            return missingDatabaseDescriptor(acceptHeader);
+        }
         GraphqlAdminHttpResult result = negotiatePost(
                 request,
                 acceptHeader,
@@ -125,6 +158,9 @@ public final class GraphqlAdminHttpResource {
         Response authorizationFailure = authorizationFailure(authorizationHeader);
         if (authorizationFailure != null) {
             return authorizationFailure;
+        }
+        if (databaseRuntime == null) {
+            return missingDatabaseDescriptor(acceptHeader);
         }
         GraphqlAdminHttpResult result = negotiateGet(
                 query,
@@ -175,6 +211,22 @@ public final class GraphqlAdminHttpResource {
         return null;
     }
 
+    private static Response missingDatabaseDescriptor(String acceptHeader) {
+        String responseType = GraphqlHttpResource.responseMediaType(acceptHeader);
+        if (responseType.isEmpty()) {
+            return Response.status(Response.Status.NOT_ACCEPTABLE)
+                    .type(GraphqlHttpResource.GRAPHQL_RESPONSE_JSON)
+                    .entity(GraphqlHttpResource.errorJson("GraphQL response media type is not acceptable"))
+                    .build();
+        }
+        return Response.status(Response.Status.SERVICE_UNAVAILABLE)
+                .type(responseType)
+                .entity(GraphqlHttpResource.errorJson(
+                        "management database descriptor is not configured",
+                        GraphqlHttpResource.EXECUTION_MODE_UNAVAILABLE))
+                .build();
+    }
+
     GraphqlAdminHttpResult negotiatePost(
             Map<String, Object> request,
             String acceptHeader,
@@ -195,11 +247,12 @@ public final class GraphqlAdminHttpResource {
                     GraphqlHttpResource.errorJson(context.validationError())
             );
         }
-        return new GraphqlAdminHttpResult(
-                Response.Status.OK.getStatusCode(),
-                responseType,
-                executePost(request, context)
-        );
+        try {
+            return new GraphqlAdminHttpResult(
+                    Response.Status.OK.getStatusCode(), responseType, executePost(request, context));
+        } catch (GraphqlExecutionModeUnavailableException unavailable) {
+            return databaseUnavailable(responseType, unavailable);
+        }
     }
 
     GraphqlAdminHttpResult negotiateGet(
@@ -225,11 +278,22 @@ public final class GraphqlAdminHttpResource {
                     GraphqlHttpResource.errorJson(context.validationError())
             );
         }
+        try {
+            return new GraphqlAdminHttpResult(
+                    Response.Status.OK.getStatusCode(), responseType,
+                    executeGet(query, operationName, variablesJson, extensionsJson, context));
+        } catch (GraphqlExecutionModeUnavailableException unavailable) {
+            return databaseUnavailable(responseType, unavailable);
+        }
+    }
+
+    private static GraphqlAdminHttpResult databaseUnavailable(
+            String responseType, GraphqlExecutionModeUnavailableException unavailable
+    ) {
         return new GraphqlAdminHttpResult(
-                Response.Status.OK.getStatusCode(),
-                responseType,
-                executeGet(query, operationName, variablesJson, extensionsJson, context)
-        );
+                Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), responseType,
+                GraphqlHttpResource.errorJson(
+                        unavailable.getMessage(), GraphqlHttpResource.EXECUTION_MODE_UNAVAILABLE));
     }
 
     static GraphqlAdminHttpContext httpContext(
@@ -264,7 +328,7 @@ public final class GraphqlAdminHttpResource {
         );
     }
 
-    private static String executePost(Map<String, Object> request, GraphqlAdminHttpContext context) {
+    private String executePost(Map<String, Object> request, GraphqlAdminHttpContext context) {
         String transportError = GraphqlHttpResource.transportValidationError(request);
         if (transportError.isEmpty() == false) {
             return GraphqlHttpResource.errorJson(transportError);
@@ -279,11 +343,12 @@ public final class GraphqlAdminHttpResource {
                 operationName,
                 jsonObjectField(request, "variables"),
                 jsonObjectField(request, "extensions"),
-                context
+                context,
+                true
         );
     }
 
-    private static String executeGet(
+    private String executeGet(
             String query,
             String operationName,
             String variablesJson,
@@ -298,21 +363,26 @@ public final class GraphqlAdminHttpResource {
                 operationName == null ? "" : operationName,
                 variablesJson == null ? "" : variablesJson,
                 extensionsJson == null ? "" : extensionsJson,
-                context
+                context,
+                false
         );
     }
 
-    private static String execute(
+    private String execute(
             String query,
             String operationName,
             String variablesJson,
             String extensionsJson,
-            GraphqlAdminHttpContext context
+            GraphqlAdminHttpContext context,
+            boolean allowMutations
     ) {
-        return GraphqlRuntimeRegistry.managementRuntime().execute(
-                new GraphqlRuntimeRequest(query, operationName, variablesJson, extensionsJson),
-                context.toGraphqlRequestContext()
-        );
+        GraphqlRuntimeRequest request = new GraphqlRuntimeRequest(
+                query, operationName, variablesJson, extensionsJson, allowMutations);
+        GraphqlRequestContext trustedContext = context.toGraphqlRequestContext();
+        if (databaseRuntime == null) {
+            throw new GraphqlExecutionModeUnavailableException("management database descriptor is not configured");
+        }
+        return databaseRuntime.execute(request, trustedContext);
     }
 
     private static String jsonObjectField(Map<String, Object> request, String field) {

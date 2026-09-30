@@ -317,8 +317,8 @@ class TitanGraphqlFunctionsTest {
     }
 
     @Test
-    void adminPostResourceServesManagementSchemaWithSeparateIntrospectionPolicy() {
-        GraphqlAdminHttpResource resource = new GraphqlAdminHttpResource();
+    void legacyManagementRuntimeServesSchemaWithSeparateIntrospectionPolicy() {
+        LegacyManagementGraphqlTestClient resource = new LegacyManagementGraphqlTestClient();
         Map<String, Object> request = Map.of(
                 "query",
                 "{ __type(name: \"ManagedWorkspace\") { name fields { name } } }"
@@ -340,8 +340,8 @@ class TitanGraphqlFunctionsTest {
     }
 
     @Test
-    void adminPostResourceIntrospectsManagementMutationSchema() {
-        GraphqlAdminHttpResource resource = new GraphqlAdminHttpResource();
+    void legacyManagementRuntimeIntrospectsMutationSchema() {
+        LegacyManagementGraphqlTestClient resource = new LegacyManagementGraphqlTestClient();
         GraphqlAdminHttpResource.GraphqlAdminHttpResult schema = resource.negotiatePost(
                 Map.of("query", "{ __schema { mutationType { name } } }"),
                 MediaType.APPLICATION_JSON,
@@ -367,8 +367,8 @@ class TitanGraphqlFunctionsTest {
     }
 
     @Test
-    void adminGetResourceKeepsApplicationSchemaSeparate() {
-        GraphqlAdminHttpResource.GraphqlAdminHttpResult admin = new GraphqlAdminHttpResource().negotiateGet(
+    void legacyManagementRuntimeKeepsApplicationSchemaSeparate() {
+        GraphqlAdminHttpResource.GraphqlAdminHttpResult admin = new LegacyManagementGraphqlTestClient().negotiateGet(
                 "{ __type(name: \"ManagedGraphqlModel\") { name fields { name } } }",
                 null,
                 null,
@@ -387,8 +387,8 @@ class TitanGraphqlFunctionsTest {
     }
 
     @Test
-    void adminResourceRejectsManagementQueriesUntilStorageIsWired() {
-        GraphqlAdminHttpResource.GraphqlAdminHttpResult response = new GraphqlAdminHttpResource().negotiatePost(
+    void legacyManagementRuntimeRejectsQueriesUntilStorageIsWired() {
+        GraphqlAdminHttpResource.GraphqlAdminHttpResult response = new LegacyManagementGraphqlTestClient().negotiatePost(
                 Map.of("query", "{ workspace(id: 1) { id name } }"),
                 MediaType.APPLICATION_JSON,
                 new GraphqlAdminHttpResource.GraphqlAdminHttpContext("", "operator", "", "", true, "")
@@ -407,8 +407,8 @@ class TitanGraphqlFunctionsTest {
     }
 
     @Test
-    void adminResourceImportsValidatesAndGeneratesModelDraftArtifacts() {
-        GraphqlAdminHttpResource resource = new GraphqlAdminHttpResource();
+    void legacyManagementRuntimeImportsValidatesAndGeneratesModelDraftArtifacts() {
+        LegacyManagementGraphqlTestClient resource = new LegacyManagementGraphqlTestClient();
         String yaml = readDemoBlogFixture();
         String draftId = draftId(yaml);
 
@@ -489,8 +489,8 @@ class TitanGraphqlFunctionsTest {
     }
 
     @Test
-    void adminResourceReportsSemanticValidationFailureWithoutDeployingDraft() {
-        GraphqlAdminHttpResource resource = new GraphqlAdminHttpResource();
+    void legacyManagementRuntimeReportsSemanticValidationFailureWithoutDeployingDraft() {
+        LegacyManagementGraphqlTestClient resource = new LegacyManagementGraphqlTestClient();
         Map<String, Object> variables = new LinkedHashMap<>();
         variables.put("yaml", """
                 apiVersion: titan.graphql/v1alpha1
@@ -538,8 +538,8 @@ class TitanGraphqlFunctionsTest {
     }
 
     @Test
-    void adminResourceRejectsUnauthorizedManagementMutation() {
-        GraphqlAdminHttpResource.GraphqlAdminHttpResult response = new GraphqlAdminHttpResource().negotiatePost(
+    void legacyManagementRuntimeRejectsUnauthorizedMutation() {
+        GraphqlAdminHttpResource.GraphqlAdminHttpResult response = new LegacyManagementGraphqlTestClient().negotiatePost(
                 Map.of("query", """
                         mutation Validate {
                           validateModelDraft(input: { draftId: "draft-missing" }) { accepted }
@@ -722,6 +722,7 @@ class TitanGraphqlFunctionsTest {
                         "true",
                         "tenant-a",
                         "request-7",
+                        "retry-42",
                         "can-preview, trace",
                         "publishedVisibility, tenantIsolation",
                         "2500"
@@ -735,6 +736,7 @@ class TitanGraphqlFunctionsTest {
         assertTrue(context.enableIntrospection());
         assertEquals("tenant-a", context.tenantId());
         assertEquals("request-7", context.requestId());
+        assertEquals("retry-42", GraphqlHttpResource.requestContext(context).idempotencyKey());
         assertEquals("can-preview, trace", context.policyFlags());
         assertEquals("publishedVisibility, tenantIsolation", context.enabledContextFilters());
         assertEquals(2500L, context.deadlineBudgetMillis());
