@@ -38,13 +38,14 @@ dependencyLocking {
 dependencies {
     implementation("io.titan:titan-dsl:0.1.0")
     implementation("io.titan:titan-management:0.1.0")
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.21.3")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.21.7")
     implementation("io.titan:titan-runtime-jdbc:0.1.0") {
         exclude(group = "org.junit.jupiter")
         exclude(group = "org.testcontainers")
         exclude(group = "com.mysql")
     }
     runtimeOnly("com.mysql:mysql-connector-j:8.4.0")
+    runtimeOnly("com.google.protobuf:protobuf-java:3.25.5")
 
     testImplementation(platform("org.junit:junit-bom:5.10.3"))
     testImplementation("org.junit.jupiter:junit-jupiter")
@@ -54,9 +55,10 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
     // Driver for core's scratch-container DDL introspection (ddlMode defaults to "container").
-    titanJdbc("org.postgresql:postgresql:42.7.4")
+    titanJdbc("org.postgresql:postgresql:42.7.13")
     // Driver for MySQL scratch installation and installed-package tests.
     titanJdbc("com.mysql:mysql-connector-j:8.4.0")
+    titanJdbc("com.google.protobuf:protobuf-java:3.25.5")
 }
 
 java {
@@ -184,6 +186,10 @@ val databaseHttpFrontendDistribution = tasks.register<Zip>("databaseHttpFrontend
             unix("rwxr-xr-x")
         }
     }
+    from("LICENSE", "THIRD_PARTY_NOTICES.md")
+    from("licenses") {
+        into("licenses")
+    }
 }
 
 val controlJobWorkerDistribution = tasks.register<Zip>("controlJobWorkerDistribution") {
@@ -203,6 +209,25 @@ val controlJobWorkerDistribution = tasks.register<Zip>("controlJobWorkerDistribu
             unix("rwxr-xr-x")
         }
     }
+    from("LICENSE", "THIRD_PARTY_NOTICES.md")
+    from("licenses") {
+        into("licenses")
+    }
+}
+
+val releaseTrackedSources = providers.exec {
+    commandLine("git", "ls-files", "--recurse-submodules")
+}.standardOutput.asText.map { output -> output.lineSequence().filter { it.isNotBlank() }.toList() }
+
+val releaseSourceDistribution = tasks.register<Zip>("releaseSourceDistribution") {
+    description = "Packages tracked project and pinned submodule sources for the runtime release."
+    group = "distribution"
+    archiveClassifier.set("sources")
+    isReproducibleFileOrder = true
+    isPreserveFileTimestamps = false
+    from(layout.projectDirectory) {
+        include(releaseTrackedSources.get())
+    }
 }
 
 val titanGraphqlVerifyControlJobWorkerDistribution =
@@ -219,6 +244,12 @@ val titanGraphqlVerifyControlJobWorkerDistribution =
                 }
                 check(zip.getEntry("bin/titan-graphql-control-worker") != null) {
                     "control worker distribution omits its launcher"
+                }
+                for (notice in listOf("LICENSE", "THIRD_PARTY_NOTICES.md",
+                        "licenses/Apache-2.0.txt", "licenses/protobuf-BSD-3-Clause.txt")) {
+                    check(zip.getEntry(notice) != null) {
+                        "control worker distribution omits $notice"
+                    }
                 }
             }
         }
@@ -238,18 +269,22 @@ val titanGraphqlDatabaseHttpFrontendReleaseArtifact =
             val expectedLibraries = setOf(
                 expectedFrontendJar,
                 "jackson-annotations-2.21.jar",
-                "jackson-core-2.21.3.jar",
-                "jackson-databind-2.21.3.jar",
+                "jackson-core-2.21.7.jar",
+                "jackson-databind-2.21.7.jar",
                 "mysql-connector-j-8.4.0.jar",
-                "postgresql-42.7.11.jar",
-                "protobuf-java-3.25.1.jar"
+                "postgresql-42.7.13.jar",
+                "protobuf-java-3.25.5.jar",
+                "checker-qual-3.55.1.jar"
             )
             val distributionEntries = ZipFile(distribution).use { archive ->
                 archive.entries().asSequence()
                     .filter { entry -> entry.isDirectory == false }
                     .associate { entry -> entry.name to archive.getInputStream(entry).readBytes() }
             }
-            check(distributionEntries.keys == expectedLibraries.map { "lib/$it" }.toSet() + expectedLaunchScript) {
+            val expectedNotices = setOf("LICENSE", "THIRD_PARTY_NOTICES.md",
+                "licenses/Apache-2.0.txt", "licenses/protobuf-BSD-3-Clause.txt")
+            check(distributionEntries.keys == expectedLibraries.map { "lib/$it" }.toSet()
+                    + expectedLaunchScript + expectedNotices) {
                 "database HTTP frontend distribution has an unreviewed runtime closure: " +
                     distributionEntries.keys.sorted().joinToString()
             }
@@ -298,6 +333,7 @@ val titanGraphqlDatabaseEngineReleaseCheck = tasks.register("titanGraphqlDatabas
     group = "verification"
     // This gate establishes the artifact a user may deploy.
     dependsOn(
+        releaseSourceDistribution,
         titanGraphqlVerifyControlJobWorkerDistribution,
         "titanGraphqlVerifyDatabaseEngineBoundary",
         "titanGraphqlVerifyDatabaseFrontendBoundary",
@@ -456,18 +492,20 @@ sourceSets["test"].runtimeClasspath += databaseEngine.output
 dependencies {
     add(databaseEngine.implementationConfigurationName, "io.titan:titan-dsl:0.1.0")
     add(databaseHttpFrontend.implementationConfigurationName, files(databaseFrontend.output))
-    add(databaseHttpFrontend.implementationConfigurationName, "com.fasterxml.jackson.core:jackson-databind:2.21.3")
-    add(databaseHttpFrontend.runtimeOnlyConfigurationName, "org.postgresql:postgresql:42.7.11")
+    add(databaseHttpFrontend.implementationConfigurationName, "com.fasterxml.jackson.core:jackson-databind:2.21.7")
+    add(databaseHttpFrontend.runtimeOnlyConfigurationName, "org.postgresql:postgresql:42.7.13")
     add(databaseHttpFrontend.runtimeOnlyConfigurationName, "com.mysql:mysql-connector-j:8.4.0")
+    add(databaseHttpFrontend.runtimeOnlyConfigurationName, "com.google.protobuf:protobuf-java:3.25.5")
     add(databaseHttpFrontendTest.implementationConfigurationName, files(databaseHttpFrontend.output))
     add(databaseHttpFrontendTest.implementationConfigurationName, files(databaseFrontend.output))
-    add(databaseHttpFrontendTest.implementationConfigurationName, "com.fasterxml.jackson.core:jackson-databind:2.21.3")
+    add(databaseHttpFrontendTest.implementationConfigurationName, "com.fasterxml.jackson.core:jackson-databind:2.21.7")
     add(databaseHttpFrontendTest.implementationConfigurationName, platform("org.junit:junit-bom:6.0.3"))
     add(databaseHttpFrontendTest.implementationConfigurationName, "org.junit.jupiter:junit-jupiter")
     add(databaseHttpFrontendTest.implementationConfigurationName, "org.testcontainers:testcontainers-postgresql:2.0.5")
     add(databaseHttpFrontendTest.implementationConfigurationName, "org.testcontainers:testcontainers-mysql:2.0.5")
-    add(databaseHttpFrontendTest.implementationConfigurationName, "org.postgresql:postgresql:42.7.11")
+    add(databaseHttpFrontendTest.implementationConfigurationName, "org.postgresql:postgresql:42.7.13")
     add(databaseHttpFrontendTest.implementationConfigurationName, "com.mysql:mysql-connector-j:8.4.0")
+    add(databaseHttpFrontendTest.implementationConfigurationName, "com.google.protobuf:protobuf-java:3.25.5")
     add(databaseHttpFrontendTest.runtimeOnlyConfigurationName, "org.junit.platform:junit-platform-launcher")
 }
 

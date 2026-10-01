@@ -2,7 +2,8 @@
 
 Use JDK 21 and initialized Titan/Titan DSL submodules. Installed-package, standalone HTTP, and
 container-deployment checks require local Docker with PostgreSQL and MySQL fixtures. This project
-does not use hosted GitHub Actions; maintainers run the local gates on demand.
+does not use hosted GitHub Actions; maintainers run the local gates on demand. A fresh checkout
+uses Docker-backed catalog generation before compiling even the ordinary unit suite.
 
 ## Local release gates
 
@@ -12,7 +13,7 @@ gate approves the standalone HTTP ZIP only. It checks the engine/frontend source
 dependency and ZIP closure, generated SQL package privacy, complete package attestation,
 PostgreSQL/MySQL installed execution, fixed expected-result corpus, package replacement,
 snapshot/deadline behavior, and extracted ZIP HTTP behavior. The separate
-`databaseEngineContainerDeploymentIntegrationTest` proves unprivileged frontend and worker
+`databaseEngineContainerDeploymentIntegrationTest`, which the full script also runs, proves unprivileged frontend and worker
 containers, worker restart, reviewed preview publication, and frontend recreation on both
 dialects. No command deploys a persistent service.
 
@@ -27,6 +28,14 @@ dialects. No command deploys a persistent service.
 | `./gradlew databaseHttpFrontendIntegrationTest` | Extracted standalone ZIP and HTTP transport on both dialects | Yes |
 | `./gradlew titanGraphqlDatabaseEngineReleaseCheck` | Combined deployable package/runtime parity and artifact gate | Yes |
 | `./gradlew databaseEngineContainerDeploymentIntegrationTest` | First-deployment container path, management worker, restart, and published preview | Yes |
+
+The fixed corpus also runs deterministic grammar-generated variants from
+`src/test/java/io/titan/graphql/codegen/GeneratedDatabaseEngineCorpus.java` against the independent
+expected JSON in `src/test/resources/database-engine-corpus/commerce-generated-v1.json`.
+Direct installed tests and standalone HTTP run the same variants on both dialects. Installed
+measurements report nearest-rank p50/p95 request latency alongside asserted statement and row
+ledgers for growing parent and child populations. The full gate writes the generation/install
+task profile under `build/reports/profile`.
 
 The [M5 parity report](database-engine-m5-parity.md) records the fixed corpus, identity checks,
 measurements, and last complete parity run. A package is not deployable just because its Java

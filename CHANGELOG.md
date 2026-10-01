@@ -1,26 +1,20 @@
 # Changelog
 
-All notable public-release changes are recorded here.
+## 0.1.0
 
-## Unreleased
+The database engine migration replaces the JVM and Quarkus serving paths with a standalone HTTP
+frontend that forwards each whole request to an installed PostgreSQL function or MySQL procedure.
+The reviewed model drives database parsing, validation, coercion, policies, reads, introspection,
+and serial custom mutations. Durable audit, idempotency, and transactional outbox behavior accompany
+domain writes. Management jobs use the same database contract and a separate control worker;
+container tests prove worker restart and reviewed preview publication.
 
-- Added GPLv3 licensing and public-project governance material.
-- Made HTTP request-context headers opt-in and protected the management endpoint with a
-  server-configured bearer token.
-- Added a reproducible submodule-based source layout and local release checklist.
-- Added schema-driven compiled point, connection, count, filter, ordering, computed-field,
-  direct-relation, relation-connection, and recursively batched nested-relation carriers.
-- Added generic policy compilation for reviewed root, type-row, field, and relation gates, with
-  authorization predicates enforced in generated SQL on PostgreSQL and MySQL.
-- Added a second, unrelated commerce schema proof to detect demo-specific runtime and package
-  coupling across both supported database dialects.
-- Added model/package attestation, deterministic binding, install verification, rollback output,
-  and operator, migration, security, and verification guidance for public releases.
-- Added explicit dependency-injected custom application mutation handlers to compiled mode, with
-  descriptor validation, authorization, payload shaping, and thread-safe audit delivery; the live
-  commerce proof executes the extension on both dialects.
-- Removed the implicit HTTP `reader` role, enforced query-only GET requests, exposed compiled
-  deployment fingerprints in response headers, packaged both serving JDBC drivers, and added
-  nullable-scalar/introspection proof.
-- Replaced demo-named filter/order variable coercion with active-schema input metadata and proved
-  unrelated commerce filter, order, and custom-mutation input variables on both dialects.
+The local release gate exercises unrelated schemas on both databases, fixed expected results,
+grammar-generated equivalent documents, transaction and replacement failures, artifact closure,
+privacy, and the container path. Runtime ZIPs include project and dependency license notices.
+The project requires JDK 21 and local Docker for the complete build and release checks.
+
+This pre-1.0 release supports the reviewed `titan.graphql/v1alpha1` model surface documented in
+`docs/query-contract.md`. It has no existing deployed service or caller migration. The removed
+execution modes, legacy entry shapes, and Quarkus commands have no compatibility fallback;
+`docs/migration.md` describes the replacement workflow.

@@ -28,7 +28,8 @@ test of an old JVM or carrier path is not release evidence for the standalone se
 ## Build and verify
 
 Initialize the pinned Titan submodules and use JDK 21. Docker is required for installed-package,
-HTTP, and container-deployment tests; the ordinary unit suite does not require it.
+HTTP, and container-deployment tests. Ordinary tests exclude Docker-tagged cases, but a fresh
+checkout also uses Docker to generate the database catalog before compilation.
 
 ```bash
 git submodule update --init --recursive
@@ -61,3 +62,6 @@ The source-model format is in [docs/model-document-format.md](docs/model-documen
 active request contract in [docs/query-contract.md](docs/query-contract.md), and operator procedures
 in [docs/operations.md](docs/operations.md). [docs/verification.md](docs/verification.md) maps
 local checks to their evidence.
+
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) records dependency licenses and corresponding
+source locations. The runtime ZIPs include the project license and dependency notices.

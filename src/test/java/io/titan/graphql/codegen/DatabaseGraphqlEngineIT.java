@@ -32,7 +32,13 @@ class DatabaseGraphqlEngineIT {
     void installedEntryPointExecutesPointReadVariablesAliasesAndLiveData(TitanTestContext context)
             throws Exception {
         Connection connection = context.connection(DatabaseTarget.POSTGRESQL);
+        long installationStarted = System.nanoTime();
         DemoBlogSqlDeployment.deployPackagedDatabaseEngine(connection);
+        DatabaseEngineMeasurements.recordInstallation("blog", "postgresql", installationStarted);
+        JsonNode measuredPoint = DatabaseEngineMeasurements.measure("blog", "postgresql", 1, 0,
+                () -> execute(connection, "{ article(id: 1) { id title } }", "", "{}",
+                        DatabaseEngineTestRequestContract.executionMetricsTrustedContext("reader")));
+        assertEquals(1, measuredPoint.at("/data/article/id").asInt(), measuredPoint::toString);
 
         JsonNode literal = execute(connection, "{ article(id: 1) { id title titleLength } }", "", "{}");
         assertEquals(1, literal.at("/data/article/id").asInt());

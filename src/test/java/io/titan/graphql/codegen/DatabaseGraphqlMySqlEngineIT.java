@@ -29,7 +29,13 @@ class DatabaseGraphqlMySqlEngineIT {
     void installedProcedureReturnsOneCompletedGraphqlResponseResultSet(TitanTestContext context)
             throws Exception {
         Connection connection = context.connection(DatabaseTarget.MYSQL);
+        long installationStarted = System.nanoTime();
         DemoBlogSqlDeployment.deployPackagedDatabaseEngineMySql(connection);
+        DatabaseEngineMeasurements.recordInstallation("blog", "mysql", installationStarted);
+        JsonNode measuredPoint = DatabaseEngineMeasurements.measure("blog", "mysql", 1, 0,
+                () -> execute(connection, "{ article(id: 1) { id title } }", "", "{}",
+                        DatabaseEngineTestRequestContract.executionMetricsTrustedContext("reader")));
+        assertEquals(1, measuredPoint.at("/data/article/id").asInt(), measuredPoint::toString);
 
         JsonNode literal = execute(connection, "{ article(id: 1) { id title titleLength } }", "", "{}");
         assertEquals(1, literal.at("/data/article/id").asInt());

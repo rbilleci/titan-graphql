@@ -35,6 +35,7 @@ final class DatabaseEngineExpectedResultCorpus {
     }
 
     static void assertCommerceV1(Executor executor) throws Exception {
+        GeneratedDatabaseEngineCorpus.assertCommerce(executor);
         JsonNode corpus = read("/database-engine-corpus/commerce-v1.json");
         assertEquals("titan.graphql.database-engine-corpus/v1", corpus.path("schemaVersion").asText());
         for (JsonNode testCase : corpus.path("cases")) {

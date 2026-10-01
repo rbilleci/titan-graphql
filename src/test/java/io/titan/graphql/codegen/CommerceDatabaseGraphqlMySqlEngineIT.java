@@ -49,6 +49,39 @@ class CommerceDatabaseGraphqlMySqlEngineIT {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     @Test
+    void installedPackageMeasuresGrowingParentAndChildCardinality(TitanTestContext context) throws Exception {
+        Connection connection = context.connection(DatabaseTarget.MYSQL);
+        long installationStarted = System.nanoTime();
+        CommerceDatabaseEngineDeployment.deployMySql(connection);
+        DatabaseEngineMeasurements.recordInstallation("commerce", "mysql", installationStarted);
+        CommerceDatabaseEngineDeployment.addCustomers(connection, 9, 63);
+        CommerceDatabaseEngineDeployment.addOneOrderPerCustomer(connection, 8, 64);
+        int installedChildren = 1;
+        for (int children : new int[] {1, 2, 4}) {
+            while (installedChildren < children) {
+                CommerceDatabaseEngineDeployment.addOneOrderPerCustomer(
+                        connection, 7, 65, (++installedChildren) * 1_000_000L);
+            }
+            for (int parents : children == 1 ? new int[] {1, 2, 64, 65} : new int[] {65}) {
+                JsonNode result = DatabaseEngineMeasurements.measure("commerce", "mysql", parents, children,
+                        () -> execute(connection,
+                                "{ customers(first: " + parents + ") { edges { node { id orders { id } } } } } }",
+                                "", "{}", "reader", false,
+                                DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml"),
+                                DatabaseEngineTestRequestContract.executionMetricsTrustedContext("reader")));
+                assertEquals(parents, result.at("/data/customers/edges").size(), result::toString);
+                assertEquals(parents <= 64 ? 2 : 3,
+                        result.at("/extensions/titanExecution/applicationSqlStatements").asInt(), result::toString);
+                assertEquals(parents * (children + 1L) + 1L,
+                        result.at("/extensions/titanExecution/decodedApplicationRows").asLong(), result::toString);
+                for (JsonNode edge : result.at("/data/customers/edges")) {
+                    assertEquals(children, edge.at("/node/orders").size(), result::toString);
+                }
+            }
+        }
+    }
+
+    @Test
     void installedPackageDispatchesEveryDeclaredCommerceMutation(TitanTestContext context) throws Exception {
         Connection connection = context.connection(DatabaseTarget.MYSQL);
         CommerceDatabaseEngineDeployment.deployMySql(connection);

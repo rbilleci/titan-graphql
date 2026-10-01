@@ -1,0 +1,15 @@
+{
+  "data": {
+    "selected": {
+      "identifier": 7,
+      "displayName": "Northwind",
+      "active": true,
+      "rating": 42,
+      "verified": null
+    },
+    "country": {
+      "code": "NL",
+      "name": "Netherlands"
+    }
+  }
+}

@@ -53,7 +53,8 @@ private_authors="$(git log --all --format='%ae' | sort -u \
 ./gradlew test
 if [[ "$full" == true ]]; then
   # The local gate exercises installed whole-request packages and the isolated HTTP ZIP on both dialects.
-  ./gradlew titanGraphqlDatabaseEngineReleaseCheck
+  ./gradlew titanGraphqlDatabaseEngineReleaseCheck --profile
+  ./gradlew databaseEngineContainerDeploymentIntegrationTest
 fi
 
 echo "release check passed ($([[ "$full" == true ]] && echo full || echo fast))"

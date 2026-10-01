@@ -1,0 +1,85 @@
+{
+  "checkedAt": "2026-10-01 12:25:12 UTC",
+  "source": "https://api.osv.dev/v1/querybatch",
+  "scope": "External Maven dependencies bundled in the frontend and control worker distributions",
+  "request": {
+    "queries": [
+      {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "com.fasterxml.jackson.core:jackson-annotations"
+        },
+        "version": "2.21"
+      },
+      {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "com.fasterxml.jackson.core:jackson-core"
+        },
+        "version": "2.21.7"
+      },
+      {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "com.fasterxml.jackson.core:jackson-databind"
+        },
+        "version": "2.21.7"
+      },
+      {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml"
+        },
+        "version": "2.21.7"
+      },
+      {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "com.mysql:mysql-connector-j"
+        },
+        "version": "8.4.0"
+      },
+      {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "com.google.protobuf:protobuf-java"
+        },
+        "version": "3.25.5"
+      },
+      {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.postgresql:postgresql"
+        },
+        "version": "42.7.13"
+      },
+      {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.yaml:snakeyaml"
+        },
+        "version": "2.5"
+      },
+      {
+        "package": {
+          "ecosystem": "Maven",
+          "name": "org.checkerframework:checker-qual"
+        },
+        "version": "3.55.1"
+      }
+    ]
+  },
+  "response": {
+    "results": [
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {},
+      {}
+    ]
+  }
+}
