@@ -95,16 +95,19 @@ class Deployment:
 
     def compose(self, *arguments, capture=False, input_text=None):
         environment = dict(os.environ)
-        for name in ["DOGFOOD_DATABASE_PASSWORD", "DOGFOOD_ADMIN_TOKEN", "DOGFOOD_HTTP_PORT"]:
+        for name in ["DOGFOOD_DATABASE_PASSWORD", "DOGFOOD_ADMIN_TOKEN", "DOGFOOD_HTTP_PORT",
+                     "DOGFOOD_FRONTEND_PASSWORD", "DOGFOOD_WORKER_PASSWORD"]:
             environment.pop(name, None)
         environment["DOGFOOD_STATE_DIR"] = str(self.directory)
+        configuration = ["-f", str(ROOT / "deployment/compose.dogfood.yaml")]
+        if self.settings.get("hardened"):
+            configuration += ["-f", str(ROOT / "deployment/compose.hardened.yaml")]
         return run(["docker", "compose", "--project-name", self.settings["project"],
-                    "--env-file", str(self.directory / ".env"), "-f",
-                    str(ROOT / "deployment/compose.dogfood.yaml"), *arguments],
+                    "--env-file", str(self.directory / ".env"), *configuration, *arguments],
                    capture=capture, input_text=input_text, environment=environment)
 
     def control(self, *arguments):
-        if arguments[0] == "publish-preview":
+        if arguments[0] == "publish-preview" or (arguments[0] == "install-management" and self.settings.get("hardened")):
             image = self.compose("images", "-q", "worker", capture=True).strip()
             if not re.fullmatch(r"(?:sha256:)?[a-f0-9]{64}", image):
                 raise RuntimeError("the built worker image is required for publication")
@@ -114,7 +117,7 @@ class Deployment:
             environment["TITAN_GRAPHQL_CONTROL_DB_PASSWORD"] = values["DOGFOOD_DATABASE_PASSWORD"]
             output = run(["docker", "run", "--rm", "--network", self.settings["project"] + "_default",
                           "--user", str(os.getuid()) + ":" + str(os.getgid()), "--volume",
-                          str(self.deploy) + ":/deploy:rw", "--env", "TITAN_GRAPHQL_CONTROL_DB_USER",
+                          str(self.deploy) + (":/deploy:rw" if arguments[0] == "publish-preview" else ":/deploy:ro"), "--env", "TITAN_GRAPHQL_CONTROL_DB_USER",
                           "--env", "TITAN_GRAPHQL_CONTROL_DB_PASSWORD", "--entrypoint",
                           "/opt/titan/bin/titan-graphql-control", image, *arguments],
                          capture=True, environment=environment)
@@ -229,6 +232,9 @@ class Deployment:
             "installedAt": now(), "sourceCommit": run(["git", "rev-parse", "HEAD"], capture=True).strip(),
             "packageDirectory": staged.relative_to(self.deploy).as_posix(), "packageIdentity": identity})
         self.public_mount_permissions()
+        if self.settings.get("hardened"):
+            from operations import apply_roles
+            apply_roles(self)
         self.compose("up", "-d", "frontend", "worker")
         self.await_admin()
 

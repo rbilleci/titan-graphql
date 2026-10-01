@@ -1,0 +1,9 @@
+services:
+  frontend:
+    environment:
+      TITAN_GRAPHQL_JDBC_USERNAME: titan_frontend
+      TITAN_GRAPHQL_JDBC_PASSWORD: ${DOGFOOD_FRONTEND_PASSWORD:?run deployment/operations.py harden}
+  worker:
+    environment:
+      TITAN_GRAPHQL_CONTROL_DB_USER: titan_worker
+      TITAN_GRAPHQL_CONTROL_DB_PASSWORD: ${DOGFOOD_WORKER_PASSWORD:?run deployment/operations.py harden}

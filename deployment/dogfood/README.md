@@ -1,5 +1,8 @@
 # Persistent local dogfood deployment
 
+Local identity hardening, backup/restore, credential rotation, interruption drills, and health checks
+are documented in [OPERATIONS.md](OPERATIONS.md).
+
 Run Titan GraphQL's management workflow against its own persistent control-job database.
 The application model at `jobs.titan.graphql.yaml` exposes job identity, type, status, and attempt
 count, not request payloads, model source, result JSON, credentials, or application writes.
