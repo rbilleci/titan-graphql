@@ -93,8 +93,9 @@ class DeploymentTests(unittest.TestCase):
     def test_authenticated_request_uses_stable_management_keys(self):
         self.initialize()
         response = io.BytesIO(b'{"data":{"ok":true}}')
+        request_id = "8def8a07-42a2-491e-9af1-fa21cdc46b20"
         with patch.object(dogfood, "urlopen", return_value=response) as send:
-            self.assertEqual({"ok": True}, self.deployment.request("{ ok }", key="8def8a07-42a2-491e-9af1-fa21cdc46b20"))
+            self.assertEqual({"ok": True}, self.deployment.request("{ ok }", key=request_id))
         request = send.call_args.args[0]
         headers = dict((key.lower(), value) for key, value in request.header_items())
         self.assertTrue(headers["x-titan-management-request-id"].startswith("dogfood-8"))

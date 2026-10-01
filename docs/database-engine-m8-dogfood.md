@@ -1,7 +1,9 @@
 # M8 persistent internal deployment
 
-Status: implementation and first workflow verification pass; final committed-source recovery
-verification and evidence retention remain open. M7 remains the completed engine-release milestone.
+Status: complete. The retained execution at `release-evidence/m8-dogfood-verification.json`
+verifies implementation commit `c93489a16a29d60b784b3957f458c163c5c8c74a`, including container
+recreation, a new workflow after recovery, and stop/start package reinstallation.
+M7 remains the completed engine-release milestone.
 M8 adds a persistent local consumer of that released serving boundary, not new GraphQL semantics.
 
 The approved target uses local Docker Compose, a dedicated PostgreSQL database, and localhost-only
@@ -21,6 +23,27 @@ The acceptance matrix keeps deployment proof separate from the completed M7 rele
 | M8-SERVING-BOUNDARY | Existing isolated frontend ZIP and installed Titan packages | Package/descriptor identities and rejection of unreviewed preview documents |
 | M8-RECREATION-DURABILITY | Recovery removes service containers but retains database volume and deployment state | Changed container IDs, unchanged prior job/draft results, identical volume, and a new successful workflow |
 | M8-REPRODUCIBLE-OPERATIONS | Scoped init/up/workflow/verify/recover/status/stop commands | Client tests, live deployment commands, and setup/recovery instructions |
+
+## Retained acceptance evidence
+
+`release-evidence/m8-dogfood-verification.json` retains the completed workflow, job responses,
+package identity, publication, service inspection, recovery, and startup verification. Its
+`execution.recovery` compares container identities and the database volume, retains the previous
+jobs, and identifies the fresh workflow the recovered worker completed. Its
+`execution.startup-verification` records preserved credentials, jobs, draft, and database volume
+after stopping services and repeating installation. Secrets and machine-specific paths remain local.
+
+Run `python3 -B docs/release-evidence/derive-dogfood.py deployment/.dogfood` to derive this evidence
+from the private operational records and rerun the client tests. The derivation checks job types,
+successful statuses, disjoint recovery job/container identities, publication/package binding,
+preservation assertions, source hashes, and absence of the saved credentials in its output.
+The retained artifact describes that completed execution, not a perpetual health guarantee.
+
+The derivation also compares the local frontend and worker ZIP digests with the published M7
+assets retained in `release-evidence/m7-publication.json`. M8 uses those unchanged serving artifacts.
+`.gitleaksignore` excludes only the historical test request UUID at its exact Git fingerprint;
+that identifier is not an authentication credential. The test now names it `request_id` so
+source-archive scans do not mistake the management idempotency parameter for an API key.
 
 ## Scope and trust
 
@@ -56,5 +79,6 @@ pins, and the original deployment Compose file remain unchanged.
 The first recovery preserved existing state but exposed duplicate artifact-registry entries when
 the client retried the same draft. Titan rejected the duplicates rather than choosing a package
 implicitly. Registration now atomically replaces a unique mapping and rejects conflicting existing
-entries; client regression tests cover retries and contradictions. Final acceptance requires a
-fresh recovery run after that correction.
+entries; client regression tests cover retries and contradictions. The retained
+`release-evidence/m8-dogfood-verification.json` records a successful fresh recovery after that
+correction, followed by stop/start and package reinstallation without resetting state.

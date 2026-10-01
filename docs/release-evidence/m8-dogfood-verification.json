@@ -1,0 +1,362 @@
+{
+  "clientTests": {
+    "command": "python3 -B -m unittest discover -s deployment -p 'test_dogfood.py' -v",
+    "errors": 0,
+    "failures": 0,
+    "skipped": 0,
+    "testsRun": 17
+  },
+  "derivation": "python3 -B docs/release-evidence/derive-dogfood.py deployment/.dogfood",
+  "derivedAt": "2026-10-01T19:28:24.207125+00:00",
+  "execution": {
+    "installation": {
+      "installedAt": "2026-10-01T19:19:38.712347+00:00",
+      "packageDirectory": "packages/0e2723e4ebb7713ea0bea99b6d5038a3ee940aca908cb803fc2308e20493dc1e",
+      "packageIdentity": {
+        "artifactId": "titan.generated-sql.7fd8d78455b3016e",
+        "manifestContentSha256": "8ff47f597d66dd8290512e13b0bc8e95c5eeb3e29bdc0cf6b339f36f65b6d5af",
+        "modelName": "local-control-jobs",
+        "modelSemanticSha256": "505f48fc6f5dd95e8ecec239914274d8637a9ce891fe7fd6e2a470e162a553f0",
+        "modelVersion": "1",
+        "schemaVersion": "titan.graphql.package-binding.v1",
+        "sourceInputsSha256": "6a05866d61e4b766144b34325b083a4457a4a769b3f8a5a58b9222e565d06a1e"
+      },
+      "sourceCommit": "c93489a16a29d60b784b3957f458c163c5c8c74a"
+    },
+    "recovery": {
+      "allServiceContainersReplaced": true,
+      "databaseVolumeRetained": true,
+      "newWorkflowAfterRecovery": {
+        "artifactSetId": "artifact-draft-505f48fc6f5d",
+        "completedAt": "2026-10-01T19:17:40.573256+00:00",
+        "draftId": "draft-505f48fc6f5d",
+        "jobs": {
+          "artifact": "0486e2cc-5f1b-41df-8eee-4c7d4f53205d",
+          "import": "f450db9e-4429-4b66-999e-3eea5e716b6c",
+          "review": "dfcf6ad5-cbce-4960-8366-0cf38c5b71ca",
+          "validation": "fc055510-c7ff-45a3-8d9e-4d262e7e5fb4"
+        },
+        "modelId": "model-local-control-jobs",
+        "modelSourceSha256": "eda7c2041d6297e82dc2079d00c13848122a2e35f017d0eb37987c79c1a3cb78",
+        "observedOperationId": "observed-operation-66359b9fcb9b6bc1",
+        "previewExpiresAt": "2026-10-08T19:17:38.796681+00:00",
+        "publicScopeApproved": true,
+        "publication": {
+          "artifactManifestHash": "8ff47f597d66dd8290512e13b0bc8e95c5eeb3e29bdc0cf6b339f36f65b6d5af",
+          "artifactManifestPath": "titan-package/titan-artifact.json",
+          "artifactSetId": "artifact-draft-505f48fc6f5d",
+          "createdAt": "2026-10-01T19:17:39.975576403Z",
+          "createdBy": "local-dogfood-operator",
+          "draftId": "draft-505f48fc6f5d",
+          "endpoint": {
+            "consoleUrl": "",
+            "graphqlEndpoint": "/preview/dogfood-jobs/graphql",
+            "unstable": true
+          },
+          "environment": "dogfood",
+          "expiration": {
+            "expires": true,
+            "expiresAt": "2026-10-08T19:17:38.796681Z"
+          },
+          "id": "dogfood-jobs",
+          "modelId": "model-local-control-jobs",
+          "schemaHash": "99ce9ffbcf30b8ab7fa2d3410d5099b9ba6247587541994e10bd48036938d60d",
+          "status": "READY"
+        },
+        "registryId": "registry-model-local-control-jobs-dogfood",
+        "runId": "a75679c9-93f3-4a60-86e1-423389628829",
+        "startedAt": "2026-10-01T19:17:31.228614+00:00"
+      },
+      "previousJobsAfterRecreation": {
+        "artifact": {
+          "attemptCount": 14,
+          "id": "d77f4d5c-2d6b-4abe-8d40-6275bd941390",
+          "jobType": "artifact.generate",
+          "status": "succeeded"
+        },
+        "import": {
+          "attemptCount": 1,
+          "id": "9620eed9-758b-453b-9040-5051e383d53e",
+          "jobType": "model.import",
+          "status": "succeeded"
+        },
+        "review": {
+          "attemptCount": 1,
+          "id": "cc884aaa-9089-4e18-9930-912f06abe88b",
+          "jobType": "operation.review",
+          "status": "succeeded"
+        },
+        "validation": {
+          "attemptCount": 1,
+          "id": "ac726646-6cb8-461a-9b2b-ba0f610404c8",
+          "jobType": "model.validate",
+          "status": "succeeded"
+        }
+      },
+      "previousWorkflow": {
+        "artifactSetId": "artifact-draft-505f48fc6f5d",
+        "completedAt": "2026-10-01T19:17:04.968520+00:00",
+        "draftId": "draft-505f48fc6f5d",
+        "jobs": {
+          "artifact": "d77f4d5c-2d6b-4abe-8d40-6275bd941390",
+          "import": "9620eed9-758b-453b-9040-5051e383d53e",
+          "review": "cc884aaa-9089-4e18-9930-912f06abe88b",
+          "validation": "ac726646-6cb8-461a-9b2b-ba0f610404c8"
+        },
+        "modelId": "model-local-control-jobs",
+        "modelSourceSha256": "eda7c2041d6297e82dc2079d00c13848122a2e35f017d0eb37987c79c1a3cb78",
+        "observedOperationId": "observed-operation-713e64c3ea3ad03c",
+        "previewExpiresAt": "2026-10-08T19:17:03.141071+00:00",
+        "publicScopeApproved": true,
+        "publication": {
+          "artifactManifestHash": "8ff47f597d66dd8290512e13b0bc8e95c5eeb3e29bdc0cf6b339f36f65b6d5af",
+          "artifactManifestPath": "titan-package/titan-artifact.json",
+          "artifactSetId": "artifact-draft-505f48fc6f5d",
+          "createdAt": "2026-10-01T19:17:04.345698235Z",
+          "createdBy": "local-dogfood-operator",
+          "draftId": "draft-505f48fc6f5d",
+          "endpoint": {
+            "consoleUrl": "",
+            "graphqlEndpoint": "/preview/dogfood-jobs/graphql",
+            "unstable": true
+          },
+          "environment": "dogfood",
+          "expiration": {
+            "expires": true,
+            "expiresAt": "2026-10-08T19:17:03.141071Z"
+          },
+          "id": "dogfood-jobs",
+          "modelId": "model-local-control-jobs",
+          "schemaHash": "99ce9ffbcf30b8ab7fa2d3410d5099b9ba6247587541994e10bd48036938d60d",
+          "status": "READY"
+        },
+        "registryId": "registry-model-local-control-jobs-dogfood",
+        "runId": "a658a241-efa7-4849-b000-21739cd9a6a2",
+        "startedAt": "2026-10-01T19:12:36.725349+00:00"
+      },
+      "servicesAfter": {
+        "database": {
+          "containerId": "b8669cb68a3285a794c43b627334b9600806de90ebc17fee411216f1bed3a2d9",
+          "imageId": "sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94",
+          "namedVolumes": [
+            "titan-graphql-dogfood_dogfood-database"
+          ],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        },
+        "frontend": {
+          "containerId": "c4f0e8a9889776383a1876def3d133ee6797febc0cac1008a9eeec08a4f8e93a",
+          "imageId": "sha256:74d89f424ae58ee9cb161acb1765b429ee002294e56619b19f8aed9be3d1b624",
+          "namedVolumes": [],
+          "publishedPorts": {
+            "8080/tcp": [
+              {
+                "HostIp": "127.0.0.1",
+                "HostPort": "18080"
+              }
+            ]
+          },
+          "restartPolicy": "unless-stopped"
+        },
+        "worker": {
+          "containerId": "9477c5f8f5b90198adb6b76d61be912c0f4a860e5e4eb63eb05faeafc0b36ca4",
+          "imageId": "sha256:b1358035d6a6664ae395c31cfba290b641b5bc409acc0e66c63dd96cf19c8cf7",
+          "namedVolumes": [],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        }
+      },
+      "servicesBefore": {
+        "database": {
+          "containerId": "3d2a66fd7f462e411f4c7c0290e327102e4995a6cb609e2521341e807b5c3da6",
+          "imageId": "sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94",
+          "namedVolumes": [
+            "titan-graphql-dogfood_dogfood-database"
+          ],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        },
+        "frontend": {
+          "containerId": "82f660ab4f6235ab7b22034801c4cc03322fb3953acf4065f3cb8977a86bd8e7",
+          "imageId": "sha256:74d89f424ae58ee9cb161acb1765b429ee002294e56619b19f8aed9be3d1b624",
+          "namedVolumes": [],
+          "publishedPorts": {
+            "8080/tcp": [
+              {
+                "HostIp": "127.0.0.1",
+                "HostPort": "18080"
+              }
+            ]
+          },
+          "restartPolicy": "unless-stopped"
+        },
+        "worker": {
+          "containerId": "a727ca7f475c73c9cc6d0befed4ef20316ae25b46019a1aa372d2dbbb6470341",
+          "imageId": "sha256:b1358035d6a6664ae395c31cfba290b641b5bc409acc0e66c63dd96cf19c8cf7",
+          "namedVolumes": [],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        }
+      },
+      "verifiedAt": "2026-10-01T19:17:44.657268+00:00"
+    },
+    "startup-verification": {
+      "databaseVolumePreserved": true,
+      "draftPreserved": true,
+      "packageInstallation": {
+        "installedAt": "2026-10-01T19:19:38.712347+00:00",
+        "packageDirectory": "packages/0e2723e4ebb7713ea0bea99b6d5038a3ee940aca908cb803fc2308e20493dc1e",
+        "packageIdentity": {
+          "artifactId": "titan.generated-sql.7fd8d78455b3016e",
+          "manifestContentSha256": "8ff47f597d66dd8290512e13b0bc8e95c5eeb3e29bdc0cf6b339f36f65b6d5af",
+          "modelName": "local-control-jobs",
+          "modelSemanticSha256": "505f48fc6f5dd95e8ecec239914274d8637a9ce891fe7fd6e2a470e162a553f0",
+          "modelVersion": "1",
+          "schemaVersion": "titan.graphql.package-binding.v1",
+          "sourceInputsSha256": "6a05866d61e4b766144b34325b083a4457a4a769b3f8a5a58b9222e565d06a1e"
+        },
+        "sourceCommit": "c93489a16a29d60b784b3957f458c163c5c8c74a"
+      },
+      "previousJobsPreserved": true,
+      "secretValuesPreserved": true,
+      "sourceCommit": "c93489a16a29d60b784b3957f458c163c5c8c74a",
+      "verifiedAt": "2026-10-01T19:19:43.112734+00:00"
+    },
+    "verification": {
+      "checks": {
+        "adminAuthenticationRequired": true,
+        "managementNotExposedOnApplicationRoute": true,
+        "reviewedPreviewReadsActualJobs": true,
+        "unreviewedOperationRejected": true
+      },
+      "draft": {
+        "id": "draft-505f48fc6f5d",
+        "status": "validated"
+      },
+      "previewResults": {
+        "artifact": {
+          "attemptCount": 1,
+          "id": "0486e2cc-5f1b-41df-8eee-4c7d4f53205d",
+          "jobType": "artifact.generate",
+          "status": "succeeded"
+        },
+        "import": {
+          "attemptCount": 1,
+          "id": "f450db9e-4429-4b66-999e-3eea5e716b6c",
+          "jobType": "model.import",
+          "status": "succeeded"
+        },
+        "review": {
+          "attemptCount": 1,
+          "id": "dfcf6ad5-cbce-4960-8366-0cf38c5b71ca",
+          "jobType": "operation.review",
+          "status": "succeeded"
+        },
+        "validation": {
+          "attemptCount": 1,
+          "id": "fc055510-c7ff-45a3-8d9e-4d262e7e5fb4",
+          "jobType": "model.validate",
+          "status": "succeeded"
+        }
+      },
+      "services": {
+        "database": {
+          "containerId": "b8669cb68a3285a794c43b627334b9600806de90ebc17fee411216f1bed3a2d9",
+          "imageId": "sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94",
+          "namedVolumes": [
+            "titan-graphql-dogfood_dogfood-database"
+          ],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        },
+        "frontend": {
+          "containerId": "f25eb5ccc44958e0afa8035c8c6fae8bdd7a08fa7edacb3a2e0dea9c70f900b4",
+          "imageId": "sha256:16555ce38610687d5ac054060668227ef3fe25662b7880e05a685990cc221c60",
+          "namedVolumes": [],
+          "publishedPorts": {
+            "8080/tcp": [
+              {
+                "HostIp": "127.0.0.1",
+                "HostPort": "18080"
+              }
+            ]
+          },
+          "restartPolicy": "unless-stopped"
+        },
+        "worker": {
+          "containerId": "2ad1cdf2b843d9b72628e086c8aa99cca939ea93cc8a11b231df7d20fc3b9d99",
+          "imageId": "sha256:eca62ae94a7bbfd4915c1b5577510c2c9a35ac0db5df03766f960c11196992aa",
+          "namedVolumes": [],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        }
+      },
+      "sourceCommit": "c93489a16a29d60b784b3957f458c163c5c8c74a",
+      "verifiedAt": "2026-10-01T19:26:19.064064+00:00",
+      "workflow": {
+        "artifactSetId": "artifact-draft-505f48fc6f5d",
+        "completedAt": "2026-10-01T19:17:40.573256+00:00",
+        "draftId": "draft-505f48fc6f5d",
+        "jobs": {
+          "artifact": "0486e2cc-5f1b-41df-8eee-4c7d4f53205d",
+          "import": "f450db9e-4429-4b66-999e-3eea5e716b6c",
+          "review": "dfcf6ad5-cbce-4960-8366-0cf38c5b71ca",
+          "validation": "fc055510-c7ff-45a3-8d9e-4d262e7e5fb4"
+        },
+        "modelId": "model-local-control-jobs",
+        "modelSourceSha256": "eda7c2041d6297e82dc2079d00c13848122a2e35f017d0eb37987c79c1a3cb78",
+        "observedOperationId": "observed-operation-66359b9fcb9b6bc1",
+        "previewExpiresAt": "2026-10-08T19:17:38.796681+00:00",
+        "publicScopeApproved": true,
+        "publication": {
+          "artifactManifestHash": "8ff47f597d66dd8290512e13b0bc8e95c5eeb3e29bdc0cf6b339f36f65b6d5af",
+          "artifactManifestPath": "titan-package/titan-artifact.json",
+          "artifactSetId": "artifact-draft-505f48fc6f5d",
+          "createdAt": "2026-10-01T19:17:39.975576403Z",
+          "createdBy": "local-dogfood-operator",
+          "draftId": "draft-505f48fc6f5d",
+          "endpoint": {
+            "consoleUrl": "",
+            "graphqlEndpoint": "/preview/dogfood-jobs/graphql",
+            "unstable": true
+          },
+          "environment": "dogfood",
+          "expiration": {
+            "expires": true,
+            "expiresAt": "2026-10-08T19:17:38.796681Z"
+          },
+          "id": "dogfood-jobs",
+          "modelId": "model-local-control-jobs",
+          "schemaHash": "99ce9ffbcf30b8ab7fa2d3410d5099b9ba6247587541994e10bd48036938d60d",
+          "status": "READY"
+        },
+        "registryId": "registry-model-local-control-jobs-dogfood",
+        "runId": "a75679c9-93f3-4a60-86e1-423389628829",
+        "startedAt": "2026-10-01T19:17:31.228614+00:00"
+      }
+    }
+  },
+  "runtimeArtifacts": [
+    {
+      "bytes": 9304553,
+      "digest": "sha256:ceec6858cbfb3201f66844da7b1e4b5b05d8a1cffb47253e89521c10020747cb",
+      "matchesPublishedM7": true,
+      "name": "titan-graphql-0.1.0-control-job-worker.zip"
+    },
+    {
+      "bytes": 7705188,
+      "digest": "sha256:775ee146f31245a6a2ddaa77e238f4c940ec3a93063829d95a3453eb6ff256d5",
+      "matchesPublishedM7": true,
+      "name": "titan-graphql-0.1.0-database-http-frontend.zip"
+    }
+  ],
+  "schemaVersion": "titan.graphql.dogfood-evidence.v1",
+  "sourceSha256": {
+    "deployment/compose.dogfood.yaml": "151b5fb52161fc6a1eb2a66d6d4a7bdf3bc50fff6e3d353e10407b52f42f1390",
+    "deployment/dogfood.py": "a4b45c064485a1075a98d8636019810a0edf6b9cc220b0a668efb0ae247ecf53",
+    "deployment/dogfood/LocalDogfoodControl.java": "86a36257d18a51557aa2fa3bc1fa58e93c207397ef90fd963f880b7c9882d3fd",
+    "deployment/dogfood/job.graphql": "aaed72022de8a85645649efa6bdf9c295a148533691cdd6df6aa6fd78d685b1c",
+    "deployment/dogfood/jobs.titan.graphql.yaml": "eda7c2041d6297e82dc2079d00c13848122a2e35f017d0eb37987c79c1a3cb78",
+    "deployment/test_dogfood.py": "bd3bcaac36baf1a844204de914832fbf18c5404899f688720eefd15471df4fd7"
+  }
+}
