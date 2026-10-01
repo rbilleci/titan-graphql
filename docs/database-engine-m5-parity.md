@@ -39,5 +39,5 @@ reviewed database package, not that the old demo schema's response bytes are ret
 
 The `old-read-only-mode-obsolete`, `old-entry-shape-obsolete`, `context-policy-replaced`, and
 `transport-replaced` dispositions identify behavior that should not survive as a compatibility
-path. M6 still requires final source, dependency, artifact, and clean-checkout verification before
-this migration map can support the deletion gate.
+path. M6 completed source, dependency, artifact, and clean-checkout verification; the migration
+map supports the deletion gate recorded in `database-engine-execution-plan.md`.

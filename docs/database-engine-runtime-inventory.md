@@ -1,9 +1,9 @@
 # Database-engine runtime inventory
 
-Status: M6 deletion audit in progress. M0–M5 established the replacement and parity evidence;
-`7893bd9` removes the legacy code, and `07dcad0` records the migration map. The local full release,
-container, and clean-clone gates pass. Cleanup of an ignored obsolete output directory awaits
-confirmation of the intended local target.
+Status: M6 deletion audit complete. M0–M5 established the replacement and parity evidence;
+`7893bd9` removes the legacy code, `07dcad0` records the migration map, and `dc6fc01` records
+the full release and clean-clone verification. The local full release, container, and clean-clone
+gates pass. Developer-local ignored output is not a build or release input.
 The last completed parity run and measurements are in
 [database-engine-m5-parity.md](database-engine-m5-parity.md). The 97 historical SQL-mode corpus
 case IDs have individual dispositions in
@@ -45,5 +45,6 @@ The compiled `main` JAR and runtime dependency graph have no superseded serving 
 standalone ZIP retains its reviewed class/dependency set. Installed, HTTP, container,
 privacy/history, and clean-clone checks pass. Grep absence alone is insufficient: the container
 gate and standalone HTTP tests exercise the reachable endpoints and installed package invocation.
-M6 remains open only for confirmation and removal of the obsolete ignored local output directory.
+No superseded generated output is tracked or present in the clean clone. The obsolete ignored local
+output directory is outside the release boundary and remains untouched.
 M7 separately handles publication, remote reconciliation, and final push.
