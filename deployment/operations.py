@@ -319,6 +319,8 @@ def failure_drill(deployment):
     deployment.request(query, arguments, key=identifier)
     if committed != json.loads(scalar(deployment, counters)) or any(committed[key] != 1 for key in ("jobs", "requests", "receipts")):
         raise RuntimeError("idempotent request replay duplicated committed effects")
+    deployment.workflow(new_run=True)
+    outage_before = deployment.verify()
     deployment.compose("stop", "database")
     try:
         try:
@@ -331,8 +333,11 @@ def failure_drill(deployment):
         deployment.compose("up", "-d", "--wait", "database")
         deployment.await_admin()
     after = deployment.verify()
-    if before["previewResults"] != after["previewResults"] or before["draft"] != after["draft"]:
+    if outage_before["previewResults"] != after["previewResults"] or before["draft"] != after["draft"]:
         raise RuntimeError("database outage changed durable workflow data")
+    for result in before["previewResults"].values():
+        if deployment.request(QUERY.read_text(), {"id": result["id"]}, admin=False, preview=True)["job"] != result:
+            raise RuntimeError("interruption drill changed previous workflow jobs")
     deployment.workflow(new_run=True)
     record = {"verifiedAt": now(), "project": deployment.settings["project"], "interruptedJob": job,
               "committedCountersAfterReplay": committed, "workerKilledDuringRunningImport": True,

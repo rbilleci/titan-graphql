@@ -48,7 +48,9 @@ python3 -B deployment/dogfood.py --state-dir deployment/.dogfood/drills/<drill-i
 
 The drill locks a management table to hold a real import in progress, kills its worker, releases
 the lock, and waits for the original lease to expire and retry. It replays the identical management
-request and compares committed job/request/receipt/journal counters. It then stops PostgreSQL,
+request and compares committed job/request/receipt/journal counters. A successful re-import returns
+the draft to its imported state, so the drill completes the normal workflow before testing the
+database outage. It then stops PostgreSQL,
 requires a query failure, restarts the database, verifies old state, and runs another full workflow.
 The temporary lock has a bounded lifetime; cleanup targets its uniquely named database session.
 Expect the lease retry to wait for expiration rather than changing the lease timestamps manually.
