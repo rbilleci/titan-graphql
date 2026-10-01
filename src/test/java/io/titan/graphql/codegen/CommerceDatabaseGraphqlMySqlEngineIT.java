@@ -65,7 +65,7 @@ class CommerceDatabaseGraphqlMySqlEngineIT {
             for (int parents : children == 1 ? new int[] {1, 2, 64, 65} : new int[] {65}) {
                 JsonNode result = DatabaseEngineMeasurements.measure("commerce", "mysql", parents, children,
                         () -> execute(connection,
-                                "{ customers(first: " + parents + ") { edges { node { id orders { id } } } } } }",
+                                "{ customers(first: " + parents + ") { edges { node { id orders { id } } } } }",
                                 "", "{}", "reader", false,
                                 DatabaseEngineTestRequestContract.modelHash("/graphql/commerce.titan.graphql.yaml"),
                                 DatabaseEngineTestRequestContract.executionMetricsTrustedContext("reader")));
