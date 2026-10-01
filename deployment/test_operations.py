@@ -110,6 +110,17 @@ class OperationsTests(unittest.TestCase):
             operations.failure_drill(self.deployment)
         command.assert_not_called()
 
+    def test_package_inventory_checks_bytes_not_logical_manifest_hash(self):
+        package = self.deployment.deploy / "packages" / "test"
+        package.mkdir(parents=True)
+        (package / "titan-artifact.json").write_text('{"hashes":{"manifestContentSha256":"logical"}}')
+        inventory = {"titan-artifact.json": operations.hashlib.sha256((package / "titan-artifact.json").read_bytes()).hexdigest()}
+        installation = {"packageDirectory": "packages/test", "packageFilesSha256": inventory}
+        operations.verify_package_files(self.deployment, installation)
+        (package / "titan-artifact.json").write_text("tampered")
+        with self.assertRaisesRegex(RuntimeError, "differ"):
+            operations.verify_package_files(self.deployment, installation)
+
     def test_authentication_probe_keeps_password_out_of_arguments(self):
         with patch.object(self.deployment, "compose", return_value="c" * 64), \
                 patch.object(operations, "run", return_value="1") as command:

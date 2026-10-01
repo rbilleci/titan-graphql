@@ -234,7 +234,9 @@ class Deployment:
              str(ROOT / "deployment/dogfood/LocalDogfoodControl.java")])
         save_json(self.directory / "installation.json", {
             "installedAt": now(), "sourceCommit": run(["git", "rev-parse", "HEAD"], capture=True).strip(),
-            "packageDirectory": staged.relative_to(self.deploy).as_posix(), "packageIdentity": identity})
+            "packageDirectory": staged.relative_to(self.deploy).as_posix(), "packageIdentity": identity,
+            "packageFilesSha256": {path.relative_to(staged).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+                                   for path in staged.rglob("*") if path.is_file()}})
         self.public_mount_permissions()
         if self.settings.get("hardened"):
             from operations import apply_roles

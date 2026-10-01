@@ -401,9 +401,7 @@ def check(deployment):
     installation = json.loads((deployment.directory / "installation.json").read_text())
     if workflow["publication"]["artifactManifestHash"] != installation["packageIdentity"]["manifestContentSha256"]:
         raise RuntimeError("published package identity differs from installation")
-    manifest_path = deployment.deploy / installation["packageDirectory"] / "titan-artifact.json"
-    if hashlib.sha256(manifest_path.read_bytes()).hexdigest() != installation["packageIdentity"]["manifestContentSha256"]:
-        raise RuntimeError("deployed package manifest differs from installation")
+    verify_package_files(deployment, installation)
     stalled = deployment.sql("SELECT count(*) FROM public.titan_graphql_control_jobs WHERE (status='pending' AND created_at < now()-interval '180 seconds') OR (status='running' AND lease_until < now());")
     if not re.search(r"\n\s*0\s*\n", stalled):
         raise RuntimeError("pending jobs exceed the local age limit or a running lease has expired")
@@ -412,6 +410,21 @@ def check(deployment):
         "verifiedAt": now(), "previewValid": True, "packageBindingMatches": True, "noStalledJobs": True,
         "services": evidence["services"]})
     print("Services, reviewed preview, package binding, job leases, and role boundaries pass.")
+
+
+def verify_package_files(deployment, installation):
+    package = deployment.deploy / installation["packageDirectory"]
+    if not package.resolve().is_relative_to((deployment.deploy / "packages").resolve()):
+        raise ValueError("installed package path leaves the deployment package directory")
+    if not installation.get("packageFilesSha256"):
+        raise RuntimeError("installation has no file inventory; run dogfood.py up")
+    paths = list(package.rglob("*"))
+    if package.is_symlink() or any(path.is_symlink() for path in paths):
+        raise ValueError("installed package contains a symbolic link")
+    current = {path.relative_to(package).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest()
+               for path in paths if path.is_file()}
+    if current != installation["packageFilesSha256"]:
+        raise RuntimeError("deployed package files differ from installation")
 
 
 def main():
