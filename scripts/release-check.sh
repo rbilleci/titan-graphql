@@ -52,8 +52,13 @@ private_authors="$(git log --all --format='%ae' | sort -u \
 
 ./gradlew test
 if [[ "$full" == true ]]; then
-  # The local gate exercises installed whole-request packages and the isolated HTTP ZIP on both dialects.
-  ./gradlew titanGraphqlDatabaseEngineReleaseCheck --profile
+  # These package-consuming tests do not fingerprint package bytes in their cache keys.
+  # Release approval must execute them against the current installed package identities.
+  ./gradlew titanGraphqlDatabaseEngineReleaseCheck --profile \
+    databaseEngineCommerceHttpCorpusIntegrationTest --rerun \
+    databaseEngineCommerceHttpRestartIntegrationTest --rerun \
+    databaseEnginePackageReplacementIntegrationTest --rerun \
+    databaseEngineSnapshotIntegrationTest --rerun
   ./gradlew databaseEngineContainerDeploymentIntegrationTest
 fi
 

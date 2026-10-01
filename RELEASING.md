@@ -33,6 +33,9 @@ checkout, including tracked Git metadata.
 The script intentionally requires a clean worktree and the `rbilleci/titan-graphql` origin. Run
 `scripts/release-check.sh` without `--full` for the static and ordinary unit gate while iterating.
 A fresh checkout uses Docker-backed catalog generation before compilation.
+The full gate explicitly reruns Commerce HTTP corpus/restart, replacement, and snapshot tests:
+their ordinary Gradle cache keys do not fingerprint the generated package bytes. Other tests
+declare their consumed package/distribution inputs or use unchanged compiled test fixtures.
 
 Do not publish a deployment configuration with
 `TITAN_GRAPHQL_HTTP_TRUST_REQUEST_CONTEXT_HEADERS=true` unless an authenticated gateway owns

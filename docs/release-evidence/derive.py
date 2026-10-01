@@ -39,7 +39,7 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def collect(build, source_commit):
+def collect(build, source_commit, profile_name=None):
     suites = []
     measurements = []
     for path in sorted((build / "test-results").glob("*/TEST-*.xml")):
@@ -88,6 +88,8 @@ def collect(build, source_commit):
         })
     profiles = []
     for path in sorted((build / "reports/profile").glob("*.html")):
+        if profile_name is not None and path.name != profile_name:
+            continue
         parser = ProfileRows()
         content = path.read_text()
         parser.feed(content)
@@ -98,6 +100,8 @@ def collect(build, source_commit):
             "startedLocalTime": started.group(1).strip() if started else None,
             "tasks": [row for row in parser.rows if "DatabaseEngine" in row["task"]],
         })
+    if profile_name is not None and not profiles:
+        raise ValueError("requested profile report not found: " + profile_name)
     return {"verifiedCodeCommit": source_commit, "suites": suites,
             "measurements": measurements, "packages": packages, "profiles": profiles}
 
@@ -106,5 +110,6 @@ if __name__ == "__main__":
     arguments = argparse.ArgumentParser()
     arguments.add_argument("build", type=Path)
     arguments.add_argument("source_commit")
+    arguments.add_argument("--profile")
     options = arguments.parse_args()
-    print(json.dumps(collect(options.build, options.source_commit), indent=2, sort_keys=True))
+    print(json.dumps(collect(options.build, options.source_commit, options.profile), indent=2, sort_keys=True))

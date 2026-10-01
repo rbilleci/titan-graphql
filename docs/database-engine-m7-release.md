@@ -1,7 +1,8 @@
 # M7 release evidence
 
-Status: the first clean-checkout full gate passed on `687203e`. Final archive inspection found
-excluded tracked Git metadata, so the corrected source-distribution gate requires another full run.
+Status: the corrected source archive and full gate pass on `64b569f`. Task-report review found
+cached Commerce HTTP/restart/replacement/snapshot tests after package identities changed. The
+release script now explicitly reruns those suites before accepting the final release evidence.
 Release publication and final remote synchronization remain open under
 `database-engine-execution-plan.md`, Phase 7 — final verification and release.
 `RELEASING.md` defines the on-demand publication procedure.
@@ -161,6 +162,12 @@ changing global scanner defaults. The focused archive and database-package stagi
 `titanGraphqlVerifyReleaseSourceDistribution` now requires the exact
 recursive tracked-file set and compares each entry's bytes with its source. The aggregate release
 gate depends on this verifier; the incomplete candidate is not a publication asset.
+
+The full run on `64b569f` passed the corrected source verifier, direct database suites, standalone
+demo HTTP tests, and container deployment. It reused Commerce HTTP/restart/replacement/snapshot
+results because those tasks' ordinary cache keys omitted package bytes. The release script now
+selects those tasks with Gradle's task-specific `--rerun` option. The final approval must include
+their execution against the current package identities, not only the earlier cached XML.
 
 Gitleaks `v8.30.1`, downloaded from its official release and verified against its published checksum,
 scanned all reachable parent and pinned-submodule history. The parent scan found a generic API-key
