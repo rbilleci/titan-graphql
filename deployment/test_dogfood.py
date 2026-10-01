@@ -137,7 +137,7 @@ class DeploymentTests(unittest.TestCase):
 
     def test_only_one_shot_publisher_receives_writable_mount_and_secret_environment(self):
         self.initialize()
-        with patch.object(self.deployment, "compose", return_value="a" * 64), \
+        with patch.object(self.deployment, "worker_image", return_value="a" * 64), \
                 patch.object(dogfood, "run", return_value='{"manifest":{}}') as command:
             self.deployment.control("publish-preview", "postgresql", dogfood.JDBC)
         arguments, keywords = command.call_args

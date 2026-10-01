@@ -65,13 +65,18 @@ class OperationsTests(unittest.TestCase):
 
     def test_hardened_installer_uses_owner_only_in_read_only_one_shot(self):
         self.deployment.settings["hardened"] = True
-        with patch.object(self.deployment, "compose", return_value="a" * 64), \
+        with patch.object(self.deployment, "worker_image", return_value="a" * 64), \
                 patch.object(dogfood, "run", return_value="") as command:
             self.deployment.control("install-management", "postgresql", dogfood.JDBC)
         args, kwargs = command.call_args
         self.assertIn(str(self.deployment.deploy) + ":/deploy:ro", args[0])
         self.assertEqual("titan_dogfood", kwargs["environment"]["TITAN_GRAPHQL_CONTROL_DB_USER"])
         self.assertNotIn(self.mapping["DOGFOOD_DATABASE_PASSWORD"], " ".join(args[0]))
+
+    def test_operator_uses_built_tag_not_obsolete_running_container_image(self):
+        with patch.object(dogfood, "run", return_value="sha256:" + "a" * 64) as command:
+            self.assertEqual("sha256:" + "a" * 64, self.deployment.worker_image())
+        self.assertEqual("dogfood-test-worker:latest", command.call_args.args[0][-1])
 
     def test_backup_verification_rejects_tampering_and_traversal(self):
         source = self.deployment.directory / "backup-test"

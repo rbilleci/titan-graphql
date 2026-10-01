@@ -108,7 +108,7 @@ class Deployment:
 
     def control(self, *arguments):
         if arguments[0] == "publish-preview" or (arguments[0] == "install-management" and self.settings.get("hardened")):
-            image = self.compose("images", "-q", "worker", capture=True).strip()
+            image = self.worker_image()
             if not re.fullmatch(r"(?:sha256:)?[a-f0-9]{64}", image):
                 raise RuntimeError("the built worker image is required for publication")
             environment = dict(os.environ)
@@ -127,6 +127,10 @@ class Deployment:
                                   "/opt/titan/bin/titan-graphql-control", "worker", *arguments, capture=True)
         lines = [line for line in output.splitlines() if line.startswith("{")]
         return json.loads(lines[-1]) if lines else None
+
+    def worker_image(self):
+        return run(["docker", "image", "inspect", "--format", "{{.Id}}",
+                    self.settings["project"] + "-worker:latest"], capture=True).strip()
 
     def operator(self, action, model_id, run_id):
         output = self.compose("run", "--rm", "--no-deps", "--entrypoint", "java", "worker",
