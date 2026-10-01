@@ -17,7 +17,8 @@ def read(directory, name):
 
 def collect(directory):
     records = {name: read(directory, name) for name in ("acceptance-verification", "privilege-verification",
-               "rotation-verification", "restore-verification", "health-verification", "verification", "installation")}
+               "rotation-verification", "restore-verification", "health-verification", "verification", "installation",
+               "worker-commit-audit")}
     restore = records["restore-verification"]
     drill = directory / restore["drillDirectory"]
     if drill.resolve().parent != (directory / "drills").resolve():
@@ -35,6 +36,10 @@ def collect(directory):
                 "databaseOutageRejectedRequests", "previousWorkflowPreserved", "freshWorkflowAfterOutageSucceeded"):
         assert records["failure-verification"][key]
     assert records["failure-verification"]["interruptedJob"]["attemptCount"] >= 2
+    audit = records["worker-commit-audit"]
+    assert audit["interruptedJobId"] == records["failure-verification"]["interruptedJob"]["id"]
+    assert audit["singleWorkerCommandCommit"] and audit["idempotencyRecords"] == 1
+    assert audit["auditByStatus"] == {"attempt": 1, "success": 1}
     assert all(records["rotation-verification"][key] for key in
                ("newCredentialsAccepted", "oldCredentialsRejected", "workflowDataPreserved"))
     assert all(records["privilege-verification"][key] for key in

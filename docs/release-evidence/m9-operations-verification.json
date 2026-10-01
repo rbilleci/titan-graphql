@@ -6,7 +6,7 @@
     "testsRun": 31
   },
   "derivation": "python3 -B docs/release-evidence/derive-operations.py deployment/.dogfood",
-  "derivedAt": "2026-10-01T20:51:55.455725+00:00",
+  "derivedAt": "2026-10-01T20:57:53.729304+00:00",
   "execution": {
     "acceptance-verification": {
       "freshWorkflowWithRotatedCredentialsSucceeded": true,
@@ -414,6 +414,17 @@
         "runId": "14f662ea-5479-4a5b-92bc-69be322bba2a",
         "startedAt": "2026-10-01T20:50:10.322277+00:00"
       }
+    },
+    "worker-commit-audit": {
+      "auditByStatus": {
+        "attempt": 1,
+        "success": 1
+      },
+      "auditSemanticsSource": "vendor/titan/titan-management/src/main/java/io/titan/management/JdbcTransactionalMutationStore.java",
+      "idempotencyRecords": 1,
+      "interruptedJobId": "fc88764b-c774-4c2c-b1b4-2cc37dfc6cab",
+      "singleWorkerCommandCommit": true,
+      "verifiedAt": "2026-10-01T20:55:35.884345+00:00"
     }
   },
   "runtimeArtifacts": [

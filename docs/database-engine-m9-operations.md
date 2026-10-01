@@ -24,6 +24,8 @@ restricted-role denials, independent restore, interrupted job and committed repl
 database-outage recovery, password/token rejection checks, installation file inventory, and
 successful workflows. Its acceptance record also compares the original M8 job responses and
 database volume with `release-evidence/m8-dogfood-verification.json`.
+The worker-commit audit distinguishes command attempts from successful outcomes and checks the
+command's idempotency record; attempt/outcome audit rows do not imply duplicate state changes.
 
 Run `python3 -B docs/release-evidence/derive-operations.py deployment/.dogfood` to derive the
 sanitized record from private execution artifacts and rerun the client tests. The derivation
