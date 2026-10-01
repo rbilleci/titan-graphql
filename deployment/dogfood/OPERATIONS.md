@@ -65,7 +65,8 @@ python3 -B deployment/operations.py check
 
 Rotation stops services, changes database passwords transactionally, atomically replaces `.env`,
 and recreates services. It checks the new passwords through TCP authentication and rejects the old
-passwords and admin token. `rotation-private.json` retains a private before/after journal and data
+passwords and admin token. Database probes use the service hostname rather than the container's
+trusted loopback connection. `rotation-private.json` retains a private before/after journal and data
 baseline for retry after interruption. Repeat `rotate` to resume that pending rotation. Completed
 private journals retain revoked credentials for diagnosis; protect them like backups. The sanitized
 `rotation-verification.json` contains no credentials. This procedure permits downtime and makes no

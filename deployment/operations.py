@@ -230,7 +230,10 @@ def restore_drill(deployment):
     empty = restored.sql("SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog','information_schema');")
     if not re.search(r"\n\s*0\s*\n", empty):
         raise RuntimeError("restore requires an empty database")
-    restored.sql((source / "database.sql").read_text())
+    try:
+        restored.sql((source / "database.sql").read_text())
+    except RuntimeError:
+        raise RuntimeError("database restore failed; retain the private backup and diagnostic target") from None
     apply_roles(restored)
     restored.compose("up", "-d", "frontend", "worker")
     restored.await_admin()
@@ -254,7 +257,7 @@ def probe_password(deployment, role, password):
     identifier = deployment.compose("ps", "-q", "database", capture=True).strip()
     environment = dict(os.environ, PGPASSWORD=password)
     try:
-        run(["docker", "exec", "-e", "PGPASSWORD", identifier, "psql", "-X", "-h", "127.0.0.1",
+        run(["docker", "exec", "-e", "PGPASSWORD", identifier, "psql", "-X", "-h", "database",
              "-U", role, "-d", "titan_dogfood", "-Atc", "SELECT 1"], capture=True, environment=environment)
         return True
     except RuntimeError as failure:
@@ -268,7 +271,7 @@ def role_sql(deployment, role, statement):
         raise ValueError("unknown service database role")
     identifier = deployment.compose("ps", "-q", "database", capture=True).strip()
     environment = dict(os.environ, PGPASSWORD=values(deployment)[ROLE_KEYS[role]])
-    return run(["docker", "exec", "-i", "-e", "PGPASSWORD", identifier, "psql", "-X", "-h", "127.0.0.1",
+    return run(["docker", "exec", "-i", "-e", "PGPASSWORD", identifier, "psql", "-X", "-h", "database",
                 "-U", role, "-d", "titan_dogfood", "-v", "ON_ERROR_STOP=1"], capture=True,
                input_text=statement, environment=environment)
 

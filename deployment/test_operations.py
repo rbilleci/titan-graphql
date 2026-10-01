@@ -128,13 +128,15 @@ class OperationsTests(unittest.TestCase):
         args, kwargs = command.call_args
         self.assertNotIn("b" * 64, " ".join(args[0]))
         self.assertEqual("b" * 64, kwargs["environment"]["PGPASSWORD"])
+        self.assertEqual("database", args[0][args[0].index("-h") + 1])
 
     def test_privilege_probes_authenticate_as_service_not_superuser_session(self):
         with patch.object(self.deployment, "compose", return_value="c" * 64), \
                 patch.object(operations, "run", return_value="") as command:
             operations.role_sql(self.deployment, "titan_frontend", "SELECT 1")
         args, kwargs = command.call_args
-        self.assertIn("127.0.0.1", args[0])
+        self.assertIn("database", args[0])
+        self.assertNotIn("127.0.0.1", args[0])
         self.assertIn("titan_frontend", args[0])
         self.assertEqual("SELECT 1", kwargs["input_text"])
         self.assertEqual("a" * 64, kwargs["environment"]["PGPASSWORD"])
