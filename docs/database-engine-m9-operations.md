@@ -1,6 +1,7 @@
 # M9 local operational hardening
 
-Status: implementation in progress; retained acceptance evidence remains open.
+Status: complete locally. `release-evidence/m9-operations-verification.json` retains the completed
+acceptance execution for implementation commit `a15447270180f1af1749d20c831095a44dff5f5f`.
 
 M9 hardens the persistent internal deployment documented in `deployment/dogfood/README.md`.
 It does not add public hosting, multi-user login, high availability, off-site backup infrastructure,
@@ -15,6 +16,25 @@ The acceptance matrix defines the local milestone boundary.
 | M9-CREDENTIAL-ROTATION | Private resumable journal and coordinated credential replacement | New database credentials/token work; old credentials fail; workflow state remains unchanged |
 | M9-FAILURE-RECOVERY | Worker interruption during an active import and temporary database outage in the restored stack | Expired lease retries successfully; request replay preserves committed counters; a fresh workflow succeeds after the outage |
 | M9-OPERATOR-CHECKS | Service, preview, package, job-lease, and role checks | Nonzero exit on an unhealthy condition; sanitized evidence and a recovery runbook |
+
+## Retained acceptance evidence
+
+`release-evidence/m9-operations-verification.json` retains the primary service inspection,
+restricted-role denials, independent restore, interrupted job and committed replay counters,
+database-outage recovery, password/token rejection checks, installation file inventory, and
+successful workflows. Its acceptance record also compares the original M8 job responses and
+database volume with `release-evidence/m8-dogfood-verification.json`.
+
+Run `python3 -B docs/release-evidence/derive-operations.py deployment/.dogfood` to derive the
+sanitized record from private execution artifacts and rerun the client tests. The derivation
+checks preservation flags, independent volume identities, job retry attempts, source hashes,
+matching implementation commits, and absence of saved credentials. It also compares the frontend
+and worker ZIP digests with the published M7 assets in `release-evidence/m7-publication.json`.
+These records describe completed local tests, not a production availability guarantee.
+
+The operating procedures and failure actions are in `deployment/dogfood/OPERATIONS.md`. The
+acceptance run leaves the primary stack running and stops drill stacks without removing their
+volumes, backups, or diagnostic state.
 
 ## Permission boundary
 
@@ -52,3 +72,20 @@ Restore testing uses a fresh database with an independently named volume and loc
 It rejects nonempty databases and existing project/volume identities. It never overwrites the
 original database. This proves a local logical restore, not recovery from loss of the host or a
 point-in-time recovery guarantee.
+
+## Diagnostic history
+
+The worker's installed-schema verifier requires visible management routines and constraint
+metadata. Explicit routine execution and read-only request-table metadata grants satisfy those
+checks without granting request writes or schema creation.
+
+Reinstallation exposed an obsolete-container image lookup after rebuilding the worker tag.
+Operator one-shots now resolve the newly built image independently of existing containers.
+The package check initially compared serialized manifest bytes with Titan's logical manifest hash;
+it now checks file bytes against the installation inventory rather than changing package semantics.
+
+Interruption testing confirmed that a successful re-import returns the draft to its imported state.
+The drill completes the normal workflow before comparing database-outage durability. Authentication
+testing also found that PostgreSQL trusts loopback inside this container; service-hostname probes
+now check the password-authenticated path. The pending private journal successfully resumed the
+interrupted rotation. The retained acceptance execution follows these corrections.

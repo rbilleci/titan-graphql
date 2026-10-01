@@ -17,7 +17,10 @@ identities before GraphQL execution. Never edit a descriptor to select a differe
 
 Install the separate management package and durable management tables before enabling
 `/admin/graphql`. Give the frontend a database identity with only the routine execution rights it
-needs; do not grant arbitrary clients direct routine access. Run the control-job worker separately
+needs; do not grant arbitrary clients direct routine access. Caller-permission packages also require
+explicit table/sequence privileges; routine execution alone does not suffice. The local grant
+definition and denial checks are in [the operations runbook](../deployment/dogfood/OPERATIONS.md).
+Run the control-job worker separately
 with a durable JDBC store. Model import, validation, artifact, and review requests enqueue work in
 the database; the worker commits results after the request transaction. The container setup and
 exact install commands are in [deployment/README.md](../deployment/README.md).

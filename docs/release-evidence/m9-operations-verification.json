@@ -1,0 +1,441 @@
+{
+  "clientTests": {
+    "command": "python3 -B -m unittest discover -s deployment -p 'test_*.py' -v",
+    "errors": 0,
+    "failures": 0,
+    "testsRun": 31
+  },
+  "derivation": "python3 -B docs/release-evidence/derive-operations.py deployment/.dogfood",
+  "derivedAt": "2026-10-01T20:51:55.455725+00:00",
+  "execution": {
+    "acceptance-verification": {
+      "freshWorkflowWithRotatedCredentialsSucceeded": true,
+      "originalM8Jobs": {
+        "artifact": {
+          "attemptCount": 1,
+          "id": "0486e2cc-5f1b-41df-8eee-4c7d4f53205d",
+          "jobType": "artifact.generate",
+          "status": "succeeded"
+        },
+        "import": {
+          "attemptCount": 1,
+          "id": "f450db9e-4429-4b66-999e-3eea5e716b6c",
+          "jobType": "model.import",
+          "status": "succeeded"
+        },
+        "review": {
+          "attemptCount": 1,
+          "id": "dfcf6ad5-cbce-4960-8366-0cf38c5b71ca",
+          "jobType": "operation.review",
+          "status": "succeeded"
+        },
+        "validation": {
+          "attemptCount": 1,
+          "id": "fc055510-c7ff-45a3-8d9e-4d262e7e5fb4",
+          "jobType": "model.validate",
+          "status": "succeeded"
+        }
+      },
+      "originalM8JobsUnchanged": true,
+      "reinstallationSucceeded": true,
+      "sourceCommit": "a15447270180f1af1749d20c831095a44dff5f5f",
+      "verifiedAt": "2026-10-01T20:50:30.749733+00:00"
+    },
+    "failure-verification": {
+      "committedCountersAfterReplay": {
+        "jobs": 1,
+        "journalEntries": 93,
+        "receipts": 1,
+        "requests": 1
+      },
+      "databaseOutageRejectedRequests": true,
+      "freshWorkflowAfterOutageSucceeded": true,
+      "idempotentReplayPreservedCommittedEffects": true,
+      "interruptedJob": {
+        "attemptCount": 2,
+        "id": "fc88764b-c774-4c2c-b1b4-2cc37dfc6cab",
+        "status": "succeeded"
+      },
+      "leaseRetrySucceeded": true,
+      "previousWorkflowPreserved": true,
+      "project": "titan-dogfood-restore-ca37cc19",
+      "verifiedAt": "2026-10-01T20:49:52.435018+00:00",
+      "workerKilledDuringRunningImport": true
+    },
+    "health-verification": {
+      "noStalledJobs": true,
+      "packageBindingMatches": true,
+      "previewValid": true,
+      "services": {
+        "database": {
+          "containerId": "524182e62b20322c12a5beffa13c0adb07d59f948839762fa48aa3d34b3f43a0",
+          "imageId": "sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94",
+          "namedVolumes": [
+            "titan-graphql-dogfood_dogfood-database"
+          ],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        },
+        "frontend": {
+          "containerId": "f5e47befe3f3847c7d49837cacc26f0898a061011b32f83046fc1c07c4a55990",
+          "imageId": "sha256:217f8090dee54092d314f704703f43f3d892d7ad44afa042854621a3b557780c",
+          "namedVolumes": [],
+          "publishedPorts": {
+            "8080/tcp": [
+              {
+                "HostIp": "127.0.0.1",
+                "HostPort": "18080"
+              }
+            ]
+          },
+          "restartPolicy": "unless-stopped"
+        },
+        "worker": {
+          "containerId": "7272ff4ac68fee406ae9b378102a37a06e30dcfdfc6e63d3ec3178a23137ca90",
+          "imageId": "sha256:62dab36a664493ae4ff5acf9aeb2b443a6077d1a70867184b85cc400cfa5ef2a",
+          "namedVolumes": [],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        }
+      },
+      "verifiedAt": "2026-10-01T20:50:29.951558+00:00"
+    },
+    "installation": {
+      "installedAt": "2026-10-01T20:47:00.733365+00:00",
+      "packageDirectory": "packages/0e2723e4ebb7713ea0bea99b6d5038a3ee940aca908cb803fc2308e20493dc1e",
+      "packageFilesSha256": {
+        "frontend-deployment.properties": "43e0c34a83af71b5d2d954022493aba278ed599a790054c19736a140c7f40569",
+        "postgresql/R__titan_010_runtime.sql": "b5422b6616b3b38e1b1b8bbf0610b5ecea9d21b54fed5f920cf883b1dd45c2b9",
+        "postgresql/R__titan_020_routines.sql": "b5a651f4a22e06b5deb11cdd602c87bf894905999b79d47244d7f6c278066c78",
+        "titan-artifact.json": "4b3c89e861cec285cd51824cb73c0bbd4e121d3fa6638dfe472b2ca8425b65e4",
+        "titan-graphql-database-package-identity.sha256": "0760f82001b4f47028ac36cac81adf7c5518973e2adb9c445d996d318c02e352",
+        "titan-graphql-database-runtime-identity.sha256": "fd49503e544ec0f9efa121ad85c3c6340c778fadc1d9bfcf3d0661ca86146ddc",
+        "titan-graphql-package.json": "2b20b8fba1fac58beaecd62134df5ef421096e8ea3959026b21d74a2bac32342",
+        "titan-install-plan.json": "cfed6d69235030c5d98ca14cf855e9b2d9d22e64acf88a2dd4c228600b6a3261",
+        "titan-install-verification.json": "3ad03bd5f2e5f865c58abce3e84fc4f98bed027f2406f0919a8c1c84ab791f1d",
+        "titan-object-inventory.json": "dd25135dfbfdef29a1377eeb5eed66ca89ca72b614066fe9c6e8e0e7ebdbfb0d",
+        "titan-rollback.postgresql.sql": "5f2dff145704ac0444c5933772ef577e97e05b982d624c2bdd051fa674bc8d26"
+      },
+      "packageIdentity": {
+        "artifactId": "titan.generated-sql.7fd8d78455b3016e",
+        "manifestContentSha256": "8ff47f597d66dd8290512e13b0bc8e95c5eeb3e29bdc0cf6b339f36f65b6d5af",
+        "modelName": "local-control-jobs",
+        "modelSemanticSha256": "505f48fc6f5dd95e8ecec239914274d8637a9ce891fe7fd6e2a470e162a553f0",
+        "modelVersion": "1",
+        "schemaVersion": "titan.graphql.package-binding.v1",
+        "sourceInputsSha256": "6a05866d61e4b766144b34325b083a4457a4a769b3f8a5a58b9222e565d06a1e"
+      },
+      "sourceCommit": "a15447270180f1af1749d20c831095a44dff5f5f"
+    },
+    "privilege-verification": {
+      "forbiddenOperationsRejected": true,
+      "grantDefinition": "deployment/operations.py:apply_roles",
+      "longRunningServicesUseRestrictedRoles": true,
+      "restrictedServiceRoles": true,
+      "verifiedAt": "2026-10-01T20:50:29.951280+00:00"
+    },
+    "restore-verification": {
+      "backupCreatedAt": "2026-10-01T20:47:25.769430+00:00",
+      "backupDatabaseSha256": "31b323a7ba41f396df2096be82fcd184c4af54a102faba1eff9bb00332ecd3df",
+      "drillDirectory": "drills/ca37cc19-092d-4b18-b438-230ee151265f",
+      "freshWorkflowSucceeded": true,
+      "originalProject": "titan-graphql-dogfood",
+      "restoreProject": "titan-dogfood-restore-ca37cc19",
+      "restoredStateMatchesBackup": true,
+      "restoredVerification": {
+        "checks": {
+          "adminAuthenticationRequired": true,
+          "managementNotExposedOnApplicationRoute": true,
+          "reviewedPreviewReadsActualJobs": true,
+          "unreviewedOperationRejected": true
+        },
+        "draft": {
+          "id": "draft-505f48fc6f5d",
+          "status": "validated"
+        },
+        "previewResults": {
+          "artifact": {
+            "attemptCount": 1,
+            "id": "052ddbe0-7625-45fd-859b-ac11847a0695",
+            "jobType": "artifact.generate",
+            "status": "succeeded"
+          },
+          "import": {
+            "attemptCount": 1,
+            "id": "16d122ad-3157-46a9-9af0-8c4e2613dade",
+            "jobType": "model.import",
+            "status": "succeeded"
+          },
+          "review": {
+            "attemptCount": 1,
+            "id": "1eae7b43-857b-4812-8956-028d072e1239",
+            "jobType": "operation.review",
+            "status": "succeeded"
+          },
+          "validation": {
+            "attemptCount": 1,
+            "id": "0c0af761-e681-4c1b-b316-bbe93290c703",
+            "jobType": "model.validate",
+            "status": "succeeded"
+          }
+        },
+        "services": {
+          "database": {
+            "containerId": "c732338a73e3d91c72276bf9620e292e64dda6a8f0ce1c6a09833f0478f27d33",
+            "imageId": "sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94",
+            "namedVolumes": [
+              "titan-dogfood-restore-ca37cc19_dogfood-database"
+            ],
+            "publishedPorts": {},
+            "restartPolicy": "unless-stopped"
+          },
+          "frontend": {
+            "containerId": "b38adce2cf3a13d4d28016713619bc550ff5eb9d995622221121a51852cef192",
+            "imageId": "sha256:7d33c4b1feeea55a3b44d019eaffa9c9e914284be0d12584b635fdd3c1dc4d7b",
+            "namedVolumes": [],
+            "publishedPorts": {
+              "8080/tcp": [
+                {
+                  "HostIp": "127.0.0.1",
+                  "HostPort": "44581"
+                }
+              ]
+            },
+            "restartPolicy": "unless-stopped"
+          },
+          "worker": {
+            "containerId": "7d5d5e8ef36cb356c4ab018bd913df03e7c5291cf266c5e882c7a42de7403e42",
+            "imageId": "sha256:c11c8de0eac95cde13a136cbc9593fba41caf37b79fe2302cad88e9298b52897",
+            "namedVolumes": [],
+            "publishedPorts": {},
+            "restartPolicy": "unless-stopped"
+          }
+        },
+        "sourceCommit": "a15447270180f1af1749d20c831095a44dff5f5f",
+        "verifiedAt": "2026-10-01T20:47:58.875265+00:00",
+        "workflow": {
+          "artifactSetId": "artifact-draft-505f48fc6f5d",
+          "completedAt": "2026-10-01T20:47:55.520553+00:00",
+          "draftId": "draft-505f48fc6f5d",
+          "jobs": {
+            "artifact": "052ddbe0-7625-45fd-859b-ac11847a0695",
+            "import": "16d122ad-3157-46a9-9af0-8c4e2613dade",
+            "review": "1eae7b43-857b-4812-8956-028d072e1239",
+            "validation": "0c0af761-e681-4c1b-b316-bbe93290c703"
+          },
+          "modelId": "model-local-control-jobs",
+          "modelSourceSha256": "eda7c2041d6297e82dc2079d00c13848122a2e35f017d0eb37987c79c1a3cb78",
+          "observedOperationId": "observed-operation-a44191f51b65b5eb",
+          "previewExpiresAt": "2026-10-08T20:47:53.766050+00:00",
+          "publicScopeApproved": true,
+          "publication": {
+            "artifactManifestHash": "8ff47f597d66dd8290512e13b0bc8e95c5eeb3e29bdc0cf6b339f36f65b6d5af",
+            "artifactManifestPath": "titan-package/titan-artifact.json",
+            "artifactSetId": "artifact-draft-505f48fc6f5d",
+            "createdAt": "2026-10-01T20:47:54.894842476Z",
+            "createdBy": "local-dogfood-operator",
+            "draftId": "draft-505f48fc6f5d",
+            "endpoint": {
+              "consoleUrl": "",
+              "graphqlEndpoint": "/preview/dogfood-jobs/graphql",
+              "unstable": true
+            },
+            "environment": "dogfood",
+            "expiration": {
+              "expires": true,
+              "expiresAt": "2026-10-08T20:47:53.766050Z"
+            },
+            "id": "dogfood-jobs",
+            "modelId": "model-local-control-jobs",
+            "schemaHash": "99ce9ffbcf30b8ab7fa2d3410d5099b9ba6247587541994e10bd48036938d60d",
+            "status": "READY"
+          },
+          "registryId": "registry-model-local-control-jobs-dogfood",
+          "runId": "abc716d2-9389-4b18-b8a3-313712e4ba06",
+          "startedAt": "2026-10-01T20:47:45.527657+00:00"
+        }
+      },
+      "verifiedAt": "2026-10-01T20:47:59.537021+00:00"
+    },
+    "restored-health-verification": {
+      "noStalledJobs": true,
+      "packageBindingMatches": true,
+      "previewValid": true,
+      "services": {
+        "database": {
+          "containerId": "c732338a73e3d91c72276bf9620e292e64dda6a8f0ce1c6a09833f0478f27d33",
+          "imageId": "sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94",
+          "namedVolumes": [
+            "titan-dogfood-restore-ca37cc19_dogfood-database"
+          ],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        },
+        "frontend": {
+          "containerId": "3c36d2f7ea1787f5e986c92feecb311110ab403cd8e2e76b61605a636cad72cc",
+          "imageId": "sha256:7d33c4b1feeea55a3b44d019eaffa9c9e914284be0d12584b635fdd3c1dc4d7b",
+          "namedVolumes": [],
+          "publishedPorts": {
+            "8080/tcp": [
+              {
+                "HostIp": "127.0.0.1",
+                "HostPort": "44581"
+              }
+            ]
+          },
+          "restartPolicy": "unless-stopped"
+        },
+        "worker": {
+          "containerId": "7d5d5e8ef36cb356c4ab018bd913df03e7c5291cf266c5e882c7a42de7403e42",
+          "imageId": "sha256:c11c8de0eac95cde13a136cbc9593fba41caf37b79fe2302cad88e9298b52897",
+          "namedVolumes": [],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        }
+      },
+      "verifiedAt": "2026-10-01T20:49:57.709361+00:00"
+    },
+    "rotation-verification": {
+      "newCredentialsAccepted": true,
+      "oldCredentialsRejected": true,
+      "startedAt": "2026-10-01T20:50:00.162882+00:00",
+      "verifiedAt": "2026-10-01T20:50:10.321556+00:00",
+      "workflowDataPreserved": true
+    },
+    "verification": {
+      "checks": {
+        "adminAuthenticationRequired": true,
+        "managementNotExposedOnApplicationRoute": true,
+        "reviewedPreviewReadsActualJobs": true,
+        "unreviewedOperationRejected": true
+      },
+      "draft": {
+        "id": "draft-505f48fc6f5d",
+        "status": "validated"
+      },
+      "previewResults": {
+        "artifact": {
+          "attemptCount": 1,
+          "id": "02d1f613-3568-4fd5-b867-4183398bd5df",
+          "jobType": "artifact.generate",
+          "status": "succeeded"
+        },
+        "import": {
+          "attemptCount": 1,
+          "id": "2728b52e-742b-4349-9cde-e5527ab8ee18",
+          "jobType": "model.import",
+          "status": "succeeded"
+        },
+        "review": {
+          "attemptCount": 1,
+          "id": "3a51dac0-56e3-4c31-8c7a-822ba2c8c150",
+          "jobType": "operation.review",
+          "status": "succeeded"
+        },
+        "validation": {
+          "attemptCount": 1,
+          "id": "a3f6f590-e162-43d2-aa19-3c5662ab0408",
+          "jobType": "model.validate",
+          "status": "succeeded"
+        }
+      },
+      "services": {
+        "database": {
+          "containerId": "524182e62b20322c12a5beffa13c0adb07d59f948839762fa48aa3d34b3f43a0",
+          "imageId": "sha256:f1c3376c26f2609ab9f29f71f824103fe2fcd8ee0346485cb6122a4f93df6f94",
+          "namedVolumes": [
+            "titan-graphql-dogfood_dogfood-database"
+          ],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        },
+        "frontend": {
+          "containerId": "f5e47befe3f3847c7d49837cacc26f0898a061011b32f83046fc1c07c4a55990",
+          "imageId": "sha256:217f8090dee54092d314f704703f43f3d892d7ad44afa042854621a3b557780c",
+          "namedVolumes": [],
+          "publishedPorts": {
+            "8080/tcp": [
+              {
+                "HostIp": "127.0.0.1",
+                "HostPort": "18080"
+              }
+            ]
+          },
+          "restartPolicy": "unless-stopped"
+        },
+        "worker": {
+          "containerId": "7272ff4ac68fee406ae9b378102a37a06e30dcfdfc6e63d3ec3178a23137ca90",
+          "imageId": "sha256:62dab36a664493ae4ff5acf9aeb2b443a6077d1a70867184b85cc400cfa5ef2a",
+          "namedVolumes": [],
+          "publishedPorts": {},
+          "restartPolicy": "unless-stopped"
+        }
+      },
+      "sourceCommit": "a15447270180f1af1749d20c831095a44dff5f5f",
+      "verifiedAt": "2026-10-01T20:50:25.691903+00:00",
+      "workflow": {
+        "artifactSetId": "artifact-draft-505f48fc6f5d",
+        "completedAt": "2026-10-01T20:50:19.483442+00:00",
+        "draftId": "draft-505f48fc6f5d",
+        "jobs": {
+          "artifact": "02d1f613-3568-4fd5-b867-4183398bd5df",
+          "import": "2728b52e-742b-4349-9cde-e5527ab8ee18",
+          "review": "3a51dac0-56e3-4c31-8c7a-822ba2c8c150",
+          "validation": "a3f6f590-e162-43d2-aa19-3c5662ab0408"
+        },
+        "modelId": "model-local-control-jobs",
+        "modelSourceSha256": "eda7c2041d6297e82dc2079d00c13848122a2e35f017d0eb37987c79c1a3cb78",
+        "observedOperationId": "observed-operation-45c3129004b213e9",
+        "previewExpiresAt": "2026-10-08T20:50:17.758095+00:00",
+        "publicScopeApproved": true,
+        "publication": {
+          "artifactManifestHash": "8ff47f597d66dd8290512e13b0bc8e95c5eeb3e29bdc0cf6b339f36f65b6d5af",
+          "artifactManifestPath": "titan-package/titan-artifact.json",
+          "artifactSetId": "artifact-draft-505f48fc6f5d",
+          "createdAt": "2026-10-01T20:50:18.874867583Z",
+          "createdBy": "local-dogfood-operator",
+          "draftId": "draft-505f48fc6f5d",
+          "endpoint": {
+            "consoleUrl": "",
+            "graphqlEndpoint": "/preview/dogfood-jobs/graphql",
+            "unstable": true
+          },
+          "environment": "dogfood",
+          "expiration": {
+            "expires": true,
+            "expiresAt": "2026-10-08T20:50:17.758095Z"
+          },
+          "id": "dogfood-jobs",
+          "modelId": "model-local-control-jobs",
+          "schemaHash": "99ce9ffbcf30b8ab7fa2d3410d5099b9ba6247587541994e10bd48036938d60d",
+          "status": "READY"
+        },
+        "registryId": "registry-model-local-control-jobs-dogfood",
+        "runId": "14f662ea-5479-4a5b-92bc-69be322bba2a",
+        "startedAt": "2026-10-01T20:50:10.322277+00:00"
+      }
+    }
+  },
+  "runtimeArtifacts": [
+    {
+      "digest": "sha256:ceec6858cbfb3201f66844da7b1e4b5b05d8a1cffb47253e89521c10020747cb",
+      "matchesPublishedM7": true,
+      "name": "titan-graphql-0.1.0-control-job-worker.zip"
+    },
+    {
+      "digest": "sha256:775ee146f31245a6a2ddaa77e238f4c940ec3a93063829d95a3453eb6ff256d5",
+      "matchesPublishedM7": true,
+      "name": "titan-graphql-0.1.0-database-http-frontend.zip"
+    }
+  ],
+  "schemaVersion": "titan.graphql.operations-evidence.v1",
+  "sourceSha256": {
+    "deployment/compose.dogfood.yaml": "151b5fb52161fc6a1eb2a66d6d4a7bdf3bc50fff6e3d353e10407b52f42f1390",
+    "deployment/compose.hardened.yaml": "3a1416ed451ab3847997120ed3ce788f942f1e4262046eaec50782b62ef264d2",
+    "deployment/dogfood.py": "48a19afd51817e6775b5d64eeda0170c0ea2f76230991796d19479fc48d35232",
+    "deployment/operations.py": "bab585d0c85c1809569cadf255f9fd1b30a44e6b989a4913b9c185ed8bda9660",
+    "deployment/test_dogfood.py": "a403841c785e005e219c8523cce0bc7eb23e8906fea9b713f1f4543cebd696ec",
+    "deployment/test_operations.py": "c6c62e4596eb742202e74ad73872f19f74847935624153fc7adfa4254a88b3f1"
+  },
+  "verifiedCodeCommit": "a15447270180f1af1749d20c831095a44dff5f5f"
+}
