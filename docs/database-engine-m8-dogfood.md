@@ -52,3 +52,9 @@ The first publication attempt inherited the worker's read-only deployment mount.
 uses the built worker image in a separate one-shot container with a writable operator mount.
 The long-running frontend and worker retain read-only mounts. Runtime language code, dependency
 pins, and the original deployment Compose file remain unchanged.
+
+The first recovery preserved existing state but exposed duplicate artifact-registry entries when
+the client retried the same draft. Titan rejected the duplicates rather than choosing a package
+implicitly. Registration now atomically replaces a unique mapping and rejects conflicting existing
+entries; client regression tests cover retries and contradictions. Final acceptance requires a
+fresh recovery run after that correction.

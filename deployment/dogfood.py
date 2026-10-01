@@ -178,6 +178,24 @@ class Deployment:
             self.sql(migration.read_text())
         return target, identity
 
+    def register_package(self, draft_id, package_path):
+        if not re.fullmatch(r"draft-[a-f0-9]{12}", draft_id) or not re.fullmatch(r"/deploy/packages/[a-f0-9]{64}", package_path):
+            raise ValueError("invalid dogfood artifact registry identity")
+        path = self.deploy / "artifacts.properties"
+        entries = {}
+        for line in path.read_text().splitlines():
+            if not line.strip() or line.startswith("#"):
+                continue
+            key, value = line.split("=", 1)
+            if key in entries and entries[key] != value:
+                raise ValueError("contradictory artifact registry entries")
+            entries[key] = value
+        entries[draft_id] = package_path
+        temporary = path.with_suffix(".properties.new")
+        temporary.write_text("".join(key + "=" + value + "\n" for key, value in sorted(entries.items())))
+        temporary.chmod(0o644)
+        temporary.replace(path)
+
     def up(self):
         key = hashlib.sha256(PREVIEW.encode() + b"\0" + MODEL.read_bytes()).hexdigest()[:24]
         run([str(ROOT / "gradlew"), "--console=plain",
@@ -284,8 +302,7 @@ class Deployment:
             raise RuntimeError("model validation did not succeed")
         installation = json.loads((self.directory / "installation.json").read_text())
         package_path = "/deploy/" + installation["packageDirectory"]
-        with (self.deploy / "artifacts.properties").open("a") as registry:
-            registry.write(state["draftId"] + "=" + package_path + "\n")
+        self.register_package(state["draftId"], package_path)
         self.request("mutation Artifact($id: ID!, $draft: String!) { requestArtifactGeneration(id: $id, "
                      'draftId: $draft, generationProfile: "dogfood", enableIntrospection: true) { id draftId } }',
                      {"id": jobs["artifact"], "draft": state["draftId"]}, key=jobs["artifact"])

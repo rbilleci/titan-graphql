@@ -151,6 +151,27 @@ class DeploymentTests(unittest.TestCase):
             self.deployment.control("install-management", "postgresql", dogfood.JDBC)
         self.assertNotIn("--volume", command.call_args.args)
 
+    def test_artifact_registration_is_unique_across_workflow_retries(self):
+        self.initialize()
+        key = "draft-" + "a" * 12
+        target = "/deploy/packages/" + "b" * 64
+        path = self.deployment.deploy / "artifacts.properties"
+        path.write_text((key + "=" + target + "\n") * 3)
+        self.deployment.register_package(key, target)
+        self.deployment.register_package(key, target)
+        self.assertEqual(key + "=" + target + "\n", path.read_text())
+        self.assertEqual(0o644, path.stat().st_mode & 0o777)
+
+    def test_artifact_registration_rejects_contradictory_existing_entries(self):
+        self.initialize()
+        key = "draft-" + "a" * 12
+        path = self.deployment.deploy / "artifacts.properties"
+        original = key + "=/deploy/packages/" + "b" * 64 + "\n" + key + "=/deploy/packages/" + "c" * 64 + "\n"
+        path.write_text(original)
+        with self.assertRaisesRegex(ValueError, "contradictory"):
+            self.deployment.register_package(key, "/deploy/packages/" + "b" * 64)
+        self.assertEqual(original, path.read_text())
+
 
 if __name__ == "__main__":
     unittest.main()
