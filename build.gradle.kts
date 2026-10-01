@@ -9,6 +9,8 @@ import java.security.MessageDigest
 import java.util.HexFormat
 import java.util.zip.ZipFile
 import java.util.zip.ZipInputStream
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry
+import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream
 
 plugins {
     java
@@ -219,18 +221,40 @@ val releaseTrackedSources = providers.exec {
     commandLine("git", "ls-files", "--recurse-submodules")
 }.standardOutput.asText.map { output -> output.lineSequence().filter { it.isNotBlank() }.toList() }
 val releaseSourceRoot = layout.projectDirectory
+val releaseSourceArchive = layout.buildDirectory.file("distributions/$titanGraphqlProjectName-$titanGraphqlProjectVersion-sources.zip")
+val releaseSourceExecutableFiles = releaseTrackedSources.map { paths ->
+    paths.associateWith {
+        it == "gradlew" || it.endsWith("/gradlew") || it.matches(Regex("src/[^/]+/bin/[^/]+"))
+            || releaseSourceRoot.file(it).asFile.canExecute()
+    }
+}
 
-val releaseSourceDistribution = tasks.register<Zip>("releaseSourceDistribution") {
+val releaseSourceDistribution = tasks.register("releaseSourceDistribution") {
     description = "Packages tracked project and pinned submodule sources for the runtime release."
     group = "distribution"
-    archiveClassifier.set("sources")
-    isReproducibleFileOrder = true
-    isPreserveFileTimestamps = false
-    from(layout.projectDirectory) {
-        include(releaseTrackedSources.get())
-        filesMatching(listOf("gradlew", "**/gradlew", "src/*/bin/*")) {
-            permissions {
-                unix("rwxr-xr-x")
+    inputs.files(releaseTrackedSources.map { paths -> paths.map { releaseSourceRoot.file(it) } })
+    inputs.property("tracked-source-paths", releaseTrackedSources)
+    inputs.property("source-executable-files", releaseSourceExecutableFiles)
+    outputs.file(releaseSourceArchive)
+    doLast {
+        val output = releaseSourceArchive.get().asFile
+        val executableFiles = releaseSourceExecutableFiles.get()
+        output.parentFile.mkdirs()
+        // Copy tasks apply default exclusions to tracked Git metadata. Direct entries preserve
+        // the exact source inventory without changing composite-build-wide scanner defaults.
+        ZipArchiveOutputStream(output).use { archive ->
+            archive.setEncoding("UTF-8")
+            releaseTrackedSources.get().sorted().forEach { sourcePath ->
+                val entry = ZipArchiveEntry(sourcePath)
+                entry.time = 0L
+                entry.unixMode = if (executableFiles.getValue(sourcePath)) {
+                    "100755".toInt(8)
+                } else {
+                    "100644".toInt(8)
+                }
+                archive.putArchiveEntry(entry)
+                releaseSourceRoot.file(sourcePath).asFile.inputStream().use { it.copyTo(archive) }
+                archive.closeArchiveEntry()
             }
         }
     }
@@ -240,11 +264,13 @@ val titanGraphqlVerifyReleaseSourceDistribution = tasks.register("titanGraphqlVe
     description = "Verifies that the source distribution contains the exact recursive tracked checkout."
     group = "verification"
     dependsOn(releaseSourceDistribution)
-    inputs.file(releaseSourceDistribution.flatMap { it.archiveFile })
+    inputs.file(releaseSourceArchive)
     doLast {
-        ZipFile(releaseSourceDistribution.get().archiveFile.get().asFile).use { archive ->
+        org.apache.commons.compress.archivers.zip.ZipFile.builder()
+            .setFile(releaseSourceArchive.get().asFile).get().use { archive ->
             val expected = releaseTrackedSources.get().toSet()
-            val packaged = archive.entries().asSequence().filter { !it.isDirectory }.map { it.name }.toSet()
+            val executableFiles = releaseSourceExecutableFiles.get()
+            val packaged = archive.entries.asSequence().filter { !it.isDirectory }.map { it.name }.toSet()
             check(packaged == expected) {
                 "source distribution does not match the tracked checkout: missing=" +
                     (expected - packaged).sorted().joinToString() + "; extra=" +
@@ -254,6 +280,10 @@ val titanGraphqlVerifyReleaseSourceDistribution = tasks.register("titanGraphqlVe
                 val packagedBytes = archive.getInputStream(archive.getEntry(sourcePath)).use { it.readBytes() }
                 check(packagedBytes.contentEquals(releaseSourceRoot.file(sourcePath).asFile.readBytes())) {
                     "source distribution bytes differ from the tracked file: $sourcePath"
+                }
+                val expectedMode = if (executableFiles.getValue(sourcePath)) "100755" else "100644"
+                check(archive.getEntry(sourcePath).unixMode == expectedMode.toInt(8)) {
+                    "source distribution permissions differ from the required mode: $sourcePath"
                 }
             }
         }

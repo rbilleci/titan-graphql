@@ -152,9 +152,12 @@ latency. Performance tuning beyond a demonstrated release regression remains out
 `release-evidence/m7-source-archive-diagnostic.json` records the final inspection of the first
 candidate source archive. Gradle's directory-tree defaults excluded tracked `.gitignore` and
 `.gitmodules` files despite their explicit include list. Explicit individual-file copy sources
-still applied those defaults. The corrected settings remove only the metadata-file defaults;
-Git-history directory exclusions remain. This follows Gradle's documented
-[settings-time default-exclusion procedure](https://docs.gradle.org/current/userguide/working_with_files.html).
+still applied those defaults. Gradle documents these
+[default file-tree exclusions](https://docs.gradle.org/current/userguide/working_with_files.html).
+A settings-time exception passed the isolated archive check, but the full composite build rejected
+conflicting default-exclusion snapshots before the database tests. The final archive task writes
+sorted tracked files directly, normalizes timestamps, and preserves executable permissions without
+changing global scanner defaults. The focused archive and database-package staging checks pass.
 `titanGraphqlVerifyReleaseSourceDistribution` now requires the exact
 recursive tracked-file set and compares each entry's bytes with its source. The aggregate release
 gate depends on this verifier; the incomplete candidate is not a publication asset.
