@@ -20,8 +20,9 @@ delivery. A separate management package handles database-backed job requests; a 
 model import, validation, artifact generation, and operation review. Preview publication binds a
 reviewed package and operation registry to a deployment-owned descriptor.
 
-The [M5 parity report](docs/database-engine-m5-parity.md) records the fixed expected-result corpus,
-package attestation, dual-dialect evidence, and measured local bounds. The
+The [M5 parity report](docs/database-engine-m5-parity.md) maps the fixed corpus and installed
+assertions to the reviewed contract. The [M7 release report](docs/database-engine-m7-release.md)
+records release verification and local measurements. The
 [execution plan](docs/database-engine-execution-plan.md) tracks remaining milestone work. A passing
 test of an old JVM or carrier path is not release evidence for the standalone service.
 

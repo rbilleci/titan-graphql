@@ -78,17 +78,17 @@ Titan-supported source and transpiled into database routines. A small HTTP front
 complete GraphQL document, operation name, variables, extensions, and trusted request context to
 the installed engine and returns its completed GraphQL response.
 
-- [ ] Parsing, operation selection, variable coercion, fragment/directive handling, validation,
+- [x] Parsing, operation selection, variable coercion, fragment/directive handling, validation,
       policy evaluation, planning, execution, batching, cursor handling, introspection, error paths,
       null propagation, and GraphQL JSON assembly all execute in transpiled database routines.
-- [ ] The same maintained engine source serves unrelated reviewed schemas through generated
+- [x] The same maintained engine source serves unrelated reviewed schemas through generated
       metadata and database access code. Adding a supported schema requires no handwritten read
       resolver, query dispatch, or edit to the engine.
-- [ ] Custom mutations are explicit, registered at build time, and executed through transpiled
+- [x] Custom mutations are explicit, registered at build time, and executed through transpiled
       dispatch and database implementations. No JVM handler callback completes a GraphQL request.
-- [ ] PostgreSQL and MySQL both pass direct whole-request and thin-HTTP integration tests.
-- [ ] The serving distribution cannot execute a JVM GraphQL engine or select a legacy fallback.
-- [ ] Obsolete runtime implementations, public modes, handlers, tests, tasks, and misleading docs
+- [x] PostgreSQL and MySQL both pass direct whole-request and thin-HTTP integration tests.
+- [x] The serving distribution cannot execute a JVM GraphQL engine or select a legacy fallback.
+- [x] Obsolete runtime implementations, public modes, handlers, tests, tasks, and misleading docs
       are removed after their useful coverage has been migrated.
 
 “Full query processing” specifies where all supported GraphQL semantics execute. It does not silently
@@ -284,65 +284,42 @@ submodules, and capture baseline tests. Preserve unrelated work and do not rewri
 - [x] Record the baseline commit, Titan pins, current repository/dependency state, and current
       feature/test inventory in `database-engine-runtime-inventory.md`.
 - [x] Map every production entry point, including `/graphql`, preview, and admin GraphQL routes.
-- [~] Create separate dependency boundaries for build/model tooling, transpilable engine sources,
-      generated schema code, thin HTTP serving, and tests. `databaseEngine` is now an isolated
-      Gradle source set with only the JDK/JDBC and Titan DSL available, plus a source/classpath
-      boundary check. It proves the engine closure is distinct; extraction of a deployable thin
-      frontend module remains required so the frontend cannot load engine Java classes.
+- [x] Create separate dependency boundaries for build/model tooling, transpilable engine sources,
+      generated schema code, thin HTTP serving, and tests. The `databaseEngine`, `databaseFrontend`,
+      and `databaseHttpFrontend` source sets and their boundary tasks isolate semantics from serving.
+      The release ZIP excludes engine and build-tool classes.
 - [x] Add boundary gates that fail if the standalone serving artifact loads parser, validator,
       planner, resolver, cursor, introspection, GraphQL response-rendering, non-frontend Titan, or
-      transitional application classes. The current isolated artifact passes; legacy `main` remains
-      a separately inventoried M6 deletion target.
-- [~] Establish a portable fixed expected-result corpus independent of the demo whole-request
+      transitional application classes. M6 removed the superseded serving implementations.
+- [x] Establish a portable fixed expected-result corpus independent of the demo whole-request
       implementation. `src/test/resources/database-engine-corpus/commerce-v1.json` contains
-      concrete expected GraphQL JSON and is executed through the installed PostgreSQL and MySQL
-      commerce entry points by `DatabaseEngineExpectedResultCorpus`; it covers named-operation
-      variables, aliases, multiple roots, selected-operation fragment scoping,
-      fragments/directives, a relation, repeated compatible connection-root children,
-      `__typename`, and nullable scalar output. It does not yet
-      capture every accepted legacy case; expand it as feature migration continues, and mark legacy quirks separately. A demo implementation
-      must not become the authoritative oracle for correctness.
+      concrete expected GraphQL JSON for installed PostgreSQL/MySQL and standalone HTTP execution.
+      `database-engine-m5-parity.md` maps the broader installed assertions to contract requirements;
+      `database-engine-m6-case-disposition.tsv` classifies each historical case.
 
-Gate: inventory covers all runtime paths; an intentionally failing architecture test exposes the
-present violation; the new module/dependency layout is defined and reviewable.
+Gate: the inventory covers every serving path, and the architecture tasks verify the isolated
+source, dependency, class, and distribution boundaries.
 
 ### Phase 1 — prove a complete request inside the database
 
-- [~] Prove token/AST/plan storage, helper composition, JSON input/output, Unicode, nulls, and bounded
-      iterative traversal in a small Titan-transpiled prototype on PostgreSQL and MySQL. The shared
-      `DatabaseGraphqlLanguage` now builds a bounded invocation-local lexical token stream plus a
-      scalar operation/field selection index, traversed with an explicit bounded stack before
-      schema dispatch on both dialects. `DatabaseGraphqlAst` now converts that once-built plan into
-      a bounded typed executable-node carrier with node kind, source offset, direct-selection
-      parent, argument, executable-variable-reference, directive, and fragment topology. It is
-      now used by selected-operation variable declaration/reference and typed input-preflight
-      validation in both package closures. `DatabaseGraphqlTypeReference` parses the normalized
-      named/list/non-null declaration once into a bounded postfix descriptor; the AST preflight
-      uses that descriptor for input-type admission, default-nullability, required/null supplied
-      values, and outer-list navigation. Generated serving routines now retain one typed
-      AST for the selected operation and pass it through root/child selection planning, fragment
-      traversal, field identity, response keys, leaf checks, field-argument shape/value lookup,
-      variable type/default lookup, built-in directive evaluation, and generated operation
-      dispatch, selected-operation preflight, and default-value semantics. Generated typed input
-      descriptors now drive iterative scalar, enum, input-object, and list validation for
-      variables/defaults without a runtime schema object graph or recursive routine calls. The
-      current closure is 251 helpers plus one public entry point per dialect. Variable uses now
-      compare named/list/non-null wrappers structurally through a bounded iterative descriptor
-      walk, including the permitted non-null-to-nullable flow and variable-default exception.
-      Generated field-selection validation and variable preflight failures tied to one unique
-      declaration return line/column locations from retained AST offsets; canonical input
-      materialization, error paths, and remaining field-use semantics still require a typed
-      AST-driven plan.
-- [~] Generate bindings for a minimal model from each existing unrelated schema. Pass a whole GraphQL
+- [x] Prove token/AST/plan storage, helper composition, JSON input/output, Unicode, nulls, and bounded
+      iterative traversal on PostgreSQL and MySQL. `DatabaseGraphqlLanguage`, `DatabaseGraphqlAst`,
+      and `DatabaseGraphqlTypeReference` retain bounded typed state. Generated metadata drives
+      validation, argument materialization, selection planning, directives, and source-located errors.
+      Phase 2 records the completed language contract and installed corpus evidence.
+- [x] Generate bindings for a minimal model from each existing unrelated schema. Pass a whole GraphQL
       document and JSON variables to the database; parse, validate, authorize, read live rows, and
       return complete aliased GraphQL JSON from the installed routine.
-- [~] Include multiple query root fields, a nested relation, a malformed document, and denied access.
-- [~] Prove database-internal row consumption without per-field JDBC calls or intermediate result sets.
-- [~] Prove one custom mutation, serial execution, a failure after an earlier write, full rollback,
+- [x] Include multiple query root fields, a nested relation, a malformed document, and denied access.
+- [x] Prove database-internal row consumption without per-field JDBC calls or intermediate result sets.
+- [x] Prove one custom mutation, serial execution, a failure after an earlier write, full rollback,
       outcome delivery, and caller-owned commit on both dialects.
-- [ ] Freeze and document the public SQL signatures, context version, transaction/outcome contract,
-      and concrete internal state representation from these results.
-- [ ] Resolve or explicitly track every compiler blocker before proceeding to broad feature migration.
+- [x] Freeze and document the public SQL signatures, context version, transaction/outcome contract,
+      and concrete internal state representation. Public database execution contract defines the
+      serving signature; `docs/query-contract.md` defines the supported request/context behavior.
+- [x] Resolve or explicitly track every compiler blocker before proceeding to broad feature migration.
+      The pinned compiler generates and install-verifies both package closures; unsupported model
+      shapes fail build-time validation rather than introducing a serving fallback.
 
 #### Phase 1 evidence log
 
@@ -1151,7 +1128,7 @@ does not depend on CDI callbacks, frontend state, or remote calls during databas
 
 ### Phase 5 — switch the frontend and strengthen artifact identity
 
-Current serving audit (2026-09-15): `GraphqlExecutionEngine` now defaults to the package-bound
+Historical serving audit (2026-09-15; superseded by M6): `GraphqlExecutionEngine` defaults to the package-bound
 `database` mode, while retaining `java`, `jdbc`, `compiled`, and historical `sql` migration paths
 as explicit temporary reference choices. Standard serving wiring rejects each legacy selection
 unless the test/reference-only `titan.graphql.allow-legacy-execution-modes=true` setting is
@@ -1182,36 +1159,34 @@ The deployable artifact is now explicitly the standalone
 `titan-graphql-*-database-http-frontend.zip`, not the root Quarkus application archive.
 `titanGraphqlVerifyDatabaseHttpFrontendReleaseArtifact` checks the ZIP's launch target, complete
 reviewed runtime closure, and frontend-only Titan classes. `titanGraphqlDatabaseEngineReleaseCheck`
-is the local database-serving release suite and intentionally excludes Quarkus, compiled-schema,
-and historical SQL reference tasks: those remain useful migration oracles, but cannot approve a
-shipping artifact.
+is the local database-serving release suite. M6 removed the former Quarkus, compiled-schema,
+and historical SQL serving tasks after preserving their useful assertions in installed and
+standalone HTTP tests.
 
 - [x] Introduce a fail-closed package-bound database mode with explicit PostgreSQL/MySQL selection.
 - [x] Resolve the public whole-request routine from the verified package inventory and reject
       non-engine or wrong-dialect packages before datasource use.
-- [x] Prove the JAX-RS resource invokes the installed PostgreSQL and MySQL generated packages.
-- [x] Move the database-mode GET operation check into the database; legacy-mode requests are
-      default-denied before the historical parser, which remains only for explicit reference tests.
+- [x] Prove the standalone HTTP host invokes installed PostgreSQL and MySQL generated packages.
+- [x] Move the GET operation check into the database; the standalone HTTP corpus rejects writes
+      without a domain effect.
 
-- [ ] Replace runtime-mode selection with one database invocation adapter and dialect-specific JDBC
+- [x] Replace runtime-mode selection with one database invocation adapter and dialect-specific JDBC
       bindings. Preserve transport negotiation and authenticated context extraction.
-- [~] Move GET operation checks into the database and delete frontend GraphQL parsing. The database
-      now rejects GET mutations, and standard serving reaches no JVM parser; deletion of the
-      reference-only parser remains a Phase 6 cleanup item.
+- [x] Move GET operation checks into the database and delete frontend GraphQL parsing. M6 removed
+      the reference-only request parser and legacy serving routes.
 - [x] Implement outcome-driven transactions and error mapping without GraphQL response inspection.
       The frontend validates a fixed PostgreSQL frame or MySQL outcome column, then returns the
       untouched GraphQL JSON. Unit evidence deliberately conflicts the legacy extension with the
       dedicated outcome and proves the dedicated value alone controls commit.
-- [~] Bind model, shared engine source/version, generated bindings, custom mutation source/registry,
+- [x] Bind model, shared engine source/version, generated bindings, custom mutation source/registry,
       compiler/submodule versions, routine inventory, and relevant build options into package identity.
-      The current v1 runtime identity binds the semantic model, dialect, shared engine source,
-      generator source, build configuration, dependency lock, and pinned Titan version. It does
-      not yet directly attest the final routine inventory or a general custom-mutation registry.
-- [~] Verify identity inside each call, including replacement packages and pooled connections.
-      The generated public entry point compares the supplied runtime identity with its embedded
-      identity before request parsing, and PostgreSQL/MySQL commerce tests prove a stale identity
-      cannot execute a mutation. Add a pooled-connection replacement test after the final package
-      identity is available.
+      The runtime identity binds reviewed source and compiler inputs; the package identity binds
+      SQL, manifest, and object inventory. The attestor verifies every packaged helper and the
+      reviewed mutation-handler closure.
+- [x] Verify identity inside each call, including replacement packages and pooled connections.
+      `CommerceDatabasePackageReplacementIT` installs a replacement package and rejects the stale
+      descriptor on the same reused JDBC connection on both dialects. Installed mutation tests
+      reject stale runtime and package identities before effects.
 - [x] Add deployed HTTP tests whose serving source-set classpath physically lacks application
       GraphQL runtime classes, and assert the corresponding frontend JAR contains only frontend
       classes.
@@ -1297,21 +1272,21 @@ are executable Gradle tasks; replace them only when a successor supplies at leas
 scripts/release-check.sh --full
 ```
 
-- [ ] Generate/package/install/bind both unrelated schemas independently on both databases.
-- [ ] Exercise whole documents, variables, aliases, fragments, multiple roots, policies, typed keys,
+- [x] Generate/package/install/bind both unrelated schemas independently on both databases.
+- [x] Exercise whole documents, variables, aliases, fragments, multiple roots, policies, typed keys,
       nullability, computed fields, cursors/counts, batched relations, introspection, and custom writes.
-- [ ] Prove invalid requests and authorization failures occur inside the database before effects.
-- [ ] Prove mutation transaction failure, durable state, fresh-engine restarts, stale/missing/tampered
+- [x] Prove invalid requests and authorization failures occur inside the database before effects.
+- [x] Prove mutation transaction failure, durable state, fresh-engine restarts, stale/missing/tampered
       artifacts, changed engine/handler identities, pool isolation, and deadline cancellation.
-- [ ] Use deterministic grammar-based request generation plus fixed expected outputs to expand
+- [x] Use deterministic grammar-based request generation plus fixed expected outputs to expand
       coverage beyond the legacy corpus, including structurally equivalent document variants.
-- [ ] Measure representative small/large schemas and growing parent/child cardinalities: generation
+- [x] Measure representative small/large schemas and growing parent/child cardinalities: generation
       time, SQL/package size, install time, routine count, query counts, rows processed, and p50/p95
       request latency. Fix severe regressions; do not exchange correctness for a benchmark score.
-- [ ] Run a clean-checkout build so stale classes/generated files cannot hide missing dependencies.
+- [x] Run a clean-checkout build so stale classes/generated files cannot hide missing dependencies.
 - [ ] Run public-file/history privacy checks and an independent history-aware secret scanner; inspect
       temporary files, dependency pins, notices, and GPL-3.0 consistency. Do not rewrite published history.
-- [ ] Keep all verification local/on-demand; add no recurring hosted Actions spending.
+- [x] Keep all verification local/on-demand; add no recurring hosted Actions spending.
 - [ ] Commit, fetch/reconcile remote changes safely, push, and verify a clean synchronized checkout.
 
 Gate: all required checks pass without skipped dialects, semantic fallbacks, or remaining deletion
@@ -1324,14 +1299,14 @@ evidence. Record failed probes and unresolved compiler gaps separately from pass
 
 | Phase | Status | Commit(s) | Commands and evidence | Remaining blockers |
 | --- | --- | --- | --- | --- |
-| 0 Boundary/inventory | In progress | Uncommitted | `docs/database-engine-runtime-inventory.md`; `./gradlew titanGraphqlVerifyDatabaseFrontendBoundary titanGraphqlVerifyDatabaseHttpFrontendBoundary databaseHttpFrontendIntegrationTest` builds the descriptor-backed standalone HTTP distribution, rejects JVM GraphQL and `main`-output leakage, then extracts and runs it against both PostgreSQL and MySQL. `database-engine-corpus/commerce-v1.json` is a fixed, runtime-independent expected-result corpus exercised on both databases. | Expand the corpus with the remaining language, read, mutation, and adversarial cases. |
-| 1 Database feasibility | In progress | Uncommitted | `./gradlew databaseEngineIntegrationTest databaseEngineMySqlIntegrationTest databaseEngineCommerceIntegrationTest databaseEngineCommerceMySqlIntegrationTest`: independently generated demo and commerce packages are transpiled, packaged, install-verified, model-bound, and JAX-RS-served on PostgreSQL/MySQL. Fresh direct commerce-package evidence is 8 PostgreSQL tests and 9 MySQL tests; both include an expired trusted deadline rejected by the installed routine before schema work. Focused package/bind/install/execution proofs additionally cover `Customer.orders.customer.name` from both a point root and a Relay connection node within its declared two-hop budget, merge repeated compatible nested connection-node selections, merge the same point-root path through named and inline fragments, stop a corrupt non-null leaf at a nullable to-one boundary, and reject a third hop on both dialects. The fixed, runtime-independent expected-result corpus remains part of each suite. The current MySQL public routine is a 1.076 MB `CREATE PROCEDURE`; Titan's shared MySQL test container now sets `max_allowed_packet=16M` so package deployment proves database behavior rather than failing in the JDBC packet transport. Production packaging must retain an explicit package-size/packet preflight rather than rely on an obsolete 1 MiB assumption. | AST/plan and general connection semantics remain. |
-| 2 Language engine | Complete for v1alpha1 (2026-09-23) | Uncommitted | The bounded Titan-transpiled lexical/typed-AST core owns operation selection, fragment closure, built-in and model-registered conditional directives, schema-wide structural and argument validation, variable/default materialization, canonical `ma1`/`cv1` arguments, field collection, duplicate-response-key checks, coded null/error completion, introspection, and request/deadline bounds for the supported schema surface. Generated metadata drives Query/Mutation, Relay wrappers, scalars, model-declared enums, generated/authored input objects, model-declared interface/union point and static-projection Relay outputs, registered-directive behavior/location/introspection, and general point/root-connection/relation/flat-mutation/authored-mutation-input argument defaults without an HTTP/JVM semantic path. Every database GraphQL error carries a source-selected stable code; lexical failures retain locations and execution failures retain paths. The complete current request ledger bounds typed-input fan-out, introspection expansion, application statements, decoded rows, deadlines, and every shared JSON append plus the final response. Fresh packages pass the portable corpus on both dialects and all 636 JVM tests pass. Current topology is 386 source-local helpers and 383 emitted entry points per dialect and 387 MySQL whole-request routines; these are observed inventories, not project limits. The v1alpha1 JSON schema proves one physical root projection and rejects undeclared root members. | Preserve the language core while M3/M4 extend binding capabilities. A heterogeneous root is a future versioned feature and must first define cross-source discriminator, ordering, cursor, policy, count, and batching semantics. |
-| 3 Reads/policies | Complete for v1alpha1 (2026-09-23) | Uncommitted | PostgreSQL/MySQL packages prove the complete reviewed scalar/computed output and root inventory; typed point keys; point/list/Relay reads; stable forward/backward cursors and tuple ordering; bounded DNF local/computed/one-hop filters; computed/one-hop orders; exact counts/page flags; AST-identity-partitioned relation traversal; fixed 64-parent batching; request-reject policies; bounded statements/rows; repeatable-read request transactions; changed live rows; malformed cursors and context; fail-closed cross-tenant isolation; a physically renamed generator model; and the independent portable corpus. The final topology is 473 reachable helpers, 470 entry points per dialect, and 474 MySQL routines. Each dialect transpile action is below the one-minute ceiling. All 654 project tests and focused Titan lowering regressions pass. | None for M3. Preserve this gate while M4 adds custom mutations; broader legacy deletion remains M6 work. |
+| 0 Boundary/inventory | Complete | `9611c62`, `07dcad0` | `database-engine-runtime-inventory.md` maps serving and build boundaries. The frontend boundary, release-ZIP, and standalone HTTP tasks verify class/dependency isolation; the fixed corpus and M6 case map retain behavioral coverage. | None within M0; refresh the inventory at release. |
+| 1 Database feasibility | Complete | `9611c62`, `775e712` | Independently generated blog and Commerce packages pass scratch installation, model binding, and direct execution on PostgreSQL/MySQL. The standalone HTTP host forwards whole envelopes; typed AST/argument carriers, bounded relations, prevalidation, serial mutations, rollback, and the dedicated transaction outcome have installed assertions. | None within M1; preserve the documented public database contract. |
+| 2 Language engine | Complete for v1alpha1 (2026-09-23) | `9611c62` | The bounded Titan-transpiled lexical/typed-AST core owns operation selection, fragment closure, built-in and model-registered conditional directives, schema-wide structural and argument validation, variable/default materialization, canonical `ma1`/`cv1` arguments, field collection, duplicate-response-key checks, coded null/error completion, introspection, and request/deadline bounds for the supported schema surface. Generated metadata drives Query/Mutation, Relay wrappers, scalars, model-declared enums, generated/authored input objects, model-declared interface/union point and static-projection Relay outputs, registered-directive behavior/location/introspection, and general point/root-connection/relation/flat-mutation/authored-mutation-input argument defaults without an HTTP/JVM semantic path. Every database GraphQL error carries a source-selected stable code; lexical failures retain locations and execution failures retain paths. The complete current request ledger bounds typed-input fan-out, introspection expansion, application statements, decoded rows, deadlines, and every shared JSON append plus the final response. Fresh packages pass the portable corpus on both dialects and all 636 JVM tests pass. Current topology is 386 source-local helpers and 383 emitted entry points per dialect and 387 MySQL whole-request routines; these are observed inventories, not project limits. The v1alpha1 JSON schema proves one physical root projection and rejects undeclared root members. | Preserve the language core while M3/M4 extend binding capabilities. A heterogeneous root is a future versioned feature and must first define cross-source discriminator, ordering, cursor, policy, count, and batching semantics. |
+| 3 Reads/policies | Complete for v1alpha1 (2026-09-23) | `9611c62` | PostgreSQL/MySQL packages prove the complete reviewed scalar/computed output and root inventory; typed point keys; point/list/Relay reads; stable forward/backward cursors and tuple ordering; bounded DNF local/computed/one-hop filters; computed/one-hop orders; exact counts/page flags; AST-identity-partitioned relation traversal; fixed 64-parent batching; request-reject policies; bounded statements/rows; repeatable-read request transactions; changed live rows; malformed cursors and context; fail-closed cross-tenant isolation; a physically renamed generator model; and the independent portable corpus. The final topology is 473 reachable helpers, 470 entry points per dialect, and 474 MySQL routines. Each dialect transpile action is below the one-minute ceiling. All 654 project tests and focused Titan lowering regressions pass. | None within M3; preserve the installed read and policy checks. |
 | 4 Mutations/auxiliary routes | Complete for first deployment (2026-09-27) | `775e712` on `origin/main` | Installed Commerce proofs cover prevalidated scalar/enum/nested-input mutations, nullable value/omission/null writes, policy checks, serial locking, rollback, durable receipt/audit/idempotency, source-local procedure handlers, transactional outbox delivery, and HTTP replay after frontend restart on PostgreSQL and MySQL. Reviewed Commerce and management package handlers pass registration, binding, attestation, and installed execution checks. `./gradlew databaseEngineContainerDeploymentIntegrationTest --console=plain` passes 2/2: each dialect installs both packages, runs admin import/validation/artifact/review requests through the containerized frontend and worker, restarts the worker under Docker, publishes an ENFORCE-registered preview from a one-shot container, recreates the frontend, and serves the reviewed operation through the preview URL. | None within M4. No existing service, deployed caller, or cutover exists. Preserve the gate; M5 parity and M6 legacy deletion remain separate milestones. |
-| 5 Frontend/artifacts | Complete for reviewed v1alpha1 parity (2026-09-30) | Milestone commit on `main` | The nine-input package identity contract and standalone ZIP remain the serving boundary. Complete SQL-source/object/manifest attestation checks every packaged helper; its tamper regression passes. The 45-case Commerce corpus passes direct installed PostgreSQL/MySQL execution and both standalone ZIP HTTP paths, including tenant isolation, exact policy locations, and later-field mutation failure. HTTP additionally proves GET write denial, row/audit rollback, and descriptor/SQL/installed identity agreement. Same-model, same-runtime replacement packages reject stale descriptors on the same reused JDBC connection on both dialects. Snapshot/deadline cancellation, 1/2/64/65-parent statement/row ledgers, privacy scan, artifact hashes/sizes, and 701 Docker-free JVM tests pass. `./gradlew titanGraphqlDatabaseEngineReleaseCheck --profile --console=plain` passes in 36m22s; `./gradlew databaseEngineContainerDeploymentIntegrationTest --console=plain` passes 2/2 after the attestor change. The first full gate found a missing Gradle privacy-task dependency on descriptor writers; that task-graph issue was corrected, and the full gate then passed. `docs/database-engine-runtime-inventory.md` records representative generation/install/HTTP measurements. | None within M5. M6 legacy-code deletion and M7 release publication remain separate. |
+| 5 Frontend/artifacts | Complete for reviewed v1alpha1 parity (2026-09-30) | `557eb3e` | The nine-input package identity contract and standalone ZIP remain the serving boundary. Complete SQL-source/object/manifest attestation checks every packaged helper; its tamper regression passes. The 45-case Commerce corpus passes direct installed PostgreSQL/MySQL execution and both standalone ZIP HTTP paths, including tenant isolation, exact policy locations, and later-field mutation failure. HTTP additionally proves GET write denial, row/audit rollback, and descriptor/SQL/installed identity agreement. Same-model, same-runtime replacement packages reject stale descriptors on the same reused JDBC connection on both dialects. Snapshot/deadline cancellation, 1/2/64/65-parent statement/row ledgers, privacy scan, artifact hashes/sizes, and 701 Docker-free JVM tests pass. `./gradlew titanGraphqlDatabaseEngineReleaseCheck --profile --console=plain` passes in 36m22s; `./gradlew databaseEngineContainerDeploymentIntegrationTest --console=plain` passes 2/2 after the attestor change. The first full gate found a missing Gradle privacy-task dependency on descriptor writers; that task-graph issue was corrected, and the full gate then passed. `docs/database-engine-runtime-inventory.md` records representative generation/install/HTTP measurements. | None within M5; preserve the attestation, corpus, and isolation gates. |
 | 6 Architecture removal | Complete | `7893bd9`, `07dcad0`, `dc6fc01` | Source, class, dependency, route, artifact, privacy/history, and tracked-output audits find no second production serving path. The 97 old SQL-mode case IDs have individual successor/obsolete dispositions in `database-engine-m6-case-disposition.tsv`. `scripts/release-check.sh --full` passes on `07dcad0`; the PostgreSQL/MySQL container deployment task passes after the worker driver fix. A fresh clone of `07dcad0` with pinned submodules and no initial build output passes JVM tests, serving-boundary and release-ZIP checks, direct installed tests on both dialects, and the worker ZIP check. | None within M6. Local ignored output is not a build or release input and remains untouched. |
-| 7 Release | In progress | Release changes under verification | Independent history and generated-package scans pass after review of the exact historical prose false positive. Runtime ZIP notice checks pass; generated request and cardinality checks run on both installed dialects. | Complete the fresh clean-clone full gate, retain its evidence, reconcile the remote, and publish. |
+| 7 Release | Verification complete; publication pending | `e206d2e`, `137c9f4`, `687203e` | `scripts/release-check.sh --full` passes in the initially empty clone. `database-engine-m7-release.md` and `release-evidence/m7-verification.json` retain direct/ZIP/generated-corpus, cardinality, replacement, cancellation, management, container, package identity, and artifact evidence. Independent history and package scans pass after review of the exact historical prose false positive. | Scan the final source asset and committed history, reconcile the remote, and publish. |
 
 Latest focused metadata evidence (2026-09-16):
 `./gradlew databaseEngineCommerceIntegrationTest databaseEngineCommerceMySqlIntegrationTest --tests

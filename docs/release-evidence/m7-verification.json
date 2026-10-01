@@ -1,0 +1,1674 @@
+{
+  "measurements": [
+    {
+      "artifact": "test-results/databaseEngineCommerceHttpCorpusIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseHttpCorpusIT.xml",
+      "cases": 48,
+      "kind": "GENERATED_DATABASE_CORPUS",
+      "timestamp": "2026-10-01T13:32:09.071Z"
+    },
+    {
+      "artifact": "test-results/databaseEngineCommerceHttpCorpusIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseHttpCorpusIT.xml",
+      "cases": 48,
+      "kind": "GENERATED_DATABASE_CORPUS",
+      "timestamp": "2026-10-01T13:32:09.071Z"
+    },
+    {
+      "artifact": "test-results/databaseEngineCommerceIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.xml",
+      "cases": 48,
+      "kind": "GENERATED_DATABASE_CORPUS",
+      "timestamp": "2026-10-01T12:52:51.099Z"
+    },
+    {
+      "artifact": "test-results/databaseEngineCommerceIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.xml",
+      "dialect": "postgresql",
+      "installMicros": 3984496,
+      "kind": "DATABASE_INSTALL_MEASUREMENT",
+      "model": "commerce",
+      "timestamp": "2026-10-01T12:52:51.099Z"
+    },
+    {
+      "applicationSqlStatements": 2,
+      "artifact": "test-results/databaseEngineCommerceIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.xml",
+      "childrenPerParent": 1,
+      "decodedApplicationRows": 3,
+      "dialect": "postgresql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 313803,
+      "p95Micros": 326449,
+      "parents": 1,
+      "samples": 10,
+      "timestamp": "2026-10-01T12:52:51.099Z",
+      "warmups": 2
+    },
+    {
+      "applicationSqlStatements": 2,
+      "artifact": "test-results/databaseEngineCommerceIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.xml",
+      "childrenPerParent": 1,
+      "decodedApplicationRows": 5,
+      "dialect": "postgresql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 323632,
+      "p95Micros": 349916,
+      "parents": 2,
+      "samples": 10,
+      "timestamp": "2026-10-01T12:52:51.099Z",
+      "warmups": 2
+    },
+    {
+      "applicationSqlStatements": 2,
+      "artifact": "test-results/databaseEngineCommerceIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.xml",
+      "childrenPerParent": 1,
+      "decodedApplicationRows": 129,
+      "dialect": "postgresql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 1613393,
+      "p95Micros": 1753474,
+      "parents": 64,
+      "samples": 10,
+      "timestamp": "2026-10-01T12:52:51.099Z",
+      "warmups": 2
+    },
+    {
+      "applicationSqlStatements": 3,
+      "artifact": "test-results/databaseEngineCommerceIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.xml",
+      "childrenPerParent": 1,
+      "decodedApplicationRows": 131,
+      "dialect": "postgresql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 1590095,
+      "p95Micros": 1747212,
+      "parents": 65,
+      "samples": 10,
+      "timestamp": "2026-10-01T12:52:51.099Z",
+      "warmups": 2
+    },
+    {
+      "applicationSqlStatements": 3,
+      "artifact": "test-results/databaseEngineCommerceIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.xml",
+      "childrenPerParent": 2,
+      "decodedApplicationRows": 196,
+      "dialect": "postgresql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 2744556,
+      "p95Micros": 2871075,
+      "parents": 65,
+      "samples": 10,
+      "timestamp": "2026-10-01T12:52:51.099Z",
+      "warmups": 2
+    },
+    {
+      "applicationSqlStatements": 3,
+      "artifact": "test-results/databaseEngineCommerceIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.xml",
+      "childrenPerParent": 4,
+      "decodedApplicationRows": 326,
+      "dialect": "postgresql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 6697112,
+      "p95Micros": 7418731,
+      "parents": 65,
+      "samples": 10,
+      "timestamp": "2026-10-01T12:52:51.099Z",
+      "warmups": 2
+    },
+    {
+      "artifact": "test-results/databaseEngineCommerceMySqlIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.xml",
+      "cases": 48,
+      "kind": "GENERATED_DATABASE_CORPUS",
+      "timestamp": "2026-10-01T13:05:16.812Z"
+    },
+    {
+      "artifact": "test-results/databaseEngineCommerceMySqlIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.xml",
+      "dialect": "mysql",
+      "installMicros": 14668826,
+      "kind": "DATABASE_INSTALL_MEASUREMENT",
+      "model": "commerce",
+      "timestamp": "2026-10-01T13:05:16.812Z"
+    },
+    {
+      "applicationSqlStatements": 2,
+      "artifact": "test-results/databaseEngineCommerceMySqlIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.xml",
+      "childrenPerParent": 1,
+      "decodedApplicationRows": 3,
+      "dialect": "mysql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 1649119,
+      "p95Micros": 1744632,
+      "parents": 1,
+      "samples": 10,
+      "timestamp": "2026-10-01T13:05:16.812Z",
+      "warmups": 2
+    },
+    {
+      "applicationSqlStatements": 2,
+      "artifact": "test-results/databaseEngineCommerceMySqlIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.xml",
+      "childrenPerParent": 1,
+      "decodedApplicationRows": 5,
+      "dialect": "mysql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 1644407,
+      "p95Micros": 1724322,
+      "parents": 2,
+      "samples": 10,
+      "timestamp": "2026-10-01T13:05:16.812Z",
+      "warmups": 2
+    },
+    {
+      "applicationSqlStatements": 2,
+      "artifact": "test-results/databaseEngineCommerceMySqlIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.xml",
+      "childrenPerParent": 1,
+      "decodedApplicationRows": 129,
+      "dialect": "mysql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 4145988,
+      "p95Micros": 4561588,
+      "parents": 64,
+      "samples": 10,
+      "timestamp": "2026-10-01T13:05:16.812Z",
+      "warmups": 2
+    },
+    {
+      "applicationSqlStatements": 3,
+      "artifact": "test-results/databaseEngineCommerceMySqlIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.xml",
+      "childrenPerParent": 1,
+      "decodedApplicationRows": 131,
+      "dialect": "mysql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 4414536,
+      "p95Micros": 4694896,
+      "parents": 65,
+      "samples": 10,
+      "timestamp": "2026-10-01T13:05:16.812Z",
+      "warmups": 2
+    },
+    {
+      "applicationSqlStatements": 3,
+      "artifact": "test-results/databaseEngineCommerceMySqlIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.xml",
+      "childrenPerParent": 2,
+      "decodedApplicationRows": 196,
+      "dialect": "mysql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 5382463,
+      "p95Micros": 5852311,
+      "parents": 65,
+      "samples": 10,
+      "timestamp": "2026-10-01T13:05:16.812Z",
+      "warmups": 2
+    },
+    {
+      "applicationSqlStatements": 3,
+      "artifact": "test-results/databaseEngineCommerceMySqlIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.xml",
+      "childrenPerParent": 4,
+      "decodedApplicationRows": 326,
+      "dialect": "mysql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "commerce",
+      "p50Micros": 6840691,
+      "p95Micros": 7131143,
+      "parents": 65,
+      "samples": 10,
+      "timestamp": "2026-10-01T13:05:16.812Z",
+      "warmups": 2
+    },
+    {
+      "artifact": "test-results/databaseEngineIntegrationTest/TEST-io.titan.graphql.codegen.DatabaseGraphqlEngineIT.xml",
+      "dialect": "postgresql",
+      "installMicros": 342836,
+      "kind": "DATABASE_INSTALL_MEASUREMENT",
+      "model": "blog",
+      "timestamp": "2026-10-01T12:50:06.583Z"
+    },
+    {
+      "applicationSqlStatements": 1,
+      "artifact": "test-results/databaseEngineIntegrationTest/TEST-io.titan.graphql.codegen.DatabaseGraphqlEngineIT.xml",
+      "childrenPerParent": 0,
+      "decodedApplicationRows": 1,
+      "dialect": "postgresql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "blog",
+      "p50Micros": 40585,
+      "p95Micros": 46638,
+      "parents": 1,
+      "samples": 10,
+      "timestamp": "2026-10-01T12:50:06.583Z",
+      "warmups": 2
+    },
+    {
+      "artifact": "test-results/databaseEngineMySqlIntegrationTest/TEST-io.titan.graphql.codegen.DatabaseGraphqlMySqlEngineIT.xml",
+      "dialect": "mysql",
+      "installMicros": 6939405,
+      "kind": "DATABASE_INSTALL_MEASUREMENT",
+      "model": "blog",
+      "timestamp": "2026-10-01T13:37:36.521Z"
+    },
+    {
+      "applicationSqlStatements": 1,
+      "artifact": "test-results/databaseEngineMySqlIntegrationTest/TEST-io.titan.graphql.codegen.DatabaseGraphqlMySqlEngineIT.xml",
+      "childrenPerParent": 0,
+      "decodedApplicationRows": 1,
+      "dialect": "mysql",
+      "kind": "DATABASE_REQUEST_MEASUREMENT",
+      "model": "blog",
+      "p50Micros": 281627,
+      "p95Micros": 306294,
+      "parents": 1,
+      "samples": 10,
+      "timestamp": "2026-10-01T13:37:36.521Z",
+      "warmups": 2
+    }
+  ],
+  "packages": [
+    {
+      "dialects": [
+        "postgresql"
+      ],
+      "directory": "generated/proofs/database-engine/package",
+      "fileCount": 11,
+      "fileInventorySha256": "f97c3719e8927b5dd004881d21e444065902a500cba9d061adf17e05317d4409",
+      "identity": {
+        "artifactId": "titan.generated-sql.55965535f5c6ffeb",
+        "manifestContentSha256": "3078c558704674df97718b241bfdcb5e9a175a8e4d294ed8f4dd001806988f54",
+        "modelName": "demo-blog",
+        "modelSemanticSha256": "d8f04cf21c034b6f5faa35d3e0d0cb532e7e5eee71db932404e857f454b458f7",
+        "modelVersion": "2026.06.01",
+        "schemaVersion": "titan.graphql.package-binding.v1",
+        "sourceInputsSha256": "d8d49eaacbb98cc9fcc2469ba3eaeeb62c8a4288caa22f762722d3aa8fc52dd3"
+      },
+      "identitySidecars": {
+        "titan-graphql-database-package-identity.sha256": "ed36a151abaad59c1601238f21720a179dfb7c064ddac03d607fdf81af8b89d3",
+        "titan-graphql-database-runtime-identity.sha256": "4b427f79378ed9392b17b5ecc16f68597a905bd6399e185d51e34dcc7f08dea2"
+      },
+      "objectKinds": {
+        "function": 473,
+        "script": 4,
+        "table": 1
+      },
+      "packageBytes": 4532123,
+      "sqlBytes": 3044893
+    },
+    {
+      "dialects": [
+        "postgresql"
+      ],
+      "directory": "generated/proofs/database-engine-commerce/package",
+      "fileCount": 10,
+      "fileInventorySha256": "8aee7e9e6f5d501bf3f1984d117ecfb8966d5fe70961a2e92890f68da309ac26",
+      "identity": {
+        "artifactId": "titan.generated-sql.2bc88434ea07d5bd",
+        "manifestContentSha256": "5c1950934ee54767fb4592e80297e3593d318784d105c4cee4b2ad1c08c6b841",
+        "modelName": "commerce",
+        "modelSemanticSha256": "3fcaa9070b6132437a92c438784c1718955ecccfe411cfcba7a8f80b82e90644",
+        "modelVersion": "1",
+        "schemaVersion": "titan.graphql.package-binding.v1",
+        "sourceInputsSha256": "4e5d19280f8bfafbdbf8b1b674bf363baa76b0f14ebc56bc88ebad52a2630945"
+      },
+      "identitySidecars": {
+        "titan-graphql-database-package-identity.sha256": "06548d5935a39d36f306605d16cb2687445775a9dab7b557e46b68b16cdce414",
+        "titan-graphql-database-runtime-identity.sha256": "d3e5466765ffbad56b32643845a6207e460806d40838cca1cdcbc8239a69b6c0"
+      },
+      "objectKinds": {
+        "function": 504,
+        "procedure": 2,
+        "script": 4,
+        "table": 1
+      },
+      "packageBytes": 31347394,
+      "sqlBytes": 29690188
+    },
+    {
+      "dialects": [
+        "mysql"
+      ],
+      "directory": "generated/proofs/database-engine-commerce-mysql/package",
+      "fileCount": 10,
+      "fileInventorySha256": "f58443925184ad2a5f5ab7b9c234b117cc5f9d0dc68b71aceb03e2a79d11169a",
+      "identity": {
+        "artifactId": "titan.generated-sql.160b066861f96949",
+        "manifestContentSha256": "e655e126771a5a2f58377d252d3d9d7949d93eba5ac2546cd0e9d59a96cd298b",
+        "modelName": "commerce",
+        "modelSemanticSha256": "3fcaa9070b6132437a92c438784c1718955ecccfe411cfcba7a8f80b82e90644",
+        "modelVersion": "1",
+        "schemaVersion": "titan.graphql.package-binding.v1",
+        "sourceInputsSha256": "05ab660f9c853afc848de15a60d4d8af4dbc3658fb61974947ba49928775eb1d"
+      },
+      "identitySidecars": {
+        "titan-graphql-database-package-identity.sha256": "b1f7c9d7d77af1eef5fa213521c6289def436a86455494d2af5da46ae099cb52",
+        "titan-graphql-database-runtime-identity.sha256": "989be1596b7d7fb09fcba83653d0d1d17d3d237a021f0d70a4c90732a52d440a"
+      },
+      "objectKinds": {
+        "function": 511,
+        "procedure": 11,
+        "script": 4,
+        "table": 1
+      },
+      "packageBytes": 29957822,
+      "sqlBytes": 28307431
+    },
+    {
+      "dialects": [
+        "mysql"
+      ],
+      "directory": "generated/proofs/database-engine-commerce-replacement-mysql/package",
+      "fileCount": 10,
+      "fileInventorySha256": "76a9a3b9e3a0f0336e45d37b8f4bdf7fad3119312efdba549204cb83b5565bd7",
+      "identity": {
+        "artifactId": "titan.generated-sql.fd8b85b63bc894c0",
+        "manifestContentSha256": "e0a92777e926e78700dfeb8f5d10aa00d46eb28af8e369bc8d91d904c2cb84ed",
+        "modelName": "commerce",
+        "modelSemanticSha256": "3fcaa9070b6132437a92c438784c1718955ecccfe411cfcba7a8f80b82e90644",
+        "modelVersion": "1",
+        "schemaVersion": "titan.graphql.package-binding.v1",
+        "sourceInputsSha256": "5f79261298ee7599a33f16b2595bfae7bf9c0b8bab47486dfd424b4cd51e837a"
+      },
+      "identitySidecars": {
+        "titan-graphql-database-package-identity.sha256": "00a340a3bdf33ed1343a183f83cd906bc9c715de9707fb317007f2841eead65d",
+        "titan-graphql-database-runtime-identity.sha256": "989be1596b7d7fb09fcba83653d0d1d17d3d237a021f0d70a4c90732a52d440a"
+      },
+      "objectKinds": {
+        "function": 511,
+        "procedure": 11,
+        "script": 4,
+        "table": 1
+      },
+      "packageBytes": 29957858,
+      "sqlBytes": 28307467
+    },
+    {
+      "dialects": [
+        "postgresql"
+      ],
+      "directory": "generated/proofs/database-engine-commerce-replacement-postgresql/package",
+      "fileCount": 10,
+      "fileInventorySha256": "12d07527e115aead77ce371348799bdf778f21cd05bcf7d88b2dd52c44dccabb",
+      "identity": {
+        "artifactId": "titan.generated-sql.df0dc96fbbbb9d71",
+        "manifestContentSha256": "a192ddd91c354090a755608c502e77f1e1afc7f2f5a680337284b345ae12180b",
+        "modelName": "commerce",
+        "modelSemanticSha256": "3fcaa9070b6132437a92c438784c1718955ecccfe411cfcba7a8f80b82e90644",
+        "modelVersion": "1",
+        "schemaVersion": "titan.graphql.package-binding.v1",
+        "sourceInputsSha256": "1e89a4ff79111a7be34d6082eb624c6ae0ec7c7a7d9094e28ff9ae8b4199f83c"
+      },
+      "identitySidecars": {
+        "titan-graphql-database-package-identity.sha256": "2f7baab96a681b6e8aea64c8f60e6c49e9810211112be4afe689ed9004f02281",
+        "titan-graphql-database-runtime-identity.sha256": "d3e5466765ffbad56b32643845a6207e460806d40838cca1cdcbc8239a69b6c0"
+      },
+      "objectKinds": {
+        "function": 504,
+        "procedure": 2,
+        "script": 4,
+        "table": 1
+      },
+      "packageBytes": 31347430,
+      "sqlBytes": 29690224
+    },
+    {
+      "dialects": [
+        "mysql"
+      ],
+      "directory": "generated/proofs/database-engine-management-mysql/package",
+      "fileCount": 10,
+      "fileInventorySha256": "8b0b66639b6c5a83f4c32684cf70df5c5e80f20a25230e48461ce2d6fac48acb",
+      "identity": {
+        "artifactId": "titan.generated-sql.d03877a8d1106794",
+        "manifestContentSha256": "559d82b8aa6273d39a35aee8ddad02890303d76fb1db24de7dd3bc58be492d89",
+        "modelName": "titan-graphql-management-database",
+        "modelSemanticSha256": "91e00d74a8e1fa49bd922328765e194f1b8ea61603252e2a190f4b0647131f58",
+        "modelVersion": "1",
+        "schemaVersion": "titan.graphql.package-binding.v1",
+        "sourceInputsSha256": "e4bce27a1a20e01e5abb18425a7c4aa5e0329a43a60370ccb53632bc3fdee15a"
+      },
+      "identitySidecars": {
+        "titan-graphql-database-package-identity.sha256": "4ec3e31c952cc0729011fcd3ceb045b65cfae3cb02b7ed589b3f26d10a5a0693",
+        "titan-graphql-database-runtime-identity.sha256": "1314e2eccc616748f9a3b158297175826b542bd5fc6418673251d2debfbd7002"
+      },
+      "objectKinds": {
+        "function": 390,
+        "procedure": 13,
+        "script": 3,
+        "table": 1
+      },
+      "packageBytes": 3455506,
+      "sqlBytes": 2153182
+    },
+    {
+      "dialects": [
+        "postgresql"
+      ],
+      "directory": "generated/proofs/database-engine-management-postgresql/package",
+      "fileCount": 10,
+      "fileInventorySha256": "1b78011994be0917603765dbb809eb7c63f59339f0137a0aa6d5ae675a36f3cf",
+      "identity": {
+        "artifactId": "titan.generated-sql.d6b048019522e132",
+        "manifestContentSha256": "a0d6c106083e38e3f831b8200409e9332de42119012077936e3d9755da515098",
+        "modelName": "titan-graphql-management-database",
+        "modelSemanticSha256": "91e00d74a8e1fa49bd922328765e194f1b8ea61603252e2a190f4b0647131f58",
+        "modelVersion": "1",
+        "schemaVersion": "titan.graphql.package-binding.v1",
+        "sourceInputsSha256": "d0d344c13a1d4253c9fdf3fec268775e79cd8ee625dd4a7ac16372f90a93480d"
+      },
+      "identitySidecars": {
+        "titan-graphql-database-package-identity.sha256": "90999956f6ad8adaaf26dfa495bc9638d66e57c6abf7cb99ff430a26b028b7f6",
+        "titan-graphql-database-runtime-identity.sha256": "fc4f4537d47378b6e42a8d1dec83bec98d350d7c04fd875f9a6797f32b46e99e"
+      },
+      "objectKinds": {
+        "function": 383,
+        "procedure": 4,
+        "script": 3,
+        "table": 1
+      },
+      "packageBytes": 2997472,
+      "sqlBytes": 1700769
+    },
+    {
+      "dialects": [
+        "mysql"
+      ],
+      "directory": "generated/proofs/database-engine-mysql/package",
+      "fileCount": 11,
+      "fileInventorySha256": "56db58abc1cb00b3e9cdef036b2bab85a2a666fe5c53e6124402d346d96d71a7",
+      "identity": {
+        "artifactId": "titan.generated-sql.091692cfd3696eb8",
+        "manifestContentSha256": "2ff2776f5acdd6f500764103f27ef972ecf530343983aefc8296f0ed3d779800",
+        "modelName": "demo-blog",
+        "modelSemanticSha256": "d8f04cf21c034b6f5faa35d3e0d0cb532e7e5eee71db932404e857f454b458f7",
+        "modelVersion": "2026.06.01",
+        "schemaVersion": "titan.graphql.package-binding.v1",
+        "sourceInputsSha256": "de137bf1895e54a908c7b7b1b67f74c45c1109f5c2e4d7f5e776fb30b55e72dc"
+      },
+      "identitySidecars": {
+        "titan-graphql-database-package-identity.sha256": "69f602cbf3357c214bfc00ff08985cf06a48322b9bcfebbd14f86da23f612ef5",
+        "titan-graphql-database-runtime-identity.sha256": "17552813a14639fcae236f2b5a19cb441bcdbb9adccf5c582dcdfef317da0469"
+      },
+      "objectKinds": {
+        "function": 478,
+        "procedure": 9,
+        "script": 4,
+        "table": 1
+      },
+      "packageBytes": 5024438,
+      "sqlBytes": 3544066
+    }
+  ],
+  "profiles": [
+    {
+      "artifact": "reports/profile/profile-2026-10-01-14-30-52.html",
+      "sha256": "dea8c1b2100f4b939a3b844b0e6238a34c309599155963a6365ee9d30c50a321",
+      "startedLocalTime": "2026/10/01 - 14:30:52",
+      "tasks": [
+        {
+          "duration": "1m42.49s",
+          "outcome": "",
+          "task": ":titanGraphqlTranspileCommerceDatabaseEngine"
+        },
+        {
+          "duration": "46.331s",
+          "outcome": "",
+          "task": ":titanGraphqlVerifyCommerceDatabaseEngineInstall"
+        },
+        {
+          "duration": "9.649s",
+          "outcome": "",
+          "task": ":titanGraphqlVerifyDatabaseEngineInstall"
+        },
+        {
+          "duration": "3.584s",
+          "outcome": "",
+          "task": ":titanGraphqlTranspileDatabaseEngine"
+        },
+        {
+          "duration": "1.184s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateCommerceDatabaseEngine"
+        },
+        {
+          "duration": "1.095s",
+          "outcome": "",
+          "task": ":titanGraphqlBindCommerceDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.680s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateDatabaseEngine"
+        },
+        {
+          "duration": "0.671s",
+          "outcome": "",
+          "task": ":titanGraphqlBindDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.650s",
+          "outcome": "",
+          "task": ":titanGraphqlPackageCommerceDatabaseEngine"
+        },
+        {
+          "duration": "0.516s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateCommerceDatabaseEngineRuntimeIdentity"
+        },
+        {
+          "duration": "0.479s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateDatabaseEngineRuntimeIdentity"
+        },
+        {
+          "duration": "0.272s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateCommerceDatabaseEnginePackageIdentity"
+        },
+        {
+          "duration": "0.209s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateDatabaseEnginePackageIdentity"
+        },
+        {
+          "duration": "0.209s",
+          "outcome": "",
+          "task": ":titanGraphqlStageCommerceDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.168s",
+          "outcome": "",
+          "task": ":titanGraphqlPackageDatabaseEngine"
+        },
+        {
+          "duration": "0.113s",
+          "outcome": "",
+          "task": ":titanGraphqlStageDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.011s",
+          "outcome": "",
+          "task": ":titanGraphqlVerifyDatabaseEngineBoundary"
+        },
+        {
+          "duration": "0.002s",
+          "outcome": "UP-TO-DATE",
+          "task": ":compileDatabaseEngineJava"
+        },
+        {
+          "duration": "0.001s",
+          "outcome": "NO-SOURCE",
+          "task": ":processDatabaseEngineResources"
+        }
+      ]
+    },
+    {
+      "artifact": "reports/profile/profile-2026-10-01-14-49-46.html",
+      "sha256": "374110570775d0be933857e9653c56bcdc2db329606982bac4ec380aa1814d58",
+      "startedLocalTime": "2026/10/01 - 14:49:46",
+      "tasks": [
+        {
+          "duration": "1m44.95s",
+          "outcome": "",
+          "task": ":titanGraphqlTranspileCommerceDatabaseEngine"
+        },
+        {
+          "duration": "1m41.75s",
+          "outcome": "",
+          "task": ":titanGraphqlTranspileCommerceMySqlDatabaseEngine"
+        },
+        {
+          "duration": "1m19.89s",
+          "outcome": "",
+          "task": ":titanGraphqlVerifyCommerceMySqlDatabaseEngineInstall"
+        },
+        {
+          "duration": "47.176s",
+          "outcome": "",
+          "task": ":titanGraphqlVerifyCommerceDatabaseEngineInstall"
+        },
+        {
+          "duration": "21.151s",
+          "outcome": "",
+          "task": ":titanGraphqlVerifyMySqlDatabaseEngineInstall"
+        },
+        {
+          "duration": "12.073s",
+          "outcome": "",
+          "task": ":titanGraphqlVerifyDatabaseEngineInstall"
+        },
+        {
+          "duration": "6.085s",
+          "outcome": "",
+          "task": ":titanGraphqlVerifyDatabaseEnginePackagePrivacy"
+        },
+        {
+          "duration": "4.202s",
+          "outcome": "",
+          "task": ":titanGraphqlTranspileDatabaseEngine"
+        },
+        {
+          "duration": "3.263s",
+          "outcome": "",
+          "task": ":titanGraphqlTranspileMySqlDatabaseEngine"
+        },
+        {
+          "duration": "1.238s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateCommerceMySqlDatabaseEngine"
+        },
+        {
+          "duration": "1.203s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateCommerceDatabaseEngine"
+        },
+        {
+          "duration": "1.097s",
+          "outcome": "",
+          "task": ":titanGraphqlBindCommerceDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.943s",
+          "outcome": "",
+          "task": ":titanGraphqlBindCommerceMySqlDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.715s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateMySqlDatabaseEngine"
+        },
+        {
+          "duration": "0.701s",
+          "outcome": "",
+          "task": ":titanGraphqlBindDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.700s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateDatabaseEngine"
+        },
+        {
+          "duration": "0.674s",
+          "outcome": "",
+          "task": ":titanGraphqlBindMySqlDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.652s",
+          "outcome": "",
+          "task": ":titanGraphqlPackageCommerceDatabaseEngine"
+        },
+        {
+          "duration": "0.515s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateCommerceDatabaseEngineRuntimeIdentity"
+        },
+        {
+          "duration": "0.508s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateCommerceMySqlDatabaseEngineRuntimeIdentity"
+        },
+        {
+          "duration": "0.498s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateMySqlDatabaseEngineRuntimeIdentity"
+        },
+        {
+          "duration": "0.496s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateDatabaseEngineRuntimeIdentity"
+        },
+        {
+          "duration": "0.415s",
+          "outcome": "",
+          "task": ":titanGraphqlPackageCommerceMySqlDatabaseEngine"
+        },
+        {
+          "duration": "0.409s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateMySqlDatabaseEngineFrontendDescriptor"
+        },
+        {
+          "duration": "0.403s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateDatabaseEngineFrontendDescriptor"
+        },
+        {
+          "duration": "0.277s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateCommerceDatabaseEnginePackageIdentity"
+        },
+        {
+          "duration": "0.275s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateCommerceMySqlDatabaseEnginePackageIdentity"
+        },
+        {
+          "duration": "0.258s",
+          "outcome": "",
+          "task": ":titanGraphqlPackageMySqlDatabaseEngine"
+        },
+        {
+          "duration": "0.242s",
+          "outcome": "",
+          "task": ":titanGraphqlStageCommerceMySqlDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.224s",
+          "outcome": "",
+          "task": ":titanGraphqlStageCommerceDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.210s",
+          "outcome": "",
+          "task": ":titanGraphqlPackageDatabaseEngine"
+        },
+        {
+          "duration": "0.206s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateMySqlDatabaseEnginePackageIdentity"
+        },
+        {
+          "duration": "0.201s",
+          "outcome": "",
+          "task": ":titanGraphqlGenerateDatabaseEnginePackageIdentity"
+        },
+        {
+          "duration": "0.095s",
+          "outcome": "",
+          "task": ":titanGraphqlStageDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.095s",
+          "outcome": "",
+          "task": ":titanGraphqlStageMySqlDatabaseEnginePackage"
+        },
+        {
+          "duration": "0.075s",
+          "outcome": "",
+          "task": ":titanGraphqlDatabaseEngineArtifactReport"
+        },
+        {
+          "duration": "0.012s",
+          "outcome": "",
+          "task": ":titanGraphqlVerifyDatabaseEngineBoundary"
+        },
+        {
+          "duration": "0.002s",
+          "outcome": "UP-TO-DATE",
+          "task": ":compileDatabaseEngineJava"
+        },
+        {
+          "duration": "0s",
+          "outcome": "NO-SOURCE",
+          "task": ":processDatabaseEngineResources"
+        },
+        {
+          "duration": "0s",
+          "outcome": "Did No Work",
+          "task": ":titanGraphqlDatabaseEngineReleaseCheck"
+        }
+      ]
+    }
+  ],
+  "suites": [
+    {
+      "artifact": "test-results/databaseEngineCommerceHttpCorpusIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseHttpCorpusIT.xml",
+      "cases": [
+        "postgresqlDistributionMatchesCommerceCorpus(Path)",
+        "mysqlDistributionMatchesCommerceCorpus(Path)"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.CommerceDatabaseHttpCorpusIT",
+      "sha256": "ce564e58afddd55fd256448e2d98dda2f6154ffeac672f55fd4fc87a4a740409",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 258.887,
+      "timestamp": "2026-10-01T13:32:09.071Z"
+    },
+    {
+      "artifact": "test-results/databaseEngineCommerceHttpRestartIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseHttpRestartIT.xml",
+      "cases": [
+        "mysqlReplaysCommittedMutationAfterLostHttpResponseAndFrontendRestart(Path)",
+        "postgresqlReplaysCommittedMutationAfterLostHttpResponseAndFrontendRestart(Path)"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.CommerceDatabaseHttpRestartIT",
+      "sha256": "c706b99b8349c040a7487e7bc3f4703f8f2d673dc444b22faef3568e8d3300a1",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 39.337,
+      "timestamp": "2026-10-01T13:36:29.105Z"
+    },
+    {
+      "artifact": "test-results/databaseEngineCommerceIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT.xml",
+      "cases": [
+        "installedEntryPointBubblesNonNullRelationElementToNullablePointRoot(TitanTestContext)",
+        "controlPlaneJobLifecycleIsDurableAndLeaseFenced(TitanTestContext)",
+        "installedMutationDistinguishesOmittedAndExplicitNullInput(TitanTestContext)",
+        "installedEntryPointServesTheStandardNamedTypeSurfaceFromOneGenericRoutine(TitanTestContext)",
+        "nullableInputProcedureBindingDistinguishesOmissionValueAndNull(TitanTestContext)",
+        "installedEntryPointServesGenericRelationRelayConnectionInsideTheRoutine(TitanTestContext)",
+        "installedNullableIntegerAndBooleanPayloadsDistinguishOmissionFromNull(TitanTestContext)",
+        "procedureMutationReturnsStoredValuesAndRollsBackLaterFailure(TitanTestContext)",
+        "installedEntryPointExecutesAuthoredNestedInputObjectsAndDefaults(TitanTestContext)",
+        "installedMutationIsSerialAndLetsTheCallerCommitOrRollBack(TitanTestContext)",
+        "installedMutationReceiptRejectsAnotherPackageIdentity(TitanTestContext)",
+        "installedEntryPointRejectsExpiredAndUnrepresentableTrustedDeadlinesInsidePostgreSql(TitanTestContext)",
+        "installedEntryPointEvaluatesBuiltInFieldDirectivesInsideTheDatabase(TitanTestContext)",
+        "tenantContextFilterFailsClosedAndNeverReturnsAnotherTenant(TitanTestContext)",
+        "installedEntryPointPropagatesNonNullConnectionNodeThroughTheConnectionRoot(TitanTestContext)",
+        "installedEntryPointDescribesTheIntrospectionSchemaThroughTheGenericRuntime(TitanTestContext)",
+        "installedEntryPointCoercesDeclaredScalarVariablesInsideTheDatabase(TitanTestContext)",
+        "installedEntryPointBatchesSixtyFiveParentRelationsInTwoFixedChunks(TitanTestContext)",
+        "installedEntryPointPropagatesDatabaseNullForNonNullPointLeaf(TitanTestContext)",
+        "nullableProcedureBindingDistinguishesOmissionValueAndNull(TitanTestContext)",
+        "installedConcurrentIdempotencyKeyCanBeRetriedAfterTheWinnerCommits(TitanTestContext)",
+        "installedMutationReceiptBindsTheSelectedNamedOperation(TitanTestContext)",
+        "installedEntryPointServesBoundedRelationTreeFromConnectionNode(TitanTestContext)",
+        "installedEntryPointRejectsTheSixtyFifthApplicationStatement(TitanTestContext)",
+        "installedEntryPointMatchesPortableExpectedResultCorpus(TitanTestContext)",
+        "installedEntryPointServesTwoHopRelationWithinModelBudget(TitanTestContext)",
+        "installedEntryPointStopsNonNullLeafPropagationAtNullableRelation(TitanTestContext)",
+        "installedPackageMeasuresGrowingParentAndChildCardinality(TitanTestContext)",
+        "installedEntryPointRejectsUnpaginatedRelationAboveDatabaseRowBudget(TitanTestContext)",
+        "installedEntryPointRejectsKnownInputFanOutBeforeQueueExpansion(TitanTestContext)",
+        "installedEntryPointClassifiesTheFinalResponseBudget(TitanTestContext)",
+        "thinAdapterForwardsTheWholeEnvelopeAndOwnsTheDatabaseTransaction(TitanTestContext)",
+        "installedEntryPointServesGeneratedInputTypeIntrospectionInBoundedRequests(TitanTestContext)",
+        "installedConcurrentMutationsSerializeOnTheTargetRow(TitanTestContext)",
+        "installedNullableFloatAndEnumPayloadsDistinguishOmissionFromNull(TitanTestContext)",
+        "installedEntryPointServesUnrelatedSchemaKeysPoliciesAndLiveRows(TitanTestContext)",
+        "installedPackageDispatchesEveryDeclaredCommerceMutation(TitanTestContext)",
+        "installedMutationReceiptAndAuditCommitAtomically(TitanTestContext)",
+        "installedEntryPointRejectsAggregateNestedRelationWorkAboveDatabaseRowBudget(TitanTestContext)",
+        "installedCommittedMutationCanBeRetriedWhenItsResponseIsLost(TitanTestContext)",
+        "installedEntryPointCompletesAndValidatesDeclaredOutputEnum(TitanTestContext)",
+        "installedEntryPointServesTrustedDatabaseResidentIntrospectionIdentity(TitanTestContext)"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.CommerceDatabaseGraphqlEngineIT",
+      "sha256": "36870497458fd5e0060365cc18f5482aa200a9703a55747a105a08afb2c6068f",
+      "skipped": 0,
+      "tests": 42,
+      "timeSeconds": 559.128,
+      "timestamp": "2026-10-01T12:52:51.099Z"
+    },
+    {
+      "artifact": "test-results/databaseEngineCommerceMySqlIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT.xml",
+      "cases": [
+        "controlPlaneJobLifecycleIsDurableAndLeaseFenced(TitanTestContext)",
+        "installedMutationDistinguishesOmittedAndExplicitNullInput(TitanTestContext)",
+        "installedProcedurePropagatesDatabaseNullForNonNullPointLeaf(TitanTestContext)",
+        "nullableInputProcedureBindingDistinguishesOmissionValueAndNull(TitanTestContext)",
+        "installedProcedureRejectsTheSixtyFifthApplicationStatement(TitanTestContext)",
+        "installedProcedureServesTrustedDatabaseResidentIntrospectionIdentity(TitanTestContext)",
+        "installedNullableIntegerAndBooleanPayloadsDistinguishOmissionFromNull(TitanTestContext)",
+        "installedProcedureClassifiesTheFinalResponseBudget(TitanTestContext)",
+        "installedProcedureStopsNonNullLeafPropagationAtNullableRelation(TitanTestContext)",
+        "procedureMutationReturnsStoredValuesAndRollsBackLaterFailure(TitanTestContext)",
+        "installedProcedureServesTheStandardNamedTypeSurfaceFromOneGenericRoutine(TitanTestContext)",
+        "installedProcedureBubblesNonNullRelationElementToNullablePointRoot(TitanTestContext)",
+        "installedMutationIsSerialAndLetsTheCallerCommitOrRollBack(TitanTestContext)",
+        "installedProcedureCompletesAndValidatesDeclaredOutputEnum(TitanTestContext)",
+        "installedMutationReceiptRejectsAnotherPackageIdentity(TitanTestContext)",
+        "installedProcedureMatchesPortableExpectedResultCorpus(TitanTestContext)",
+        "installedProcedureRejectsExpiredAndUnrepresentableTrustedDeadlinesInsideMySql(TitanTestContext)",
+        "installedProcedureServesUnrelatedSchemaKeysPoliciesAndLiveRows(TitanTestContext)",
+        "installedProcedureServesTwoHopRelationWithinModelBudget(TitanTestContext)",
+        "installedProcedureRejectsAggregateNestedRelationWorkAboveDatabaseRowBudget(TitanTestContext)",
+        "installedProcedureSurvivesRepeatedWholeRequestCallsOnOneConnection(TitanTestContext)",
+        "installedProcedurePropagatesNonNullConnectionNodeThroughTheConnectionRoot(TitanTestContext)",
+        "tenantContextFilterFailsClosedAndNeverReturnsAnotherTenant(TitanTestContext)",
+        "installedProcedureDescribesTheIntrospectionSchemaThroughTheGenericRuntime(TitanTestContext)",
+        "installedProcedureCoercesDeclaredScalarVariablesInsideTheDatabase(TitanTestContext)",
+        "installedProcedureBatchesSixtyFiveParentRelationsInTwoFixedChunks(TitanTestContext)",
+        "nullableProcedureBindingDistinguishesOmissionValueAndNull(TitanTestContext)",
+        "installedConcurrentIdempotencyKeyCanBeRetriedAfterTheWinnerCommits(TitanTestContext)",
+        "installedMutationReceiptBindsTheSelectedNamedOperation(TitanTestContext)",
+        "installedProcedureServesGenericRelationRelayConnectionInsideTheRoutine(TitanTestContext)",
+        "installedProcedureEvaluatesBuiltInFieldDirectivesInsideTheDatabase(TitanTestContext)",
+        "installedVariableMutationUsesTheCanonicalArgumentCarrier(TitanTestContext)",
+        "installedProcedureKeepsServingAfterNumericCustomCursorRequest(TitanTestContext)",
+        "installedPackageMeasuresGrowingParentAndChildCardinality(TitanTestContext)",
+        "installedProcedureServesBoundedRelationTreeFromConnectionNode(TitanTestContext)",
+        "installedProcedureExecutesAuthoredNestedInputObjectsAndDefaults(TitanTestContext)",
+        "thinAdapterForwardsTheWholeEnvelopeAndOwnsTheDatabaseTransaction(TitanTestContext)",
+        "installedConcurrentMutationsSerializeOnTheTargetRow(TitanTestContext)",
+        "installedNullableFloatAndEnumPayloadsDistinguishOmissionFromNull(TitanTestContext)",
+        "installedPackageDispatchesEveryDeclaredCommerceMutation(TitanTestContext)",
+        "installedMutationReceiptAndAuditCommitAtomically(TitanTestContext)",
+        "installedProcedureServesGeneratedInputTypeIntrospectionInBoundedRequests(TitanTestContext)",
+        "installedProcedureRejectsUnpaginatedRelationAboveDatabaseRowBudget(TitanTestContext)",
+        "installedProcedureRejectsKnownInputFanOutBeforeQueueExpansion(TitanTestContext)",
+        "installedCommittedMutationCanBeRetriedWhenItsResponseIsLost(TitanTestContext)"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.CommerceDatabaseGraphqlMySqlEngineIT",
+      "sha256": "3d5bcfe6e6b99f718ec3b33cc3639ef39fa96b6a132dabf256ec6d628d577154",
+      "skipped": 0,
+      "tests": 45,
+      "timeSeconds": 1610.523,
+      "timestamp": "2026-10-01T13:05:16.812Z"
+    },
+    {
+      "artifact": "test-results/databaseEngineContainerDeploymentIntegrationTest/TEST-io.titan.graphql.codegen.ContainerFirstDeploymentIT.xml",
+      "cases": [
+        "mysqlAdminAndWorkerRecoverAfterWorkerProcessExit(Path)",
+        "postgresqlAdminAndWorkerRecoverAfterWorkerProcessExit(Path)"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.ContainerFirstDeploymentIT",
+      "sha256": "2ad3db5b7d3c2fb133e938734d4983a80fee267c0e8861581f5e579e9e966e68",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 68.133,
+      "timestamp": "2026-10-01T13:44:04.318Z"
+    },
+    {
+      "artifact": "test-results/databaseEngineIntegrationTest/TEST-io.titan.graphql.codegen.DatabaseGraphqlEngineIT.xml",
+      "cases": [
+        "installedEntryPointExecutesPointReadVariablesAliasesAndLiveData(TitanTestContext)"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.DatabaseGraphqlEngineIT",
+      "sha256": "1be663e97a516fe3569a94695256d00f0500919d73f1f24783348fb9cc029f43",
+      "skipped": 0,
+      "tests": 1,
+      "timeSeconds": 6.75,
+      "timestamp": "2026-10-01T12:50:06.583Z"
+    },
+    {
+      "artifact": "test-results/databaseEngineMySqlIntegrationTest/TEST-io.titan.graphql.codegen.DatabaseGraphqlMySqlEngineIT.xml",
+      "cases": [
+        "installedProcedureReturnsOneCompletedGraphqlResponseResultSet(TitanTestContext)"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.DatabaseGraphqlMySqlEngineIT",
+      "sha256": "68cc03824e9515469da3b402685be6daa9f4ba3c5e88312c30286b834f124b4d",
+      "skipped": 0,
+      "tests": 1,
+      "timeSeconds": 35.702,
+      "timestamp": "2026-10-01T13:37:36.521Z"
+    },
+    {
+      "artifact": "test-results/databaseEnginePackageReplacementIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabasePackageReplacementIT.xml",
+      "cases": [
+        "postgresqlReplacementRejectsStaleBindingOnTheSameConnection()",
+        "mysqlReplacementRejectsStaleBindingOnTheSameConnection()"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.CommerceDatabasePackageReplacementIT",
+      "sha256": "e8d157ebf1b65f2477d5a8d930d7646bc47acaee1af0a1640f90afcf1ebff482",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 53.813,
+      "timestamp": "2026-10-01T13:40:24.399Z"
+    },
+    {
+      "artifact": "test-results/databaseEngineSnapshotIntegrationTest/TEST-io.titan.graphql.codegen.CommerceDatabaseSnapshotIT.xml",
+      "cases": [
+        "postgresqlRequestKeepsOneSnapshotAcrossSeparateRoots()",
+        "mysqlRequestKeepsOneSnapshotAcrossSeparateRoots()"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.CommerceDatabaseSnapshotIT",
+      "sha256": "685118ced3519d951eae0cabcc30cfe35564446c8098a824b5a9e0e38c9f54c4",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 38.682,
+      "timestamp": "2026-10-01T13:41:19.054Z"
+    },
+    {
+      "artifact": "test-results/databaseHttpFrontendIntegrationTest/TEST-io.titan.graphql.frontend.DatabaseGraphqlHttpFrontendIT.xml",
+      "cases": [
+        "standalonePostgreSqlDistributionForwardsCompleteRequestsWithoutApplicationClasses()",
+        "standaloneMySqlDistributionForwardsCompleteRequestsWithoutApplicationClasses()"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.frontend.DatabaseGraphqlHttpFrontendIT",
+      "sha256": "2441f722ba33041e3ed154b8724d7b467899d155019d81dac2cb3d26d09172f4",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 26.091,
+      "timestamp": "2026-10-01T13:42:00.620Z"
+    },
+    {
+      "artifact": "test-results/databaseHttpFrontendIntegrationTest/TEST-io.titan.graphql.frontend.DatabaseGraphqlHttpServerPreviewTest.xml",
+      "cases": [
+        "sealedPreviewRejectsChangedInstalledPackageBeforeRoutine()",
+        "previewRouteRequiresBoundBuildIdAndExpiration()",
+        "descriptorRejectsMalformedExpiration(Path)",
+        "previewRouteRejectsDescriptorForAnotherBuild()",
+        "expiredPreviewReturnsGoneBeforeOpeningDatabase()"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.frontend.DatabaseGraphqlHttpServerPreviewTest",
+      "sha256": "dddc43c16d4c3d7dd44baf1dba5a3bb5216e1d9fafb668756b39fd9d35b4ecdf",
+      "skipped": 0,
+      "tests": 5,
+      "timeSeconds": 0.087,
+      "timestamp": "2026-10-01T13:42:26.713Z"
+    },
+    {
+      "artifact": "test-results/databaseHttpFrontendIntegrationTest/TEST-io.titan.graphql.frontend.DatabaseWholeRequestClientTest.xml",
+      "cases": [
+        "previewVerifierRunsInRequestTransactionBeforeRoutine()",
+        "mysqlCommitComesFromTheDedicatedOutcomeColumnNotTheGraphqlPayload()"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.frontend.DatabaseWholeRequestClientTest",
+      "sha256": "a791038bae4ebb899c032677e3c37951ce273902f18f38158eae29aa55dccdc6",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 0.023,
+      "timestamp": "2026-10-01T13:42:26.800Z"
+    },
+    {
+      "artifact": "test-results/databaseManagementStoreIntegrationTest/TEST-io.titan.graphql.GraphqlJdbcManagementStoreIT.xml",
+      "cases": [
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL",
+        "[1] POSTGRESQL",
+        "[2] MYSQL"
+      ],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.GraphqlJdbcManagementStoreIT",
+      "sha256": "ff99854f4007d57b0d92ee76a1efea7423b28b766e2be35420177464e018cf66",
+      "skipped": 0,
+      "tests": 28,
+      "timeSeconds": 26.487,
+      "timestamp": "2026-10-01T13:42:27.926Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.GraphqlConformanceMatrixTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.GraphqlConformanceMatrixTest",
+      "sha256": "d56dc079ea0dcc38159c6d79473842bac8ec0b1e9930d36520c32e7188e0a74b",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 0.041,
+      "timestamp": "2026-10-01T12:36:09.121Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.GraphqlCursorCodecTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.GraphqlCursorCodecTest",
+      "sha256": "d6657270aaad5885284c2f2369ad10fdd0b6935e8b1727756aa4450ca3482a7b",
+      "skipped": 0,
+      "tests": 1,
+      "timeSeconds": 0.005,
+      "timestamp": "2026-10-01T12:36:09.163Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.GraphqlMetamodelTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.GraphqlMetamodelTest",
+      "sha256": "0761cc37cac29d220db5e0c6f4bfb04441c09c579c1ff0ffff6c43c088ace797",
+      "skipped": 0,
+      "tests": 13,
+      "timeSeconds": 0.199,
+      "timestamp": "2026-10-01T12:36:09.169Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.GraphqlMutationDescriptorTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.GraphqlMutationDescriptorTest",
+      "sha256": "9c41c6bd41ffe406e6c68d01e0e4d11d05137814b79e60f21c9e62b7f7390794",
+      "skipped": 0,
+      "tests": 4,
+      "timeSeconds": 0.004,
+      "timestamp": "2026-10-01T12:36:09.369Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.GraphqlSchemaPrinterTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.GraphqlSchemaPrinterTest",
+      "sha256": "afffb6b911d11e42be946848a699ad2f63b90d07e7ba0c59d339112fc2a9f2cf",
+      "skipped": 0,
+      "tests": 6,
+      "timeSeconds": 0.01,
+      "timestamp": "2026-10-01T12:36:09.373Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.ManagementDomainTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.ManagementDomainTest",
+      "sha256": "7593d4efe3813b754a0a9665fb0899bc098e32b907fef7b3ebf78826d10dd582",
+      "skipped": 0,
+      "tests": 8,
+      "timeSeconds": 0.076,
+      "timestamp": "2026-10-01T12:36:09.384Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.OperationObservationStoreTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.OperationObservationStoreTest",
+      "sha256": "f77af9da97a3cb5fff09a426179285b416da9a000f9d266ba12dd1e73a56e7c7",
+      "skipped": 0,
+      "tests": 4,
+      "timeSeconds": 0.005,
+      "timestamp": "2026-10-01T12:36:09.460Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.TitanGraphqlConstantValueParserTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.TitanGraphqlConstantValueParserTest",
+      "sha256": "4857a77f737c19e05b158bd628f9019dab3994dd406744af6f38ababd3a14cda",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 0.014,
+      "timestamp": "2026-10-01T12:36:09.465Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.TitanGraphqlDurableManagementStoreTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.TitanGraphqlDurableManagementStoreTest",
+      "sha256": "0fcc3464b73d153d20872f65e79e1d7d517a000e1e5f2457ee18e8ecb4a95ed5",
+      "skipped": 0,
+      "tests": 18,
+      "timeSeconds": 0.201,
+      "timestamp": "2026-10-01T12:36:09.480Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.TitanGraphqlGap006CommandContextTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.TitanGraphqlGap006CommandContextTest",
+      "sha256": "59dd0d3d2eff1a691e2d25438d49b6d0bf64789035c8a0235b309f25a6086365",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 0.004,
+      "timestamp": "2026-10-01T12:36:09.681Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.TitanGraphqlGeneratedArtifactWorkflowTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.TitanGraphqlGeneratedArtifactWorkflowTest",
+      "sha256": "2688e71c99749a15c8c12b77557e992679a5638a287892f816f8563b90f3cf34",
+      "skipped": 0,
+      "tests": 12,
+      "timeSeconds": 0.081,
+      "timestamp": "2026-10-01T12:36:09.686Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.TitanGraphqlManagementModelDogfoodTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.TitanGraphqlManagementModelDogfoodTest",
+      "sha256": "8baa74e04bfff20af8c4803d932c744b11ddb5474bc8aced12bb424b1b177661",
+      "skipped": 0,
+      "tests": 3,
+      "timeSeconds": 0.057,
+      "timestamp": "2026-10-01T12:36:09.768Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.TitanGraphqlPolicyCompilerTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.TitanGraphqlPolicyCompilerTest",
+      "sha256": "499e823d5a6444142ca4fd8ae09ddd53393c76343be4e14fd06a2dfeb3c96156",
+      "skipped": 0,
+      "tests": 4,
+      "timeSeconds": 0.007,
+      "timestamp": "2026-10-01T12:36:09.825Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.artifact.TitanGraphqlArtifactSetTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.artifact.TitanGraphqlArtifactSetTest",
+      "sha256": "ce199dcf153ab9e271525c1252efba78428e5ae5b0538b94b4a96272952eadd8",
+      "skipped": 0,
+      "tests": 4,
+      "timeSeconds": 0.006,
+      "timestamp": "2026-10-01T12:36:09.833Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.artifact.TitanGraphqlArtifactsDirectoryTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.artifact.TitanGraphqlArtifactsDirectoryTest",
+      "sha256": "b1cda0a143777e9a988d95d43171221c484aa2b89f7476d48f8acc22894928a1",
+      "skipped": 0,
+      "tests": 6,
+      "timeSeconds": 0.018,
+      "timestamp": "2026-10-01T12:36:09.840Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.artifact.TitanGraphqlDatabasePackageIdentityCliTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.artifact.TitanGraphqlDatabasePackageIdentityCliTest",
+      "sha256": "5693d168cdb7b516787ac2094e5c310899083abddbf943f6b6fcff9d959fc275",
+      "skipped": 0,
+      "tests": 3,
+      "timeSeconds": 0.01,
+      "timestamp": "2026-10-01T12:36:09.858Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.artifact.TitanGraphqlDatabaseRuntimeIdentityTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.artifact.TitanGraphqlDatabaseRuntimeIdentityTest",
+      "sha256": "f669bf76cabf5dfac8bfa13b2d27897ee25da9bb893c81296902df08637af551",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 0.022,
+      "timestamp": "2026-10-01T12:36:09.868Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.artifact.TitanGraphqlMutationPackageAttestorTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.artifact.TitanGraphqlMutationPackageAttestorTest",
+      "sha256": "466ec56da3cc95b7c3b14970fb25963d5acc1c73bb872965e9fdc96507fa1e22",
+      "skipped": 0,
+      "tests": 6,
+      "timeSeconds": 0.034,
+      "timestamp": "2026-10-01T12:36:09.891Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.artifact.TitanGraphqlPackageBindingTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.artifact.TitanGraphqlPackageBindingTest",
+      "sha256": "e7842e63d6960aa30b417f80d8df52e1839d6b06553e147f1d2187a48dbbb119",
+      "skipped": 0,
+      "tests": 4,
+      "timeSeconds": 0.02,
+      "timestamp": "2026-10-01T12:36:09.926Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.codegen.DatabaseEngineLegacyParityMatrixTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.DatabaseEngineLegacyParityMatrixTest",
+      "sha256": "b77d0f16d5fa3ee6ef25ebfb8879202adcf1c485e262b630ef7ce1db2eb6e238",
+      "skipped": 0,
+      "tests": 1,
+      "timeSeconds": 0.001,
+      "timestamp": "2026-10-01T12:36:09.947Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.codegen.TitanGraphqlDatabaseEngineSourceGeneratorTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.TitanGraphqlDatabaseEngineSourceGeneratorTest",
+      "sha256": "e3a6e97c4140411e3947660990534fa603c0c5a8e3b0bc0b7f2472fa9e06de4e",
+      "skipped": 0,
+      "tests": 15,
+      "timeSeconds": 5.669,
+      "timestamp": "2026-10-01T12:36:09.949Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.codegen.TitanGraphqlMutationHandlerVerifierCliTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.codegen.TitanGraphqlMutationHandlerVerifierCliTest",
+      "sha256": "8ad09923dbb62acbb840de23c36c0df70931db9048f032526174e1233e3b3038",
+      "skipped": 0,
+      "tests": 5,
+      "timeSeconds": 0.029,
+      "timestamp": "2026-10-01T12:36:15.619Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.consumer.TitanGraphqlProjectionFacadeTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.consumer.TitanGraphqlProjectionFacadeTest",
+      "sha256": "6cdc3c36ea33e2a9ba246e8aac0660157a3760b6b84734137bb08bb30682afd8",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 0.001,
+      "timestamp": "2026-10-01T12:36:15.648Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.controlplane.TitanGraphqlArtifactGenerationServiceTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.controlplane.TitanGraphqlArtifactGenerationServiceTest",
+      "sha256": "4c52595078ce5796b4e701e2d47acba7d8cd94be1fe18094c59c60e82df94d5f",
+      "skipped": 0,
+      "tests": 3,
+      "timeSeconds": 0.01,
+      "timestamp": "2026-10-01T12:36:15.649Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.controlplane.TitanGraphqlArtifactJobCliTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.controlplane.TitanGraphqlArtifactJobCliTest",
+      "sha256": "eea9da330feb949d29503c8b712c40a48d468625f7927d72cda6ff54e48b167e",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 0.004,
+      "timestamp": "2026-10-01T12:36:15.659Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.controlplane.TitanGraphqlArtifactPackageRegistryTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.controlplane.TitanGraphqlArtifactPackageRegistryTest",
+      "sha256": "d8d679c5c9f837378aec43b737d45cab58a2a601bc37a726bb03e388a84f5e87",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 0.003,
+      "timestamp": "2026-10-01T12:36:15.663Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.database.DatabaseGraphqlAstTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.database.DatabaseGraphqlAstTest",
+      "sha256": "a16cf60c265b0d44ed876b4016782a7d657ad37d4ae6d730b1da2bff688fb6ac",
+      "skipped": 0,
+      "tests": 13,
+      "timeSeconds": 0.035,
+      "timestamp": "2026-10-01T12:36:15.667Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.database.DatabaseGraphqlErrorTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.database.DatabaseGraphqlErrorTest",
+      "sha256": "40582632b3ff2d65e9800beb3c8ef15c56d15f55f76906321147c95bce8ec8db",
+      "skipped": 0,
+      "tests": 11,
+      "timeSeconds": 0.018,
+      "timestamp": "2026-10-01T12:36:15.702Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.database.DatabaseGraphqlFilterPlanTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.database.DatabaseGraphqlFilterPlanTest",
+      "sha256": "ed54dfa006fc3cd60a57340ff1f84b5621be7ae83245682d14440ce38fdcd0e1",
+      "skipped": 0,
+      "tests": 7,
+      "timeSeconds": 0.012,
+      "timestamp": "2026-10-01T12:36:15.720Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.database.DatabaseGraphqlInputDescriptorTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.database.DatabaseGraphqlInputDescriptorTest",
+      "sha256": "4c669ff7a5ae4f2b3d189cdf1f3b8e934cd27aa21c28b0fb05da55f94670a5de",
+      "skipped": 0,
+      "tests": 33,
+      "timeSeconds": 0.103,
+      "timestamp": "2026-10-01T12:36:15.732Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.database.DatabaseGraphqlLanguageTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.database.DatabaseGraphqlLanguageTest",
+      "sha256": "7ba2cc5dd087725ad94b2f91c8a9d5cbb47c0c5a1c43fcbd274af1d9a8b4714d",
+      "skipped": 0,
+      "tests": 16,
+      "timeSeconds": 0.012,
+      "timestamp": "2026-10-01T12:36:15.835Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.database.DatabaseGraphqlOperationRegistryTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.database.DatabaseGraphqlOperationRegistryTest",
+      "sha256": "518c22c0920cbdf63e9aeb1ea0d0dbfee4c3db0cf78794f774d21d83c368fcd3",
+      "skipped": 0,
+      "tests": 3,
+      "timeSeconds": 0.003,
+      "timestamp": "2026-10-01T12:36:15.847Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.database.DatabaseGraphqlSelectionPlanTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.database.DatabaseGraphqlSelectionPlanTest",
+      "sha256": "9f6431eb62e43e2ff820aabe6bbfda53110c6bb88dfc51c06bcd57d05d5aff2f",
+      "skipped": 0,
+      "tests": 11,
+      "timeSeconds": 0.021,
+      "timestamp": "2026-10-01T12:36:15.850Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.database.DatabaseGraphqlTypeReferenceTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.database.DatabaseGraphqlTypeReferenceTest",
+      "sha256": "542d6b9f96c4f17a9b354508ffdb21f970adf0a0f7c42ac82f6c1f518b29ac74",
+      "skipped": 0,
+      "tests": 4,
+      "timeSeconds": 0.001,
+      "timestamp": "2026-10-01T12:36:15.872Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.database.DatabaseGraphqlWholeRequestRuntimeTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.database.DatabaseGraphqlWholeRequestRuntimeTest",
+      "sha256": "8d9dd16a0a05782e5f2d78efd1e49844760d18c29b2807e79c56b02a8056b839",
+      "skipped": 0,
+      "tests": 4,
+      "timeSeconds": 0.028,
+      "timestamp": "2026-10-01T12:36:15.873Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.inference.TitanGraphqlCatalogDriftCheckerTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.inference.TitanGraphqlCatalogDriftCheckerTest",
+      "sha256": "e776bfcd656758b325320a53c70ea6f344e57249185f129bf40fe48a5acdd2d0",
+      "skipped": 0,
+      "tests": 5,
+      "timeSeconds": 0.022,
+      "timestamp": "2026-10-01T12:36:15.902Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.inference.TitanGraphqlCatalogModelInferenceTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.inference.TitanGraphqlCatalogModelInferenceTest",
+      "sha256": "8aa2fa3a8aa1bb42658a3648100025063016f240c0951a34085e1111249c35dc",
+      "skipped": 0,
+      "tests": 8,
+      "timeSeconds": 0.013,
+      "timestamp": "2026-10-01T12:36:15.924Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.inference.TitanGraphqlCatalogSnapshotInferenceTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.inference.TitanGraphqlCatalogSnapshotInferenceTest",
+      "sha256": "e18bf2260ef9c80a5d2715bc4a6a5f0cc221f0276196fada067f3974a5f161ee",
+      "skipped": 0,
+      "tests": 4,
+      "timeSeconds": 0.005,
+      "timestamp": "2026-10-01T12:36:15.937Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.inference.TitanGraphqlSchemaInferenceTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.inference.TitanGraphqlSchemaInferenceTest",
+      "sha256": "c25ad499bdd490a4c06d63f9c877a3ea26bc624499a588f189db566b5c499638",
+      "skipped": 0,
+      "tests": 2,
+      "timeSeconds": 0.004,
+      "timestamp": "2026-10-01T12:36:15.942Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.management.TitanGraphqlPreviewDraftExporterTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.management.TitanGraphqlPreviewDraftExporterTest",
+      "sha256": "4299751ae3b9960a7d422240eae23854687ea582608644b1c3c7a661c448ea8e",
+      "skipped": 0,
+      "tests": 1,
+      "timeSeconds": 0.012,
+      "timestamp": "2026-10-01T12:36:15.946Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.model.TitanGraphqlModelDocumentSchemaTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.model.TitanGraphqlModelDocumentSchemaTest",
+      "sha256": "5d3e1567b2d95623cdccba07a2930c8cf26033dd9a01e52f3ad1c053b91eea9a",
+      "skipped": 0,
+      "tests": 3,
+      "timeSeconds": 0.01,
+      "timestamp": "2026-10-01T12:36:15.958Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.model.TitanGraphqlModelDocumentTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.model.TitanGraphqlModelDocumentTest",
+      "sha256": "6ddd5c1fd10ba0679ae8c9b966f1f0a295f137ae4465838d19e855e9a5821604",
+      "skipped": 0,
+      "tests": 11,
+      "timeSeconds": 0.01,
+      "timestamp": "2026-10-01T12:36:15.968Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.model.TitanGraphqlModelDocumentYamlTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.model.TitanGraphqlModelDocumentYamlTest",
+      "sha256": "4ca09ddec5b01e5f7b731454afe7a0cb1f90550dc74e80429a5876b337bba476",
+      "skipped": 0,
+      "tests": 10,
+      "timeSeconds": 0.01,
+      "timestamp": "2026-10-01T12:36:15.978Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.validation.TitanGraphqlModelDocumentValidatorTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.validation.TitanGraphqlModelDocumentValidatorTest",
+      "sha256": "1593f532d0db62b898d17a8cf544171c6d00bfb91dae91046f2c069abe5e4ed2",
+      "skipped": 0,
+      "tests": 24,
+      "timeSeconds": 0.018,
+      "timestamp": "2026-10-01T12:36:15.988Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.validation.TitanGraphqlValidationReportRendererTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.validation.TitanGraphqlValidationReportRendererTest",
+      "sha256": "8733cf6f2d9ef9202c36f33ff34dd3e04c84037adff097794dd1dafc56fa1079",
+      "skipped": 0,
+      "tests": 4,
+      "timeSeconds": 0.001,
+      "timestamp": "2026-10-01T12:36:16.007Z"
+    },
+    {
+      "artifact": "test-results/test/TEST-io.titan.graphql.validation.TitanGraphqlValidationReportTest.xml",
+      "cases": [],
+      "errors": 0,
+      "failures": 0,
+      "name": "io.titan.graphql.validation.TitanGraphqlValidationReportTest",
+      "sha256": "116b93f19f2ff0ca734e2aa9219a38ac7729a9941db87949ccba40146d201a07",
+      "skipped": 0,
+      "tests": 4,
+      "timeSeconds": 0.002,
+      "timestamp": "2026-10-01T12:36:16.008Z"
+    }
+  ],
+  "verifiedCodeCommit": "687203ec31ebb7527b6665dea93241d66405c07e"
+}

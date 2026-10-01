@@ -37,8 +37,9 @@ measurements report nearest-rank p50/p95 request latency alongside asserted stat
 ledgers for growing parent and child populations. The full gate writes the generation/install
 task profile under `build/reports/profile`.
 
-The [M5 parity report](database-engine-m5-parity.md) records the fixed corpus, identity checks,
-measurements, and last complete parity run. A package is not deployable just because its Java
+The [M5 parity report](database-engine-m5-parity.md) maps the fixed corpus and identity assertions
+to the reviewed contract. The [M7 release report](database-engine-m7-release.md) records release
+results and measurements. A package is not deployable just because its Java
 source transpiles; scratch installation, binding, and runtime attestation must pass. A test of an
 obsolete JVM or carrier path cannot substitute for a standalone-ZIP result.
 
