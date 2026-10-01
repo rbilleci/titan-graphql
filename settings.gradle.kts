@@ -1,6 +1,12 @@
+import org.apache.tools.ant.DirectoryScanner
+
 pluginManagement {
     includeBuild("vendor/titan")
 }
+
+// The source distribution requires tracked Git metadata, but never the Git history directory.
+DirectoryScanner.removeDefaultExclude("**/.gitignore")
+DirectoryScanner.removeDefaultExclude("**/.gitmodules")
 
 dependencyResolutionManagement {
     repositories {

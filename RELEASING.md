@@ -26,6 +26,8 @@ Review `THIRD_PARTY_NOTICES.md` and inspect license entries in both ZIPs before 
 Publish the matching recursive source checkout, including pinned submodule sources, and the
 corresponding MySQL Connector/J source with bundled-driver distributions. Record the source
 revisions and artifact hashes in the release evidence.
+The aggregate runs `titanGraphqlVerifyReleaseSourceDistribution`, which compares the source ZIP's
+file inventory and entry bytes with the recursive tracked checkout, including tracked Git metadata.
 
 The script intentionally requires a clean worktree and the `rbilleci/titan-graphql` origin. Run
 `scripts/release-check.sh` without `--full` for the static and ordinary unit gate while iterating.

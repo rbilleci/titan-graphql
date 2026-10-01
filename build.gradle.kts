@@ -218,6 +218,7 @@ val controlJobWorkerDistribution = tasks.register<Zip>("controlJobWorkerDistribu
 val releaseTrackedSources = providers.exec {
     commandLine("git", "ls-files", "--recurse-submodules")
 }.standardOutput.asText.map { output -> output.lineSequence().filter { it.isNotBlank() }.toList() }
+val releaseSourceRoot = layout.projectDirectory
 
 val releaseSourceDistribution = tasks.register<Zip>("releaseSourceDistribution") {
     description = "Packages tracked project and pinned submodule sources for the runtime release."
@@ -230,6 +231,30 @@ val releaseSourceDistribution = tasks.register<Zip>("releaseSourceDistribution")
         filesMatching(listOf("gradlew", "**/gradlew", "src/*/bin/*")) {
             permissions {
                 unix("rwxr-xr-x")
+            }
+        }
+    }
+}
+
+val titanGraphqlVerifyReleaseSourceDistribution = tasks.register("titanGraphqlVerifyReleaseSourceDistribution") {
+    description = "Verifies that the source distribution contains the exact recursive tracked checkout."
+    group = "verification"
+    dependsOn(releaseSourceDistribution)
+    inputs.file(releaseSourceDistribution.flatMap { it.archiveFile })
+    doLast {
+        ZipFile(releaseSourceDistribution.get().archiveFile.get().asFile).use { archive ->
+            val expected = releaseTrackedSources.get().toSet()
+            val packaged = archive.entries().asSequence().filter { !it.isDirectory }.map { it.name }.toSet()
+            check(packaged == expected) {
+                "source distribution does not match the tracked checkout: missing=" +
+                    (expected - packaged).sorted().joinToString() + "; extra=" +
+                    (packaged - expected).sorted().joinToString()
+            }
+            expected.forEach { sourcePath ->
+                val packagedBytes = archive.getInputStream(archive.getEntry(sourcePath)).use { it.readBytes() }
+                check(packagedBytes.contentEquals(releaseSourceRoot.file(sourcePath).asFile.readBytes())) {
+                    "source distribution bytes differ from the tracked file: $sourcePath"
+                }
             }
         }
     }
@@ -338,7 +363,7 @@ val titanGraphqlDatabaseEngineReleaseCheck = tasks.register("titanGraphqlDatabas
     group = "verification"
     // This gate establishes the artifact a user may deploy.
     dependsOn(
-        releaseSourceDistribution,
+        titanGraphqlVerifyReleaseSourceDistribution,
         titanGraphqlVerifyControlJobWorkerDistribution,
         "titanGraphqlVerifyDatabaseEngineBoundary",
         "titanGraphqlVerifyDatabaseFrontendBoundary",

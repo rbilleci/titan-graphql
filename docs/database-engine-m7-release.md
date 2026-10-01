@@ -1,7 +1,9 @@
 # M7 release evidence
 
-Status: the clean-checkout full gate passed. Release publication and final remote synchronization
-remain open under `database-engine-execution-plan.md`, Phase 7 — final verification and release.
+Status: the first clean-checkout full gate passed on `687203e`. Final archive inspection found
+excluded tracked Git metadata, so the corrected source-distribution gate requires another full run.
+Release publication and final remote synchronization remain open under
+`database-engine-execution-plan.md`, Phase 7 — final verification and release.
 `RELEASING.md` defines the on-demand publication procedure.
 
 The release preserves the database serving boundary established by M1–M6. The first deployment
@@ -18,9 +20,9 @@ The acceptance inventory maps each release requirement to the command or asserti
 | M7-DURABILITY-IDENTITY | Replacement, snapshot, cancellation, HTTP restart, and package attestation tests | Full gate passes on both dialects |
 | M7-GENERATED-DOCUMENTS | `GeneratedDatabaseEngineCorpus` and `commerce-generated-v1.json` | Direct and ZIP corpus suites pass on both dialects |
 | M7-REPRESENTATIVE-MEASUREMENTS | Gradle profile, artifact inventory, and `DatabaseEngineMeasurements` output | Retained in `release-evidence/m7-verification.json` |
-| M7-CLEAN-CHECKOUT | `scripts/release-check.sh --full` with pinned submodules and no initial build output | Passes; source updates and incremental reuse recorded |
+| M7-CLEAN-CHECKOUT | `scripts/release-check.sh --full` with pinned submodules and no initial build output | First run passes; archive correction requires final rerun |
 | M7-PRIVACY-HISTORY | Gitleaks history and package scans, plus the release script's hygiene checks | Independent scans pass |
-| M7-NOTICES-DEPENDENCIES | Runtime ZIP notice checks, locked dependencies, and `release-evidence/m7-runtime-advisories.json` | Runtime ZIP checks pass; final source asset pending |
+| M7-NOTICES-DEPENDENCIES | Runtime ZIP notice checks, locked dependencies, and `release-evidence/m7-runtime-advisories.json` | Runtime ZIP checks pass; source archive correction under verification |
 | M7-LOCAL-VERIFICATION | Tracked workflow inventory and GitHub workflow API | No hosted workflow |
 | M7-PUBLICATION | Fresh remote review, push, release tag/assets, and synchronized checkout | Pending |
 
@@ -146,6 +148,16 @@ target or a before/after speedup, and this release does not trade validation or 
 latency. Performance tuning beyond a demonstrated release regression remains outside M7.
 
 ## Public files, history, and dependencies
+
+`release-evidence/m7-source-archive-diagnostic.json` records the final inspection of the first
+candidate source archive. Gradle's directory-tree defaults excluded tracked `.gitignore` and
+`.gitmodules` files despite their explicit include list. Explicit individual-file copy sources
+still applied those defaults. The corrected settings remove only the metadata-file defaults;
+Git-history directory exclusions remain. This follows Gradle's documented
+[settings-time default-exclusion procedure](https://docs.gradle.org/current/userguide/working_with_files.html).
+`titanGraphqlVerifyReleaseSourceDistribution` now requires the exact
+recursive tracked-file set and compares each entry's bytes with its source. The aggregate release
+gate depends on this verifier; the incomplete candidate is not a publication asset.
 
 Gitleaks `v8.30.1`, downloaded from its official release and verified against its published checksum,
 scanned all reachable parent and pinned-submodule history. The parent scan found a generic API-key

@@ -1,0 +1,14 @@
+{
+  "checkedAt": "2026-10-01T14:00:00.655967+00:00",
+  "sourceCommit": "bfbdb453697e98dbd9a48edff4c48a5c75667489",
+  "archive": "incomplete-source-bfbdb45.zip",
+  "archiveSha256": "26940e57800c6b23f86d090556be9deee314f2489def25f2063c486307eb6e88",
+  "missingTrackedFiles": [
+    ".gitignore",
+    ".gitmodules",
+    "vendor/titan-dsl/.gitignore",
+    "vendor/titan/.gitignore"
+  ],
+  "extraFiles": [],
+  "status": "failed"
+}
