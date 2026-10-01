@@ -50,7 +50,7 @@ output directory is outside the release boundary and remains untouched.
 The M7 full gate refreshes this inventory with independent generation/installation/binding for
 blog and Commerce on both dialects, standalone ZIP execution, reviewed management packages,
 containerized worker restart and preview publication, complete package attestation, and independent
-history/package scans. `database-engine-m7-release.md` and `release-evidence/m7-verification.json`
+history/package scans. `database-engine-m7-release.md` and `release-evidence/m7-final-verification.json`
 retain the completed-run evidence and package identities. No tracked temporary output or second
 serving implementation appeared in that review. M7 publication and remote reconciliation remain
 open until their final checks pass.

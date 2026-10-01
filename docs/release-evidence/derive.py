@@ -98,7 +98,9 @@ def collect(build, source_commit, profile_name=None):
             "artifact": path.relative_to(build).as_posix(),
             "sha256": digest(path),
             "startedLocalTime": started.group(1).strip() if started else None,
-            "tasks": [row for row in parser.rows if "DatabaseEngine" in row["task"]],
+            "tasks": [row for row in parser.rows if "databaseengine" in row["task"].lower()
+                      or "databasehttpfrontend" in row["task"].lower()
+                      or "releasesource" in row["task"].lower()],
         })
     if profile_name is not None and not profiles:
         raise ValueError("requested profile report not found: " + profile_name)

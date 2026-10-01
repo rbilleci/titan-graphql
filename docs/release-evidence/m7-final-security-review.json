@@ -1,0 +1,30 @@
+{
+  "checkedAt": "2026-10-01T15:30:43.659094+00:00",
+  "hostedWorkflows": {
+    "total_count": 0,
+    "workflows": []
+  },
+  "reports": [
+    {
+      "findings": [],
+      "report": "gitleaks-072-history.json",
+      "scope": "All reachable parent history at 072b6ce; exact tracked prose exception applied",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "findings": [],
+      "report": "gitleaks-072-proofs.json",
+      "scope": "Generated application, replacement, and management packages",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    {
+      "findings": [],
+      "report": "gitleaks-072-distributions.json",
+      "scope": "Runtime and current source distributions with archive depth 2",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    }
+  ],
+  "reviewedCodeCommit": "072b6ceafdd8052aed37de97af5d60802d025947",
+  "scanner": "Gitleaks 8.30.1",
+  "sourceArchiveNote": "The final documentation/source archive requires another scan after evidence updates. This event is not the publication audit."
+}

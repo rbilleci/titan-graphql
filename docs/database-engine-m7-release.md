@@ -1,8 +1,8 @@
 # M7 release evidence
 
-Status: the corrected source archive and full gate pass on `64b569f`. Task-report review found
-cached Commerce HTTP/restart/replacement/snapshot tests after package identities changed. The
-release script now explicitly reruns those suites before accepting the final release evidence.
+Status: `scripts/release-check.sh --full` passes on `072b6ce`, including fresh Commerce
+HTTP/restart/replacement/snapshot execution against the corrected runtime inputs from `64b569f`.
+`release-evidence/m7-final-verification.json` records that completed event.
 Release publication and final remote synchronization remain open under
 `database-engine-execution-plan.md`, Phase 7 — final verification and release.
 `RELEASING.md` defines the on-demand publication procedure.
@@ -20,10 +20,10 @@ The acceptance inventory maps each release requirement to the command or asserti
 | M7-PREVALIDATION | Installed input, policy, and serial-mutation assertions | Direct and ZIP corpus suites pass on both dialects |
 | M7-DURABILITY-IDENTITY | Replacement, snapshot, cancellation, HTTP restart, and package attestation tests | Full gate passes on both dialects |
 | M7-GENERATED-DOCUMENTS | `GeneratedDatabaseEngineCorpus` and `commerce-generated-v1.json` | Direct and ZIP corpus suites pass on both dialects |
-| M7-REPRESENTATIVE-MEASUREMENTS | Gradle profile, artifact inventory, and `DatabaseEngineMeasurements` output | Retained in `release-evidence/m7-verification.json` |
-| M7-CLEAN-CHECKOUT | `scripts/release-check.sh --full` with pinned submodules and no initial build output | First run passes; archive correction requires final rerun |
+| M7-REPRESENTATIVE-MEASUREMENTS | Gradle profile, artifact inventory, and `DatabaseEngineMeasurements` output | Historical and final events retained in the release-evidence directory |
+| M7-CLEAN-CHECKOUT | `scripts/release-check.sh --full` with pinned submodules and no initial build output | Final rerun passes on `072b6ce` |
 | M7-PRIVACY-HISTORY | Gitleaks history and package scans, plus the release script's hygiene checks | Independent scans pass |
-| M7-NOTICES-DEPENDENCIES | Runtime ZIP notice checks, locked dependencies, and `release-evidence/m7-runtime-advisories.json` | Runtime ZIP checks pass; source archive correction under verification |
+| M7-NOTICES-DEPENDENCIES | Runtime ZIP notice checks, locked dependencies, and `release-evidence/m7-runtime-advisories.json` | ZIP notice and exact recursive source checks pass |
 | M7-LOCAL-VERIFICATION | Tracked workflow inventory and GitHub workflow API | No hosted workflow |
 | M7-PUBLICATION | Fresh remote review, push, release tag/assets, and synchronized checkout | Pending |
 
@@ -59,7 +59,33 @@ child populations. The counter definitions live in
 `src/main/java/io/titan/graphql/codegen/TitanGraphqlDatabaseEngineSourceGenerator.java`; the installed
 `installedPackageMeasuresGrowingParentAndChildCardinality` assertions check the measured populations.
 
-## Completed verification event
+## Final verification event
+
+The completed full gate on `072b6ceafdd8052aed37de97af5d60802d025947` retains its current
+suite summaries, measurements, package identities, and artifact hashes in
+`release-evidence/m7-final-verification.json` and `release-evidence/m7-final-artifact-inventory.tsv`.
+The JSON records the completion observation timestamp and distinguishes the final acceptance
+profile from the preceding completed generation/direct-suite profile on
+`64b569fcfd1a0e360262dbc3fe49e0f3abe474e7`. The runtime build inputs remain those of `64b569f`;
+`072b6ce` changes the release script and evidence profile selection, not the runtime.
+
+The final aggregate profile records executed Commerce HTTP corpus, HTTP restart, replacement,
+and snapshot tasks. Their JUnit timestamps confirm fresh execution after the final run began.
+The direct suites, demo HTTP suite, and container deployment reports come from the completed
+`64b569f` run; their package/distribution inputs did not change before final acceptance.
+Ordinary unit and management-store fixtures also remain unchanged. Every retained suite reports
+no skipped, failed, or errored cases. The exact source inventory/bytes/permissions verifier
+executes in the final aggregate and passes; an independent Python ZIP comparison also passes.
+
+Derivation: `python3 -B docs/release-evidence/derive.py build
+072b6ceafdd8052aed37de97af5d60802d025947 --profile profile-2026-10-01-17-21-28.html`.
+The retained summary also identifies `profile-2026-10-01-16-23-50.html` as the preceding
+completed generation event, rather than treating cached final generation tasks as fresh timings.
+`release-evidence/m7-final-security-review.json` records the independent history, generated-proof,
+and distribution scan event and the GitHub workflow inventory. Publication requires another
+source/history review after these evidence files enter the source asset.
+
+## Earlier completed verification event
 
 The 2026-10-01 run of `scripts/release-check.sh --full` exited successfully on code commit
 `687203ec31ebb7527b6665dea93241d66405c07e`. It included the ordinary test gate, database-engine
@@ -166,8 +192,9 @@ gate depends on this verifier; the incomplete candidate is not a publication ass
 The full run on `64b569f` passed the corrected source verifier, direct database suites, standalone
 demo HTTP tests, and container deployment. It reused Commerce HTTP/restart/replacement/snapshot
 results because those tasks' ordinary cache keys omitted package bytes. The release script now
-selects those tasks with Gradle's task-specific `--rerun` option. The final approval must include
-their execution against the current package identities, not only the earlier cached XML.
+selects those tasks with Gradle's task-specific `--rerun` option. The completed `072b6ce` run
+executes them against the current package identities; its retained profile and fresh XML supply
+the final evidence instead of the earlier cached results.
 
 Gitleaks `v8.30.1`, downloaded from its official release and verified against its published checksum,
 scanned all reachable parent and pinned-submodule history. The parent scan found a generic API-key
