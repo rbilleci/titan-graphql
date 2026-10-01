@@ -227,6 +227,11 @@ val releaseSourceDistribution = tasks.register<Zip>("releaseSourceDistribution")
     isPreserveFileTimestamps = false
     from(layout.projectDirectory) {
         include(releaseTrackedSources.get())
+        filesMatching(listOf("gradlew", "**/gradlew", "src/*/bin/*")) {
+            permissions {
+                unix("rwxr-xr-x")
+            }
+        }
     }
 }
 
