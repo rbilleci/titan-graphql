@@ -1,0 +1,171 @@
+{
+  "dependencyCommits": {
+    "MySQL Connector/J 8.4.0": "1c3f5c149e0bfe31c7fbeb24e2d260cd890972c4",
+    "Titan": "f503c078ff008e03ef2791d254faa3ead98c643a",
+    "Titan DSL": "906f013f34a1a505dac234a7e4976f4bf071e0ab"
+  },
+  "downloadedAssets": [
+    {
+      "browser_download_url": "https://github.com/rbilleci/titan-graphql/releases/download/v0.1.0/m7-final-artifact-inventory.tsv",
+      "digest": "sha256:daca015687970dc300b38db3c7fb4c557ba836d1344ada2783fbcac90516d1bb",
+      "name": "m7-final-artifact-inventory.tsv",
+      "size": 11088
+    },
+    {
+      "browser_download_url": "https://github.com/rbilleci/titan-graphql/releases/download/v0.1.0/m7-final-verification.json",
+      "digest": "sha256:befce87ba13f4d782181e4c2a865250622ae2f31aaea8d6212e46775f3703057",
+      "name": "m7-final-verification.json",
+      "size": 76211
+    },
+    {
+      "browser_download_url": "https://github.com/rbilleci/titan-graphql/releases/download/v0.1.0/mysql-connector-j-8.4.0-sources.tar.gz",
+      "digest": "sha256:f53cf8a252a0fc459ddc0ed8ed9c12a0d4a3d4d9c352690fb018dc4c1671c33b",
+      "name": "mysql-connector-j-8.4.0-sources.tar.gz",
+      "size": 1920988
+    },
+    {
+      "browser_download_url": "https://github.com/rbilleci/titan-graphql/releases/download/v0.1.0/release-artifacts.json",
+      "digest": "sha256:da98521c82539f7342927fe25b36839145c4a5f9a08fc249900a34d40303577c",
+      "name": "release-artifacts.json",
+      "size": 5346
+    },
+    {
+      "browser_download_url": "https://github.com/rbilleci/titan-graphql/releases/download/v0.1.0/SHA256SUMS",
+      "digest": "sha256:26bea696f570453a04a2a7be24789a82ed007dd75fb0e79aaf3a40035dddbb11",
+      "name": "SHA256SUMS",
+      "size": 705
+    },
+    {
+      "browser_download_url": "https://github.com/rbilleci/titan-graphql/releases/download/v0.1.0/titan-graphql-0.1.0-control-job-worker.zip",
+      "digest": "sha256:ceec6858cbfb3201f66844da7b1e4b5b05d8a1cffb47253e89521c10020747cb",
+      "name": "titan-graphql-0.1.0-control-job-worker.zip",
+      "size": 9304553
+    },
+    {
+      "browser_download_url": "https://github.com/rbilleci/titan-graphql/releases/download/v0.1.0/titan-graphql-0.1.0-database-http-frontend.zip",
+      "digest": "sha256:775ee146f31245a6a2ddaa77e238f4c940ec3a93063829d95a3453eb6ff256d5",
+      "name": "titan-graphql-0.1.0-database-http-frontend.zip",
+      "size": 7705188
+    },
+    {
+      "browser_download_url": "https://github.com/rbilleci/titan-graphql/releases/download/v0.1.0/titan-graphql-0.1.0-sources.zip",
+      "digest": "sha256:b0a56d295247e020a38e999bd061fae791bd680e322742745bd3c00ae7178d12",
+      "name": "titan-graphql-0.1.0-sources.zip",
+      "size": 3374309
+    }
+  ],
+  "downloadedChecksumVerification": "sha256sum --check SHA256SUMS passes for every listed asset; all downloaded asset hashes and sizes also match the GitHub API",
+  "downloadedSourceVerification": "Exact recursive tracked file inventory, bytes, and executable modes match the clean checkout at the release tag",
+  "independentFinalScans": [
+    {
+      "findings": [],
+      "reportSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "scope": "All reachable project history at release source commit; exact historical prose exception applied"
+    },
+    {
+      "findings": [],
+      "reportSha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+      "scope": "Final runtime and exact recursive source distributions; archive depth 2"
+    }
+  ],
+  "mainAtPublication": "6e3269595769b76443ce326f412f93640718a778",
+  "mysqlCorrespondingSourcePrivacyReview": {
+    "findings": [
+      {
+        "disposition": "Published upstream test key; not a deployment credential",
+        "line": 1,
+        "path": "src/test/config/ssl-test-certs/ca-key-ext.pem",
+        "rule": "private-key"
+      },
+      {
+        "disposition": "Published upstream test key; not a deployment credential",
+        "line": 1,
+        "path": "src/test/config/ssl-test-certs/ca-key.pem",
+        "rule": "private-key"
+      },
+      {
+        "disposition": "Published upstream test key; not a deployment credential",
+        "line": 1,
+        "path": "src/test/config/ssl-test-certs/client-key-ext.pem",
+        "rule": "private-key"
+      },
+      {
+        "disposition": "Published upstream test key; not a deployment credential",
+        "line": 1,
+        "path": "src/test/config/ssl-test-certs/client-key.pem",
+        "rule": "private-key"
+      },
+      {
+        "disposition": "Published upstream test key; not a deployment credential",
+        "line": 1,
+        "path": "src/test/config/ssl-test-certs/mykey.pem",
+        "rule": "private-key"
+      },
+      {
+        "disposition": "Published upstream test key; not a deployment credential",
+        "line": 1,
+        "path": "src/test/config/ssl-test-certs/server-key-ext.pem",
+        "rule": "private-key"
+      },
+      {
+        "disposition": "Published upstream test key; not a deployment credential",
+        "line": 1,
+        "path": "src/test/config/ssl-test-certs/server-key.pem",
+        "rule": "private-key"
+      },
+      {
+        "disposition": "Fixed SASL client nonce in authentication test vector; not an API key",
+        "line": 143,
+        "path": "src/test/java/testsuite/simple/AuthenticationTest.java",
+        "rule": "generic-api-key"
+      },
+      {
+        "disposition": "Fixed SASL client nonce in authentication test vector; not an API key",
+        "line": 339,
+        "path": "src/test/java/testsuite/simple/AuthenticationTest.java",
+        "rule": "generic-api-key"
+      },
+      {
+        "disposition": "Fixed SASL client nonce in authentication test vector; not an API key",
+        "line": 388,
+        "path": "src/test/java/testsuite/simple/AuthenticationTest.java",
+        "rule": "generic-api-key"
+      },
+      {
+        "disposition": "Fixed SASL client nonce in authentication test vector; not an API key",
+        "line": 437,
+        "path": "src/test/java/testsuite/simple/AuthenticationTest.java",
+        "rule": "generic-api-key"
+      },
+      {
+        "disposition": "Fixed SASL client nonce in authentication test vector; not an API key",
+        "line": 497,
+        "path": "src/test/java/testsuite/simple/AuthenticationTest.java",
+        "rule": "generic-api-key"
+      }
+    ],
+    "rawRedactedReportSha256": "1ee567845c027471ffebffe25299e30bae61e273642a6197a0e89e0994ffc77c",
+    "reviewEvidence": [
+      "src/test/config/ssl-test-certs/certs_howto.txt describes generation and test-server installation",
+      "src/test/java/testsuite/simple/SecureConnectionTest.java consumes the test CA and client keystore",
+      "src/test/java/testsuite/regression/ConnectionRegressionTest.java consumes the public RSA fixture",
+      "src/test/java/testsuite/simple/AuthenticationTest.java overrides client nonce to match fixed protocol messages"
+    ],
+    "reviewedAt": "2026-10-01T15:38:58.122921+00:00",
+    "scanner": "Gitleaks 8.30.1, archive depth 3",
+    "scopeNote": "The complete upstream corresponding-source archive retains these published test fixtures unchanged. These keys must never be used in a deployment."
+  },
+  "postPublicationNote": "The completion ledger is a documentation-only follow-up on main; the release tag and uploaded assets remain immutable.",
+  "release": {
+    "created_at": "2026-10-01T15:39:38Z",
+    "draft": false,
+    "html_url": "https://github.com/rbilleci/titan-graphql/releases/tag/v0.1.0",
+    "prerelease": true,
+    "published_at": "2026-10-01T15:39:44Z",
+    "tag_name": "v0.1.0"
+  },
+  "releaseSourceCommit": "6e3269595769b76443ce326f412f93640718a778",
+  "runtimeBuildInputCommit": "64b569fcfd1a0e360262dbc3fe49e0f3abe474e7",
+  "verifiedAt": "2026-10-01T15:41:35.100366+00:00",
+  "verifiedFullGateCommit": "072b6ceafdd8052aed37de97af5d60802d025947"
+}

@@ -52,5 +52,6 @@ blog and Commerce on both dialects, standalone ZIP execution, reviewed managemen
 containerized worker restart and preview publication, complete package attestation, and independent
 history/package scans. `database-engine-m7-release.md` and `release-evidence/m7-final-verification.json`
 retain the completed-run evidence and package identities. No tracked temporary output or second
-serving implementation appeared in that review. M7 publication and remote reconciliation remain
-open until their final checks pass.
+serving implementation appeared in that review. `release-evidence/m7-publication.json` records
+the published prerelease, exact tagged source, downloaded checksum/API digest checks, and remote
+reconciliation. The completion ledger follows the immutable release as documentation-only work.

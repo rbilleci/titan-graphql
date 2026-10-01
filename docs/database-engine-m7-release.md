@@ -1,10 +1,11 @@
 # M7 release evidence
 
-Status: `scripts/release-check.sh --full` passes on `072b6ce`, including fresh Commerce
-HTTP/restart/replacement/snapshot execution against the corrected runtime inputs from `64b569f`.
-`release-evidence/m7-final-verification.json` records that completed event.
-Release publication and final remote synchronization remain open under
-`database-engine-execution-plan.md`, Phase 7 — final verification and release.
+Status: M7 is complete. `scripts/release-check.sh --full` passes on `072b6ce`, including fresh
+Commerce HTTP/restart/replacement/snapshot execution against the runtime inputs from `64b569f`.
+The published [v0.1.0 prerelease](https://github.com/rbilleci/titan-graphql/releases/tag/v0.1.0)
+tags `6e3269595769b76443ce326f412f93640718a778`; only documentation/evidence changed after the
+full gate. `release-evidence/m7-final-verification.json` records verification and
+`release-evidence/m7-publication.json` records publication and downloaded-asset checks.
 `RELEASING.md` defines the on-demand publication procedure.
 
 The release preserves the database serving boundary established by M1–M6. The first deployment
@@ -25,7 +26,7 @@ The acceptance inventory maps each release requirement to the command or asserti
 | M7-PRIVACY-HISTORY | Gitleaks history and package scans, plus the release script's hygiene checks | Independent scans pass |
 | M7-NOTICES-DEPENDENCIES | Runtime ZIP notice checks, locked dependencies, and `release-evidence/m7-runtime-advisories.json` | ZIP notice and exact recursive source checks pass |
 | M7-LOCAL-VERIFICATION | Tracked workflow inventory and GitHub workflow API | No hosted workflow |
-| M7-PUBLICATION | Fresh remote review, push, release tag/assets, and synchronized checkout | Pending |
+| M7-PUBLICATION | Fresh remote review, push, release tag/assets, and synchronized checkout | Published release source commit matches pushed `main`; completion ledger follows separately |
 
 ## Request generation and measurements
 
@@ -83,7 +84,26 @@ The retained summary also identifies `profile-2026-10-01-16-23-50.html` as the p
 completed generation event, rather than treating cached final generation tasks as fresh timings.
 `release-evidence/m7-final-security-review.json` records the independent history, generated-proof,
 and distribution scan event and the GitHub workflow inventory. Publication requires another
-source/history review after these evidence files enter the source asset.
+source/history review after these evidence files enter the source asset. The publication event
+records that completed review and independently verifies the downloaded source asset.
+
+## Publication verification
+
+GitHub published the prerelease on `2026-10-01T15:39:44Z`, as recorded by its release API in
+`release-evidence/m7-publication.json`. A fresh fetch found no incoming commits before the
+non-forced `main` push. The annotated tag resolves to the release source commit, and GitHub's
+asset digests match every downloaded file. `sha256sum --check SHA256SUMS` passes for the published
+checksums. The downloaded source ZIP matches the recursive tracked checkout at the tag, including
+entry bytes and executable permissions. The completion-ledger follow-up changes documentation
+only; it does not move the release tag or replace assets.
+
+The final parent-history and project-distribution scans report no credentials after the exact
+historical prose exception. The separate MySQL corresponding-source scan finds published upstream
+test keys and fixed authentication nonces. The release manifest and publication JSON retain each
+finding's path, line, rule, and disposition. `src/test/config/ssl-test-certs/certs_howto.txt`
+documents the fixture keys, and the upstream secure-connection tests consume them. The
+authentication tests override the client nonce to match fixed protocol messages. The complete
+upstream archive remains unchanged; these test keys must never be used in a deployment.
 
 ## Earlier completed verification event
 
