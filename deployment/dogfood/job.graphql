@@ -1,0 +1,1 @@
+query LocalJob($id: ID!) { job(id: $id) { id jobType status attemptCount } }

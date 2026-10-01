@@ -1,0 +1,77 @@
+apiVersion: titan.graphql/v1alpha1
+kind: ProjectionModel
+metadata:
+  name: local-control-jobs
+  version: 1
+  owner: platform
+  description: Local read-only job metadata created by the internal management workflow.
+
+database:
+  catalog: titan_dogfood
+  defaultSchema: public
+  tables:
+    jobs:
+      physicalName: titan_graphql_control_jobs
+      schema: public
+      primaryKey: job_id
+
+types:
+  JobMetadata:
+    table: jobs
+    schema: public
+    physicalTable: titan_graphql_control_jobs
+    primaryKey: job_id
+    fields:
+      id:
+        column: job_id
+        type: ID
+        idStorage: string
+        nullable: false
+      jobType:
+        column: job_type
+        type: String
+        nullable: false
+      status:
+        column: status
+        type: String
+        nullable: false
+      attemptCount:
+        column: attempt_count
+        type: Int
+        nullable: false
+
+roots:
+  job:
+    type: JobMetadata
+    operation: point
+    argument:
+      name: id
+      type: ID
+      kind: equals
+      column: job_id
+      path: id
+
+artifacts:
+  generatedSchema:
+    enabled: true
+    path: build/generated/dogfood/schema.graphql
+  introspection:
+    enabled: true
+    path: build/generated/dogfood/introspection.json
+  conformance:
+    enabled: true
+    path: build/generated/dogfood/conformance.md
+  sql:
+    enabled: true
+    dialects: [postgres]
+    path: build/generated/dogfood/sql
+
+deployment:
+  environment: dogfood
+  preview:
+    enabled: true
+    route: /preview/dogfood-jobs/graphql
+    expiresAfter: P7D
+  runtime:
+    endpoint: /graphql
+    managementEndpoint: /admin/graphql

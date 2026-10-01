@@ -1,5 +1,8 @@
 # First container deployment
 
+For a dedicated persistent local PostgreSQL deployment and the internal management workflow, use
+[dogfood/README.md](dogfood/README.md). The generic setup below expects an operator-managed database.
+
 The Compose file runs the standalone database HTTP frontend and its control-job worker as
 separate containers. Compose requests Docker to restart either process after it exits. It does not create a
 database, install a Titan package, publish a preview, or replace any existing service.

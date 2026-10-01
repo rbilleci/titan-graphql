@@ -1,0 +1,64 @@
+services:
+  database:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: titan_dogfood
+      POSTGRES_USER: titan_dogfood
+      POSTGRES_PASSWORD: ${DOGFOOD_DATABASE_PASSWORD:?run deployment/dogfood.py init}
+    volumes:
+      - dogfood-database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U titan_dogfood -d titan_dogfood"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  frontend:
+    build:
+      context: ../build/distributions
+      dockerfile: ../../deployment/Dockerfile.frontend
+    restart: unless-stopped
+    init: true
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${DOGFOOD_HTTP_PORT:-18080}:8080"
+    environment:
+      TITAN_GRAPHQL_FRONTEND_DESCRIPTOR: /deploy/application.properties
+      TITAN_GRAPHQL_ADMIN_FRONTEND_DESCRIPTOR: /deploy/management.properties
+      TITAN_GRAPHQL_PREVIEW_FRONTEND_REGISTRY: /deploy/previews/registry.properties
+      TITAN_GRAPHQL_HTTP_TRUST_REQUEST_CONTEXT_HEADERS: "false"
+      TITAN_GRAPHQL_ADMIN_ACCESS_TOKEN: ${DOGFOOD_ADMIN_TOKEN:?run deployment/dogfood.py init}
+      TITAN_GRAPHQL_JDBC_URL: jdbc:postgresql://database:5432/titan_dogfood
+      TITAN_GRAPHQL_JDBC_USERNAME: titan_dogfood
+      TITAN_GRAPHQL_JDBC_PASSWORD: ${DOGFOOD_DATABASE_PASSWORD:?run deployment/dogfood.py init}
+    volumes:
+      - type: bind
+        source: ${DOGFOOD_STATE_DIR:?run deployment/dogfood.py}/deploy
+        target: /deploy
+        read_only: true
+
+  worker:
+    build:
+      context: ../build/distributions
+      dockerfile: ../../deployment/Dockerfile.worker
+    restart: unless-stopped
+    init: true
+    depends_on:
+      database:
+        condition: service_healthy
+    command: [postgresql, "jdbc:postgresql://database:5432/titan_dogfood", jdbc, "60", "500"]
+    environment:
+      TITAN_GRAPHQL_CONTROL_DB_USER: titan_dogfood
+      TITAN_GRAPHQL_CONTROL_DB_PASSWORD: ${DOGFOOD_DATABASE_PASSWORD:?run deployment/dogfood.py init}
+      TITAN_GRAPHQL_ARTIFACT_PACKAGE_REGISTRY: /deploy/artifacts.properties
+    volumes:
+      - type: bind
+        source: ${DOGFOOD_STATE_DIR:?run deployment/dogfood.py}/deploy
+        target: /deploy
+        read_only: true
+
+volumes:
+  dogfood-database:

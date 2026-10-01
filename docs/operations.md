@@ -1,8 +1,9 @@
 # Operations
 
-Titan GraphQL is a pre-1.0 project with no current deployment or callers. The first-deployment
-target is a container running the standalone HTTP frontend, with a separately supervised
-control-job worker. The frontend executes no GraphQL semantics on the JVM; it binds one complete
+Titan GraphQL is a pre-1.0 project with a persistent local dogfood deployment documented in
+`deployment/dogfood/README.md`, not a public production service. Its dedicated PostgreSQL database,
+standalone HTTP frontend, and separately supervised control-job worker support an internal
+management workflow. The frontend executes no GraphQL semantics on the JVM; it binds one complete
 request to the installed PostgreSQL or MySQL package. This guide does not replace an operator's
 database, identity, backup, or incident-response controls.
 

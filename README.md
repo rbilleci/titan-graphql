@@ -5,9 +5,10 @@ HTTP frontend forwards a complete request to one installed PostgreSQL function o
 It does not parse, plan, authorize, or assemble GraphQL on the JVM. Model inference, projection,
 schema generation, artifact binding, and control-plane jobs remain build-time or operator tools.
 
-This is a pre-1.0 project licensed under [GPL-3.0-or-later](LICENSE). It is not deployed today and
-has no existing callers. The first deployment target is a container running the standalone frontend
-beside a separately supervised control-job worker. There is no compatibility cutover to perform.
+This is a pre-1.0 project licensed under [GPL-3.0-or-later](LICENSE). The persistent local
+[dogfood deployment](deployment/dogfood/README.md) runs the standalone frontend beside a separately
+supervised control-job worker and a dedicated PostgreSQL database. Its internal client consumes
+the management API and published job-metadata preview. No external caller cutover applies.
 
 ## What is implemented
 
@@ -23,7 +24,8 @@ reviewed package and operation registry to a deployment-owned descriptor.
 The [M5 parity report](docs/database-engine-m5-parity.md) maps the fixed corpus and installed
 assertions to the reviewed contract. The [M7 release report](docs/database-engine-m7-release.md)
 records release verification and local measurements. The
-[execution plan](docs/database-engine-execution-plan.md) tracks remaining milestone work. A passing
+[execution plan](docs/database-engine-execution-plan.md) records M0–M7 completion, and the
+[M8 deployment plan](docs/database-engine-m8-dogfood.md) tracks persistent internal use. A passing
 test of an old JVM or carrier path is not release evidence for the standalone service.
 
 ## Build and verify

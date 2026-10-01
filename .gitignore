@@ -9,3 +9,4 @@ out/
 *.p12
 *.pfx
 *.key
+deployment/.dogfood/
